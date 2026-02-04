@@ -74,6 +74,7 @@ function EffectsPanel({
   onAddEffect,
   onUpdateEffect,
   onRemoveEffect,
+  onReorderEffect,
 }: EffectsPanelProps) {
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
@@ -156,9 +157,36 @@ function EffectsPanel({
         ) : (
           <div className={styles.effectStack}>
             {effects.map((effect, index) => (
-              <div key={effect.id} className={styles.effectCard}>
+              <div
+                key={effect.id}
+                className={styles.effectCard}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedId = e.dataTransfer.getData("text/plain");
+                  if (draggedId && draggedId !== effect.id) {
+                     onReorderEffect(draggedId, index);
+                  }
+                }}
+              >
                 <div className={styles.effectCardHeader}>
-                  <button className={styles.dragHandle} title="Drag to reorder">
+                  <button
+                    className={styles.dragHandle}
+                    title="Drag to reorder"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", effect.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      // Set drag image to the card element (grandparent of handle)
+                      const cardElement = e.currentTarget.parentElement?.parentElement;
+                      if (cardElement) {
+                         e.dataTransfer.setDragImage(cardElement, 20, 20);
+                      }
+                    }}
+                  >
                     <GripVertical size={14} />
                   </button>
                   <input

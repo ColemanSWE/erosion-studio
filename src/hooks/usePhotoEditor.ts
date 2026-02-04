@@ -16,6 +16,16 @@ export function usePhotoEditor({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
+  
+  // Buffer canvas for effects processing
+  const bufferRef = useRef<HTMLCanvasElement | null>(null);
+  const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+
+  useEffect(() => {
+    const buffer = document.createElement("canvas");
+    bufferRef.current = buffer;
+    bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
+  }, []);
 
   const render = useCallback(() => {
     if (!canvas || !imageRef.current) return;
@@ -24,28 +34,35 @@ export function usePhotoEditor({
     if (!ctx) return;
 
     const img = imageRef.current;
-
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0);
-
-    if (effects.length > 0) {
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-      renderWithEffects(
-        imageData.data,
-        {
-          width: canvas.width,
-          height: canvas.height,
-          time: tickRef.current,
-        },
-        effects.filter((e) => e.active)
-      );
-
-      ctx.putImageData(imageData, 0, 0);
+    
+    // Ensure buffer is ready
+    if (!bufferRef.current) {
+         const buffer = document.createElement("canvas");
+         bufferRef.current = buffer;
+         bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
     }
+    if (!bufferCtxRef.current) return;
+
+    // Update canvas size if needed
+    if (canvas.width !== (img.naturalWidth || img.width)) {
+       canvas.width = img.naturalWidth || img.width;
+       canvas.height = img.naturalHeight || img.height;
+    }
+
+    renderWithEffects(
+      {
+        ctx,
+        buffer: bufferRef.current,
+        bufferCtx: bufferCtxRef.current,
+        source: img,
+        sourceWidth: canvas.width,
+        sourceHeight: canvas.height,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        tick: tickRef.current,
+      },
+      effects.filter((e) => e.active)
+    );
 
     tickRef.current++;
     animationFrameRef.current = requestAnimationFrame(render);
@@ -107,8 +124,16 @@ export function usePhotoEditor({
 
       const dataUrl = canvas.toDataURL(`image/${format}`, quality);
       const base64Data = dataUrl.split(",")[1];
+      const binaryStr = atob(base64Data);
+      const len = binaryStr.length;
+      const bytes = new Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
 
-      return { filePath: result.filePath, data: base64Data };
+      await window.electron.file.writeBinary(result.filePath, bytes);
+
+      return { success: true, filePath: result.filePath };
     },
     [canvas]
   );
