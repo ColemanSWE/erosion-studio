@@ -1,0 +1,206 @@
+@import "../../styles/variables";
+
+.effectsPanel {
+  width: 320px;
+  border-left: 2px solid $border-primary;
+  background-color: $bg-surface;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.header {
+  padding: $spacing-md;
+  border-bottom: 1px solid $border-primary;
+
+  h3 {
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: $font-mono;
+  }
+}
+
+.categories {
+  flex: 1;
+  overflow-y: auto;
+  border-bottom: 2px solid $border-primary;
+}
+
+.category {
+  border-bottom: 1px solid $border-secondary;
+}
+
+.categoryHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-md;
+  background-color: $bg-elevated;
+  border: none;
+  text-align: left;
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: background-color $transition-fast;
+
+  &:hover {
+    background-color: $bg-overlay;
+  }
+
+  span:first-of-type {
+    flex: 1;
+  }
+
+  .count {
+    color: $text-tertiary;
+    font-size: 10px;
+  }
+}
+
+.effectList {
+  padding: $spacing-xs;
+  background-color: $bg-surface;
+}
+
+.effectButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-xs $spacing-sm;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+  text-align: left;
+  font-size: 12px;
+  margin-bottom: 2px;
+  transition: all $transition-fast;
+
+  &:hover {
+    background-color: $bg-elevated;
+    border-color: $border-primary;
+  }
+}
+
+.activeEffects {
+  height: 300px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.activeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-sm $spacing-md;
+  border-bottom: 1px solid $border-primary;
+  background-color: $bg-elevated;
+
+  h4 {
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: $font-mono;
+  }
+
+  .count {
+    color: $text-tertiary;
+    font-size: 10px;
+    font-family: $font-mono;
+  }
+}
+
+.effectStack {
+  flex: 1;
+  overflow-y: auto;
+  padding: $spacing-sm;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: $text-tertiary;
+  text-align: center;
+  gap: $spacing-xs;
+  padding: $spacing-md;
+
+  p {
+    font-size: 12px;
+
+    &.hint {
+      font-size: 10px;
+    }
+  }
+}
+
+.effectCard {
+  border: 1px solid $border-primary;
+  background-color: $bg-elevated;
+  border-radius: $radius-md;
+  margin-bottom: $spacing-sm;
+}
+
+.effectCardHeader {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding: $spacing-sm;
+
+  input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+  }
+
+  span {
+    flex: 1;
+    font-size: 12px;
+    font-family: $font-mono;
+  }
+
+  button {
+    padding: 0;
+    background: none;
+    border: none;
+    color: $text-secondary;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color $transition-fast;
+
+    &:hover {
+      color: $text-primary;
+    }
+  }
+
+  .dragHandle {
+    cursor: grab;
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+
+  .expandButton {
+    padding: 2px;
+  }
+
+  .removeButton {
+    color: $text-tertiary;
+
+    &:hover {
+      color: $error;
+    }
+  }
+}

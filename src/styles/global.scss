@@ -1,0 +1,92 @@
+@import "./variables";
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: $font-primary;
+  background-color: $bg-base;
+  color: $text-primary;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+code,
+pre {
+  font-family: $font-mono;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background-color: $bg-surface;
+  border: 1px solid $border-primary;
+  border-radius: $radius-md;
+  padding: $spacing-sm;
+
+  &:focus {
+    outline: none;
+    border-color: $accent-primary;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: $bg-surface;
+}
+
+::-webkit-scrollbar-thumb {
+  background: $border-primary;
+  border-radius: 0;
+
+  &:hover {
+    background: $border-accent;
+  }
+}
+
+canvas {
+  display: block;
+}

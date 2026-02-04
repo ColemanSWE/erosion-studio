@@ -1,0 +1,103 @@
+# Erosion Studio Cursor Rules
+
+## Project Overview
+
+Erosion Studio is a desktop photo and video editor with 55+ glitch, compression, and distortion effects, built with Electron, React, and TypeScript.
+
+## Tech Stack
+
+- **Desktop**: Electron
+- **Frontend**: React 19, TypeScript, Vite
+- **3D Effects**: Three.js (@react-three/fiber, @react-three/drei)
+- **Video Processing**: FFmpeg (@ffmpeg/ffmpeg, @ffmpeg/util)
+- **State Management**: Zustand
+- **UI**: SCSS Modules, Lucide React icons
+- **Face Detection**: MediaPipe Tasks Vision (optional)
+
+## Project Structure
+
+```
+erosion-studio/
+├── electron/           # Electron main process
+│   ├── main.ts
+│   ├── preload.ts
+│   └── ffmpeg.ts
+├── src/
+│   ├── components/     # React components
+│   ├── hooks/          # Custom hooks
+│   ├── lib/
+│   │   ├── effects/    # 55+ effects (ported from Kinetic)
+│   │   └── video/      # Video processing utilities
+│   ├── stores/         # Zustand stores
+│   └── styles/         # SCSS styles
+└── index.html
+```
+
+## Code Style
+
+### TypeScript
+
+- Use strict typing
+- Define interfaces for all data structures
+- Prefer `Record<string, unknown>` for flexible parameter objects
+
+### React
+
+- Use functional components exclusively
+- Custom hooks for stateful logic
+- `useCallback` for event handlers
+- `useRef` for DOM references
+
+### Effects System
+
+- Effects ported from Kinetic's `photo-effects/` directory
+- Each effect must have default parameters via `getDefaultParams()`
+- Processing effects modify `Uint8ClampedArray` in-place
+- Style effects use special rendering modes
+
+### Naming
+
+- Components: PascalCase (`PhotoEditor`, `EffectsPanel`)
+- Hooks: camelCase with "use" prefix (`usePhotoEditor`, `useExport`)
+- Functions: camelCase
+- Types/Interfaces: PascalCase
+- Constants: UPPER_SNAKE_CASE
+
+### UI/UX
+
+- Brutalist design system with `#000000` background
+- Use Lucide React icons (never emojis)
+- SCSS Modules for component styling
+- Dark theme with high contrast
+
+## Development Commands
+
+```bash
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run dev
+
+# Type check
+npm run typecheck
+
+# Build for production
+npm run build
+```
+
+## Error Handling
+
+- Use try-catch for async operations
+- Handle null/undefined checks
+- Provide fallback values for optional parameters
+- Clean up resources in useEffect cleanup
+
+## Key Features
+
+1. **Photo Editing**: Import images, apply stackable effects, export PNG/JPG/WebP
+2. **Video Editing**: Timeline-based editing with per-clip effects
+3. **Effects**: 55+ effects across 7 categories (glitch, distortion, color, retro, noise, style, face)
+4. **Export**: Multiple formats with quality settings
+5. **Keyboard Shortcuts**: Cmd+Z (undo), Cmd+Shift+Z (redo), Cmd+S (save), Space (play/pause)
+6. **Project Management**: Save/load `.erosion` project files

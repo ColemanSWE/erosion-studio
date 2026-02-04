@@ -1,0 +1,147 @@
+@import "../../styles/variables";
+
+.mediaBrowser {
+  width: 280px;
+  border-right: 2px solid $border-primary;
+  background-color: $bg-surface;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.header {
+  padding: $spacing-md;
+  border-bottom: 1px solid $border-primary;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  h3 {
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: $font-mono;
+  }
+}
+
+.importButton {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-xs $spacing-sm;
+  border: 1px solid $border-primary;
+  background-color: $bg-elevated;
+  border-radius: $radius-md;
+  font-size: 12px;
+  transition: all $transition-fast;
+
+  &:hover {
+    background-color: $bg-overlay;
+    border-color: $accent-primary;
+  }
+}
+
+.mediaList {
+  flex: 1;
+  overflow-y: auto;
+  padding: $spacing-sm;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: $text-tertiary;
+  text-align: center;
+  gap: $spacing-sm;
+
+  p {
+    font-size: 13px;
+
+    &.hint {
+      font-size: 11px;
+      color: $text-tertiary;
+    }
+  }
+}
+
+.mediaItem {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  border: 1px solid $border-secondary;
+  background-color: $bg-elevated;
+  border-radius: $radius-md;
+  margin-bottom: $spacing-sm;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    border-color: $border-primary;
+    background-color: $bg-overlay;
+  }
+
+  &.selected {
+    border-color: $accent-primary;
+    background-color: $bg-overlay;
+  }
+}
+
+.thumbnail {
+  width: 40px;
+  height: 40px;
+  border: 1px solid $border-primary;
+  background-color: $bg-base;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $radius-sm;
+  flex-shrink: 0;
+  color: $text-secondary;
+}
+
+.info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  font-size: 12px;
+  font-family: $font-mono;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duration {
+  font-size: 10px;
+  color: $text-tertiary;
+  font-family: $font-mono;
+}
+
+.removeButton {
+  padding: $spacing-xs;
+  border: 1px solid $border-primary;
+  background-color: $bg-surface;
+  border-radius: $radius-sm;
+  color: $error;
+  opacity: 0;
+  transition: all $transition-fast;
+  flex-shrink: 0;
+
+  .mediaItem:hover & {
+    opacity: 1;
+  }
+
+  &:hover {
+    background-color: $error;
+    color: $text-inverse;
+  }
+}

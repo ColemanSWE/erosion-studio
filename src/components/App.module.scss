@@ -1,0 +1,14 @@
+@import "../styles/variables";
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: $bg-base;
+}
+
+.mainContent {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
