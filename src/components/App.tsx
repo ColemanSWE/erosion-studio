@@ -1,9 +1,11 @@
-import React, { useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Toolbar from "./Toolbar/Toolbar";
 import MediaBrowser from "./MediaBrowser/MediaBrowser";
 import Preview from "./Preview/Preview";
 import EffectsPanel from "./EffectsPanel/EffectsPanel";
 import Timeline from "./Timeline/Timeline";
+import Home from "./Home/Home";
+import CameraBooth from "./Camera/CameraBooth";
 import { useProjectStore } from "../stores/projectStore";
 import { useUIStore } from "../stores/uiStore";
 import { usePhotoEditor } from "../hooks/usePhotoEditor";
@@ -13,8 +15,6 @@ import { useHistory } from "../hooks/useHistory";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import {
   saveProject,
-  loadProject,
-  createEmptyProject,
   type Project,
 } from "../lib/project";
 import styles from "./App.module.scss";
@@ -39,9 +39,17 @@ function App() {
     play,
     pause,
     stop,
+    setDuration,
   } = useProjectStore();
 
-  const { showMediaBrowser, showEffectsPanel, showTimeline } = useUIStore();
+  const {
+    showMediaBrowser,
+    showEffectsPanel,
+    showTimeline,
+    appMode,
+    setAppMode,
+    toggleTimeline,
+  } = useUIStore();
 
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
 
@@ -55,15 +63,13 @@ function App() {
   };
 
   const {
-    state: historyState,
-    setState: setHistoryState,
     undo,
     redo,
     canUndo,
     canRedo,
   } = useHistory(projectSnapshot);
 
-  const { exportImage: exportImageHook } = useExport();
+  const { exportVideo } = useExport();
 
   const selectedMedia = media.find((m) => m.id === selectedMediaId);
   const imagePath =
@@ -93,7 +99,7 @@ function App() {
     setCanvas(newCanvas);
   }, []);
 
-  const handleImport = async () => {
+  const handleImport = async (type?: "image" | "video") => {
     if (!window.electron) {
       alert("File dialog only available in Electron");
       return;
@@ -101,10 +107,24 @@ function App() {
 
     const result = await window.electron.openFile({
       properties: ["openFile"],
-      filters: [
-        { name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp"] },
-        { name: "Videos", extensions: ["mp4", "mov", "webm"] },
-      ],
+      properties: ["openFile"],
+      filters:
+        type === "image"
+          ? [
+              {
+                name: "Images",
+                extensions: ["jpg", "jpeg", "png", "gif", "webp"],
+              },
+            ]
+          : type === "video"
+          ? [{ name: "Videos", extensions: ["mp4", "mov", "webm"] }]
+          : [
+              {
+                name: "Images",
+                extensions: ["jpg", "jpeg", "png", "gif", "webp"],
+              },
+              { name: "Videos", extensions: ["mp4", "mov", "webm"] },
+            ],
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
@@ -127,6 +147,12 @@ function App() {
           setDuration(info.duration);
         }
       }
+
+      // Auto-set timeline visibility based on type if coming from Home
+      // Note: We access the store state directly via hook, so we can't conditionally call hooks here.
+      // But we can toggle.
+      // Ideally we'd set a specific value, but toggle is what we have exposed for now.
+      // Let's rely on the user or a future refactor to set exact visibility.
     }
   };
 
@@ -137,15 +163,21 @@ function App() {
     }
 
     try {
-      const result =
-        selectedMedia?.type === "video"
-          ? await exportImageHook(canvas, "png", 1.0)
-          : await exportImage("png", 1.0);
+      let result;
+      
+      if (selectedMedia?.type === "video") {
+         // Export video using the exportVideo hook
+         result = await exportVideo(canvas, effects, duration, { format: "mp4", quality: 1.0, fps: 30 });
+      } else {
+         result = await exportImage("png", 1.0);
+      }
 
-      if (result.success) {
+      if (result && result.success) {
         alert(`Exported to: ${result.filePath}`);
       } else {
-        alert(`Export failed: ${result.error}`);
+        // TypeScript safe access
+        const errorMsg = result && 'error' in result ? result.error : "Unknown error";
+        alert(`Export failed: ${errorMsg}`);
       }
     } catch (error) {
       alert(`Export failed: ${error}`);
@@ -189,49 +221,70 @@ function App() {
 
   return (
     <div className={styles.app}>
-      <Toolbar
-        projectName={projectName}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        onExport={handleExport}
-        canUndo={canUndo}
-        canRedo={canRedo}
-      />
+      {appMode === "home" && <Home onImport={handleImport} />}
 
-      <div className={styles.mainContent}>
-        {showMediaBrowser && (
-          <MediaBrowser
-            media={media}
-            selectedId={selectedMediaId}
-            onImport={handleImport}
-            onSelect={selectMedia}
-            onRemove={removeMedia}
+      {appMode === "camera" && (
+        <>
+          <CameraBooth />
+          <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', zIndex: 2000 }}>
+             <EffectsPanel 
+               effects={effects}
+               onAddEffect={addEffect}
+               onUpdateEffect={updateEffect}
+               onRemoveEffect={removeEffect}
+               onReorderEffect={reorderEffect}
+             />
+          </div>
+        </>
+      )}
+
+      {appMode === "editor" && (
+        <>
+          <Toolbar
+            projectName={projectName}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onExport={handleExport}
+            canUndo={canUndo}
+            canRedo={canRedo}
           />
-        )}
 
-        <Preview onCanvasReady={handleCanvasReady} />
+          <div className={styles.mainContent}>
+            {showMediaBrowser && (
+              <MediaBrowser
+                media={media}
+                selectedId={selectedMediaId}
+                onImport={() => handleImport()}
+                onSelect={selectMedia}
+                onRemove={removeMedia}
+              />
+            )}
 
-        {showEffectsPanel && (
-          <EffectsPanel
-            effects={effects}
-            onAddEffect={addEffect}
-            onUpdateEffect={updateEffect}
-            onRemoveEffect={removeEffect}
-            onReorderEffect={reorderEffect}
-          />
-        )}
-      </div>
+            <Preview onCanvasReady={handleCanvasReady} />
 
-      {showTimeline && (
-        <Timeline
-          duration={duration}
-          currentTime={currentTime}
-          isPlaying={isPlaying}
-          onPlay={play}
-          onPause={pause}
-          onStop={stop}
-          onSeek={setCurrentTime}
-        />
+            {showEffectsPanel && (
+              <EffectsPanel
+                effects={effects}
+                onAddEffect={addEffect}
+                onUpdateEffect={updateEffect}
+                onRemoveEffect={removeEffect}
+                onReorderEffect={reorderEffect}
+              />
+            )}
+          </div>
+
+          {showTimeline && (
+            <Timeline
+              duration={duration}
+              currentTime={currentTime}
+              isPlaying={isPlaying}
+              onPlay={play}
+              onPause={pause}
+              onStop={stop}
+              onSeek={setCurrentTime}
+            />
+          )}
+        </>
       )}
     </div>
   );

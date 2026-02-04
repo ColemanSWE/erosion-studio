@@ -1,0 +1,101 @@
+@import "../../styles/variables";
+
+.booth {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain; // Maintain aspect ratio without cropping for now
+    transform: scaleX(-1); // Mirror
+  }
+
+  .canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .uiLayer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; // Let clicks pass through to video? No, we need UI interaction
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 2rem;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    pointer-events: auto;
+
+    .backButton {
+      background: rgba(0,0,0,0.5);
+      border: 1px solid #fff;
+      color: #fff;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      text-transform: uppercase;
+      font-weight: bold;
+      
+      &:hover {
+        background: #fff;
+        color: #000;
+      }
+    }
+  }
+
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    pointer-events: auto;
+    margin-bottom: 2rem;
+
+    .shutter {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: #fff;
+      border: 4px solid #ccc;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover {
+        transform: scale(1.1);
+      }
+
+      &:active {
+        transform: scale(0.9);
+      }
+      
+      &.recording {
+        background: #f00;
+        border-radius: 20%; // Square-ish when recording
+        animation: pulse 1s infinite alternate;
+      }
+    }
+    
+    .modeSwitch {
+      // Toggle logic later
+    }
+  }
+}
+
+@keyframes pulse {
+  from { opacity: 1; }
+  to { opacity: 0.6; }
+}

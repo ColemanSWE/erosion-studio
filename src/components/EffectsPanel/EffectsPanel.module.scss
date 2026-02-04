@@ -2,12 +2,13 @@
 
 .effectsPanel {
   width: 320px;
+  height: 100%;
   border-left: 2px solid $border-primary;
   background-color: $bg-surface;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .header {
@@ -24,8 +25,7 @@
 }
 
 .categories {
-  flex: 1;
-  overflow-y: auto;
+  /* Remove flex: 1 and overflow to allow natural height */
   border-bottom: 2px solid $border-primary;
 }
 
@@ -89,10 +89,8 @@
 }
 
 .activeEffects {
-  height: 300px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  border-top: 2px solid $border-primary;
+  /* Allow natural height */
 }
 
 .activeHeader {
@@ -119,8 +117,6 @@
 }
 
 .effectStack {
-  flex: 1;
-  overflow-y: auto;
   padding: $spacing-sm;
 }
 

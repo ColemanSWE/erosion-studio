@@ -1463,7 +1463,8 @@ registerEffect({
   label: "Solarize",
   category: "color",
   processor: (data, config, params) => {
-    const threshold = (params.threshold as number) || 128;
+    const intensity = (params.intensity as number) ?? 50;
+    const threshold = 255 - (intensity * 2.55);
 
     for (let i = 0; i < data.length; i += 4) {
       if (data[i] > threshold) data[i] = 255 - data[i];
