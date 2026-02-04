@@ -1,0 +1,21 @@
+appId: com.erosion.studio
+productName: Erosion Studio
+directories:
+  output: out
+  buildResources: build
+files:
+  - dist
+  - dist-electron
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis
+    - portable
+linux:
+  target:
+    - AppImage
+    - deb
