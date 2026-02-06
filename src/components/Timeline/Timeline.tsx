@@ -54,7 +54,7 @@ function Timeline({
       ctx.stroke();
 
       ctx.fillStyle = "#666666";
-      ctx.font = "10px monospace";
+      ctx.font = '10px "JetBrains Mono", monospace';
       ctx.fillText(formatTime(i), x + 4, 12);
     }
 

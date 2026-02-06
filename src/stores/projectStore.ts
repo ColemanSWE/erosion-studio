@@ -66,24 +66,40 @@ export const useProjectStore = create<ProjectState>((set) => ({
   selectMedia: (id) => set({ selectedMediaId: id }),
 
   addEffect: (type) =>
-    set((state) => ({
-      effects: [
-        ...state.effects,
-        {
-          id: `effect-${effectIdCounter++}`,
-          type,
-          active: true,
-          params: getDefaultParams(type),
-        },
-      ],
-    })),
+    set(async (state) => {
+      const newEffect = {
+        id: `effect-${effectIdCounter++}`,
+        type,
+        active: true,
+        params: getDefaultParams(type),
+      };
+      
+      if (type === "emoji") {
+        const { initializeEmojiPalette } = await import("../lib/effects/effects-renderer");
+        const palette = (newEffect.params.palette as string) || "standard";
+        await initializeEmojiPalette(palette as any);
+      }
+      
+      return {
+        effects: [...state.effects, newEffect],
+      };
+    }),
 
   updateEffect: (id, updates) =>
-    set((state) => ({
-      effects: state.effects.map((e) =>
-        e.id === id ? { ...e, ...updates } : e
-      ),
-    })),
+    set(async (state) => {
+      const effect = state.effects.find((e) => e.id === id);
+      
+      if (effect?.type === "emoji" && updates.params?.palette) {
+        const { initializeEmojiPalette } = await import("../lib/effects/effects-renderer");
+        await initializeEmojiPalette(updates.params.palette as any);
+      }
+      
+      return {
+        effects: state.effects.map((e) =>
+          e.id === id ? { ...e, ...updates } : e
+        ),
+      };
+    }),
 
   removeEffect: (id) =>
     set((state) => ({

@@ -45,6 +45,20 @@ export function renderFrame(
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
+  // Native Mode: Draw pixels at full resolution without character mapping
+  if (mode === "native") {
+    const imageData = new ImageData(pixelData as any, width, height);
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext("2d");
+    if (tempCtx) {
+      tempCtx.putImageData(imageData, 0, 0);
+      ctx.drawImage(tempCanvas, 0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
+    return;
+  }
+
   // Standard Mode: Just draw the modified pixels directly
   if (mode === "standard") {
     const imageData = new ImageData(pixelData as any, width, height);
@@ -75,11 +89,11 @@ export function renderFrame(
   }
 
   // Text-based Modes
-  ctx.font = `${fontSize}px monospace`;
+  ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
   if (mode === "emoji") {
     ctx.font = `${fontSize}px "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"`;
   } else if (mode === "matrix") {
-    ctx.font = `bold ${fontSize}px monospace`;
+    ctx.font = `bold ${fontSize}px "JetBrains Mono", monospace`;
   }
 
   ctx.textAlign = "center";

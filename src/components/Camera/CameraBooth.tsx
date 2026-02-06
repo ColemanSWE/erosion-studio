@@ -4,6 +4,7 @@ import styles from "./CameraBooth.module.scss";
 import { useUIStore } from "../../stores/uiStore";
 import { useProjectStore } from "../../stores/projectStore";
 import { renderWithEffects } from "../../lib/effects/effects-renderer";
+import { detectFaces, type FaceBounds } from "../../lib/effects/face-detector";
 
 const CameraBooth: React.FC = () => {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -14,6 +15,7 @@ const CameraBooth: React.FC = () => {
     const tickRef = useRef(0);
 
     const [stream, setStream] = useState<MediaStream | null>(null);
+    const [faceBounds, setFaceBounds] = useState<FaceBounds[]>([]);
     const { setAppMode } = useUIStore();
     const { addMedia, selectMedia, effects } = useProjectStore();
 
@@ -56,7 +58,7 @@ const CameraBooth: React.FC = () => {
 
     // Render loop
     useEffect(() => {
-        const render = () => {
+        const render = async () => {
             if (!videoRef.current || !canvasRef.current || !bufferRef.current || !bufferCtxRef.current) {
                 animationFrameRef.current = requestAnimationFrame(render);
                 return;
@@ -66,10 +68,20 @@ const CameraBooth: React.FC = () => {
             const canvas = canvasRef.current;
             const ctx = canvas.getContext("2d");
 
-            if (video.readyState === video.HAVE_ENOUGH_DATA && ctx) {
+            if (video.readyState === video.HAVE_ENOUGH_DATA && ctx && video.videoWidth > 0 && video.videoHeight > 0) {
                  if (canvas.width !== video.videoWidth) {
                      canvas.width = video.videoWidth;
                      canvas.height = video.videoHeight;
+                 }
+
+                 // Detect faces every 10 frames to reduce overhead
+                 if (tickRef.current % 10 === 0) {
+                     try {
+                         const faces = await detectFaces(video);
+                         setFaceBounds(faces);
+                     } catch (error) {
+                         console.error("Face detection failed:", error);
+                     }
                  }
 
                  // We want to mirror the INPUT so the user sees themselves like a mirror
@@ -97,7 +109,8 @@ const CameraBooth: React.FC = () => {
                         sourceHeight: video.videoHeight,
                         canvasWidth: canvas.width,
                         canvasHeight: canvas.height,
-                        tick: tickRef.current
+                        tick: tickRef.current,
+                        faceBounds
                     },
                     effects.filter(e => e.active)
                  );
@@ -115,7 +128,7 @@ const CameraBooth: React.FC = () => {
         return () => {
             if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
         };
-    }, [stream, effects]);
+    }, [stream, effects, faceBounds]);
 
     const handleBack = () => {
         if (stream) {
