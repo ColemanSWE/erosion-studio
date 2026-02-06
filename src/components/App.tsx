@@ -166,22 +166,54 @@ function App() {
       let result;
       
       if (selectedMedia?.type === "video") {
-         // Export video using the exportVideo hook
          result = await exportVideo(canvas, effects, duration, { format: "mp4", quality: 1.0, fps: 30 });
       } else {
-         result = await exportImage("png", 1.0);
+         const format = await showFormatPicker();
+         if (!format) return;
+         result = await exportImage(format as "png" | "jpeg" | "webp" | "gif", 0.95);
       }
 
       if (result && result.success) {
         alert(`Exported to: ${result.filePath}`);
       } else {
-        // TypeScript safe access
         const errorMsg = result && 'error' in result ? result.error : "Unknown error";
         alert(`Export failed: ${errorMsg}`);
       }
     } catch (error) {
       alert(`Export failed: ${error}`);
     }
+  };
+
+  const showFormatPicker = (): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const format = prompt(
+        "Choose export format:\n1. PNG (lossless, still image)\n2. JPEG (lossy, still image)\n3. WebP (lossy, still image)\n4. GIF (animated, 2 seconds @ 30fps)\n\nEnter number (1-4):",
+        "1"
+      );
+      
+      if (!format) {
+        resolve(null);
+        return;
+      }
+      
+      switch (format.trim()) {
+        case "1":
+          resolve("png");
+          break;
+        case "2":
+          resolve("jpeg");
+          break;
+        case "3":
+          resolve("webp");
+          break;
+        case "4":
+          resolve("gif");
+          break;
+        default:
+          alert("Invalid format. Using PNG.");
+          resolve("png");
+      }
+    });
   };
 
   const handleUndo = useCallback(() => {

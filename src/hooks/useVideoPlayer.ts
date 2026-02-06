@@ -1,6 +1,7 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect } from "../lib/effects/types";
+import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
 
 interface UseVideoPlayerOptions {
   canvas: HTMLCanvasElement | null;
@@ -24,6 +25,7 @@ export function useVideoPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
+  const [faceBounds, setFaceBounds] = useState<FaceBounds[]>([]);
   
   // Buffer for effects
   const bufferRef = useRef<HTMLCanvasElement | null>(null);
@@ -35,7 +37,7 @@ export function useVideoPlayer({
     bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
   }, []);
 
-  const render = useCallback(() => {
+  const render = useCallback(async () => {
     if (!canvas || !videoRef.current) return;
 
     const ctx = canvas.getContext("2d");
@@ -58,6 +60,16 @@ export function useVideoPlayer({
        canvas.height = video.videoHeight || 1080;
     }
 
+    // Detect faces every 10 frames to reduce overhead
+    if (tickRef.current % 10 === 0) {
+      try {
+        const faces = await detectFaces(video);
+        setFaceBounds(faces);
+      } catch (error) {
+        console.error("Face detection failed:", error);
+      }
+    }
+
     renderWithEffects(
       {
         ctx,
@@ -69,6 +81,7 @@ export function useVideoPlayer({
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         tick: tickRef.current,
+        faceBounds,
       },
       effects.filter((e) => e.active)
     );
@@ -82,7 +95,7 @@ export function useVideoPlayer({
     if (isPlaying && !video.paused) {
       animationFrameRef.current = requestAnimationFrame(render);
     }
-  }, [canvas, effects, isPlaying, onTimeUpdate]);
+  }, [canvas, effects, isPlaying, onTimeUpdate, faceBounds]);
 
   useEffect(() => {
     if (!videoPath) {
