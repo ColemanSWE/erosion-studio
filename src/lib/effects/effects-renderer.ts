@@ -58,7 +58,13 @@ function styleEffectToRenderMode(type: string): RenderMode | "halftone" {
 export async function initializeEmojiPalette(
   paletteKey: PaletteKey
 ): Promise<void> {
-  await emojiMap.generatePalette(PALETTES[paletteKey].emojis);
+  const palette = PALETTES[paletteKey];
+  if (!palette) {
+    console.error(`Invalid palette key: ${paletteKey}, using standard`);
+    await emojiMap.generatePalette(PALETTES.standard.emojis);
+    return;
+  }
+  await emojiMap.generatePalette(palette.emojis);
 }
 
 export function renderWithEffects(

@@ -65,41 +65,65 @@ export const useProjectStore = create<ProjectState>((set) => ({
 
   selectMedia: (id) => set({ selectedMediaId: id }),
 
-  addEffect: (type) =>
-    set(async (state) => {
-      const newEffect = {
-        id: `effect-${effectIdCounter++}`,
-        type,
-        active: true,
-        params: getDefaultParams(type),
-      };
-      
-      if (type === "emoji") {
-        const { initializeEmojiPalette } = await import("../lib/effects/effects-renderer");
-        const palette = (newEffect.params.palette as string) || "standard";
-        await initializeEmojiPalette(palette as any);
-      }
-      
-      return {
-        effects: [...state.effects, newEffect],
-      };
-    }),
+  addEffect: (type) => {
+    const newEffect = {
+      id: `effect-${effectIdCounter++}`,
+      type,
+      active: true,
+      params: getDefaultParams(type),
+    };
+    
+    set((state) => ({
+      effects: [...state.effects, newEffect],
+    }));
+    
+    if (type === "emoji") {
+      (async () => {
+        try {
+          const { initializeEmojiPalette } = await import("../lib/effects/effects-renderer");
+          const { PALETTES } = await import("../lib/effects/palettes");
+          const palette = (newEffect.params.palette as string) || "standard";
+          
+          if (palette in PALETTES) {
+            await initializeEmojiPalette(palette as any);
+          } else {
+            console.warn(`Invalid palette "${palette}", using standard`);
+            await initializeEmojiPalette("standard");
+          }
+        } catch (error) {
+          console.error("Failed to initialize emoji palette:", error);
+        }
+      })();
+    }
+  },
 
-  updateEffect: (id, updates) =>
-    set(async (state) => {
-      const effect = state.effects.find((e) => e.id === id);
-      
-      if (effect?.type === "emoji" && updates.params?.palette) {
-        const { initializeEmojiPalette } = await import("../lib/effects/effects-renderer");
-        await initializeEmojiPalette(updates.params.palette as any);
-      }
-      
-      return {
-        effects: state.effects.map((e) =>
-          e.id === id ? { ...e, ...updates } : e
-        ),
-      };
-    }),
+  updateEffect: (id, updates) => {
+    set((state) => ({
+      effects: state.effects.map((e) =>
+        e.id === id ? { ...e, ...updates } : e
+      ),
+    }));
+    
+    const effect = useProjectStore.getState().effects.find((e) => e.id === id);
+    if (effect?.type === "emoji" && updates.params?.palette) {
+      (async () => {
+        try {
+          const { initializeEmojiPalette } = await import("../lib/effects/effects-renderer");
+          const { PALETTES } = await import("../lib/effects/palettes");
+          const palette = updates.params.palette as string;
+          
+          if (palette in PALETTES) {
+            await initializeEmojiPalette(palette as any);
+          } else {
+            console.warn(`Invalid palette "${palette}", using standard`);
+            await initializeEmojiPalette("standard");
+          }
+        } catch (error) {
+          console.error("Failed to initialize emoji palette:", error);
+        }
+      })();
+    }
+  },
 
   removeEffect: (id) =>
     set((state) => ({
