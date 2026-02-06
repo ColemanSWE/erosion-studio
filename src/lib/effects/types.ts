@@ -125,7 +125,7 @@ export function getDefaultParams(type: EffectType): Record<string, unknown> {
     case "pixelate":
       return { density: 64 };
     case "emoji":
-      return { density: 48, palette: "full" };
+      return { density: 48, palette: "standard" };
     case "ascii":
       return { density: 80, colored: true };
     case "matrix":
