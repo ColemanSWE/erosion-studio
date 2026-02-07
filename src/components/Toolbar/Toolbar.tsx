@@ -1,4 +1,3 @@
-import React from "react";
 import { FileText, Undo, Redo, Download } from "lucide-react";
 import styles from "./Toolbar.module.scss";
 
