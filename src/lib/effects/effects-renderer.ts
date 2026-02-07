@@ -1,8 +1,5 @@
 import { Effect, Region } from "./types";
-import {
-  applyEffects,
-  isStyleEffect,
-} from "./effect-registry";
+import { applyEffects, isStyleEffect } from "./effect-registry";
 import { renderFrame, RenderMode } from "./renderers";
 import { emojiMap } from "./emoji-map";
 import { PALETTES, PaletteKey } from "./palettes";
@@ -56,7 +53,7 @@ function styleEffectToRenderMode(type: string): RenderMode | "halftone" {
 }
 
 export async function initializeEmojiPalette(
-  paletteKey: PaletteKey
+  paletteKey: PaletteKey,
 ): Promise<void> {
   const palette = PALETTES[paletteKey];
   if (!palette) {
@@ -70,7 +67,7 @@ export async function initializeEmojiPalette(
 export function renderWithEffects(
   context: RenderContext,
   effects: Effect[],
-  regions?: Region[]
+  regions?: Region[],
 ): void {
   const {
     ctx,
@@ -89,10 +86,10 @@ export function renderWithEffects(
   if (!activeStyle) {
     const globalEffects = effects.filter((e) => e.active && !e.regionId);
     const regionEffects = effects.filter((e) => e.active && e.regionId);
-    
+
     const scale = Math.min(
       canvasWidth / sourceWidth,
-      canvasHeight / sourceHeight
+      canvasHeight / sourceHeight,
     );
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
@@ -140,15 +137,6 @@ export function renderWithEffects(
         const ry = Math.floor(region.y * sourceHeight);
         const rw = Math.floor(region.width * sourceWidth);
         const rh = Math.floor(region.height * sourceHeight);
-
-        console.log("Applying region effects:", {
-          regionId,
-          region,
-          sourceWidth,
-          sourceHeight,
-          rx, ry, rw, rh,
-          effectCount: regionEffectList.length,
-        });
 
         if (rw <= 0 || rh <= 0) continue;
 
@@ -211,7 +199,7 @@ export function renderWithEffects(
       buffer,
       activeStyle.params,
       canvasWidth,
-      canvasHeight
+      canvasHeight,
     );
 
     // Draw mesh to output canvas
@@ -242,7 +230,7 @@ export function renderWithEffects(
     console.warn("Calculated dimensions too small for style effect, skipping");
     const scale = Math.min(
       canvasWidth / sourceWidth,
-      canvasHeight / sourceHeight
+      canvasHeight / sourceHeight,
     );
     const drawWidth = sourceWidth * scale;
     const drawHeight = sourceHeight * scale;
@@ -282,7 +270,7 @@ export function renderWithEffects(
   if (!renderCtx) return;
 
   const dotScale = (activeStyle.params.dotScale as number) || 1.0;
-  
+
   if (renderMode === "halftone") {
     renderHalftone(
       renderCtx,
@@ -291,7 +279,7 @@ export function renderWithEffects(
       rows,
       canvasWidth,
       canvasHeight,
-      dotScale
+      dotScale,
     );
   } else {
     renderFrame(renderCtx, imageData.data, cols, rows, {
@@ -307,7 +295,7 @@ export function renderWithEffects(
       0,
       0,
       canvasWidth,
-      canvasHeight
+      canvasHeight,
     );
     applyEffects(renderImageData.data, postStyleEffects, {
       width: canvasWidth,
@@ -331,7 +319,7 @@ function renderHalftone(
   rows: number,
   canvasWidth: number,
   canvasHeight: number,
-  dotScale: number
+  dotScale: number,
 ): void {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);

@@ -1,4 +1,3 @@
-
 export interface EmojiColor {
   char: string;
   r: number;
@@ -12,36 +11,39 @@ export class EmojiMap {
 
   async generatePalette(emojis: string[]): Promise<void> {
     this.map = [];
-    
+
     // Create an off-screen canvas to measure emoji colors
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     const size = 32; // Analysis size
     canvas.width = size;
     canvas.height = size;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
     if (!ctx) {
       console.warn("Could not get 2D context for EmojiMap generation");
       return;
     }
 
     ctx.font = `${size * 0.8}px "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
 
     for (const char of emojis) {
       // Clear
       ctx.clearRect(0, 0, size, size);
-      
+
       // Draw emoji
       ctx.fillText(char, size / 2, size / 2);
-      
+
       // Get pixel data
       const imageData = ctx.getImageData(0, 0, size, size);
       const data = imageData.data;
-      
-      let totalR = 0, totalG = 0, totalB = 0, count = 0;
-      
+
+      let totalR = 0,
+        totalG = 0,
+        totalB = 0,
+        count = 0;
+
       // Calculate average color
       for (let i = 0; i < data.length; i += 4) {
         const a = data[i + 3];
@@ -59,18 +61,17 @@ export class EmojiMap {
           char,
           r: totalR / count,
           g: totalG / count,
-          b: totalB / count
+          b: totalB / count,
         });
       }
     }
-    
+
     this.generated = true;
-    console.log(`EmojiMap generated with ${this.map.length} emojis`);
   }
 
   findNearest(r: number, g: number, b: number): string {
     if (!this.generated || this.map.length === 0) {
-        return "❓";
+      return "❓";
     }
 
     let minDist = Infinity;
@@ -83,8 +84,8 @@ export class EmojiMap {
       const dr = item.r - r;
       const dg = item.g - g;
       const db = item.b - b;
-      const dist = dr*dr + dg*dg + db*db;
-      
+      const dist = dr * dr + dg * dg + db * db;
+
       if (dist < minDist) {
         minDist = dist;
         bestChar = item.char;
