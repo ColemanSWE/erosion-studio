@@ -55,8 +55,6 @@ function App() {
     appMode,
     activeRegionId,
     isDrawingRegion,
-    setAppMode,
-    toggleTimeline,
     setActiveRegionId,
     setIsDrawingRegion,
   } = useUIStore();
@@ -297,7 +295,7 @@ function App() {
                 media={media}
                 selectedId={selectedMediaId}
                 onImport={() => handleImport()}
-                onSelect={selectMedia}
+                onSelect={(item) => selectMedia(item.id)}
                 onRemove={removeMedia}
               />
             )}

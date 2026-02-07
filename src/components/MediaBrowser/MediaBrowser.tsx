@@ -1,4 +1,3 @@
-import React from "react";
 import { Upload, Image, Film, X } from "lucide-react";
 import styles from "./MediaBrowser.module.scss";
 import type { MediaItem } from "../../lib/project";

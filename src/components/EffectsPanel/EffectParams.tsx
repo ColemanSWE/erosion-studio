@@ -1,4 +1,3 @@
-import React from "react";
 import type { Effect, EffectType } from "../../lib/effects/types";
 import styles from "./EffectParams.module.scss";
 
