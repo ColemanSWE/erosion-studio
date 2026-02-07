@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { renderWithEffects } from "../lib/effects/effects-renderer";
-import type { Effect } from "../lib/effects/types";
+import type { Effect, Region } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 
@@ -8,12 +8,14 @@ interface UsePhotoEditorOptions {
   canvas: HTMLCanvasElement | null;
   effects: Effect[];
   imagePath?: string;
+  regions?: Region[];
 }
 
 export function usePhotoEditor({
   canvas,
   effects,
   imagePath,
+  regions = [],
 }: UsePhotoEditorOptions) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const animationFrameRef = useRef<number>();
@@ -29,6 +31,32 @@ export function usePhotoEditor({
     bufferRef.current = buffer;
     bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
   }, []);
+
+  const renderFrame = useCallback((tick: number) => {
+    if (!canvas || !imageRef.current || !bufferRef.current || !bufferCtxRef.current) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const img = imageRef.current;
+
+    renderWithEffects(
+      {
+        ctx,
+        buffer: bufferRef.current,
+        bufferCtx: bufferCtxRef.current,
+        source: img,
+        sourceWidth: canvas.width,
+        sourceHeight: canvas.height,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        tick,
+        faceBounds,
+      },
+      effects.filter((e) => e.active),
+      regions
+    );
+  }, [canvas, effects, faceBounds, regions]);
 
   const render = useCallback(() => {
     if (!canvas || !imageRef.current) return;
@@ -52,25 +80,11 @@ export function usePhotoEditor({
        canvas.height = img.naturalHeight || img.height;
     }
 
-    renderWithEffects(
-      {
-        ctx,
-        buffer: bufferRef.current,
-        bufferCtx: bufferCtxRef.current,
-        source: img,
-        sourceWidth: canvas.width,
-        sourceHeight: canvas.height,
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height,
-        tick: tickRef.current,
-        faceBounds,
-      },
-      effects.filter((e) => e.active)
-    );
+    renderFrame(tickRef.current);
 
     tickRef.current++;
     animationFrameRef.current = requestAnimationFrame(render);
-  }, [canvas, effects]);
+  }, [canvas, renderFrame]);
 
   useEffect(() => {
     if (!imagePath) {
@@ -138,39 +152,55 @@ export function usePhotoEditor({
         return null;
       }
 
+      const ext = result.filePath.split(".").pop()?.toLowerCase();
+      const actualFormat: "png" | "jpeg" | "webp" | "gif" =
+        ext === "jpg" || ext === "jpeg"
+          ? "jpeg"
+          : ext === "webp"
+            ? "webp"
+            : ext === "gif"
+              ? "gif"
+              : "png";
+
       let bytes: number[];
 
-      if (format === "gif") {
+      if (actualFormat === "gif") {
         const fps = 30;
         const duration = 2000;
         const numFrames = Math.floor((fps * duration) / 1000);
         
         const gif = GIFEncoder();
         
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas context not available");
+        
+        // Generate a shared palette from the first frame
+        renderFrame(0);
+        const firstFrameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const sharedPalette = quantize(firstFrameData.data, 256);
+        
         for (let i = 0; i < numFrames; i++) {
-          tickRef.current = i;
-          render();
-          
-          await new Promise(resolve => setTimeout(resolve, 0));
-          
-          const ctx = canvas.getContext("2d");
-          if (!ctx) continue;
+          renderFrame(i);
           
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const palette = quantize(imageData.data, 256);
-          const index = applyPalette(imageData.data, palette);
+          const index = applyPalette(imageData.data, sharedPalette);
           
           gif.writeFrame(index, canvas.width, canvas.height, {
-            palette,
+            palette: sharedPalette,
             delay: Math.floor(1000 / fps),
           });
+          
+          // Yield to event loop every few frames to keep UI responsive
+          if (i % 10 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
         }
         
         gif.finish();
         const buffer = gif.bytes();
         bytes = Array.from(buffer);
       } else {
-        const dataUrl = canvas.toDataURL(`image/${format}`, quality);
+        const dataUrl = canvas.toDataURL(`image/${actualFormat}`, quality);
         const base64Data = dataUrl.split(",")[1];
         const binaryStr = atob(base64Data);
         const len = binaryStr.length;
@@ -184,7 +214,7 @@ export function usePhotoEditor({
 
       return { success: true, filePath: result.filePath };
     },
-    [canvas, render]
+    [canvas, renderFrame]
   );
 
   return { exportImage };

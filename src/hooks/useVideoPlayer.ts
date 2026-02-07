@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { renderWithEffects } from "../lib/effects/effects-renderer";
-import type { Effect } from "../lib/effects/types";
+import type { Effect, Region } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
 
 interface UseVideoPlayerOptions {
@@ -9,6 +9,7 @@ interface UseVideoPlayerOptions {
   videoPath?: string;
   isPlaying: boolean;
   currentTime: number;
+  regions?: Region[];
   onTimeUpdate?: (time: number) => void;
   onDurationChange?: (duration: number) => void;
 }
@@ -19,6 +20,7 @@ export function useVideoPlayer({
   videoPath,
   isPlaying,
   currentTime,
+  regions = [],
   onTimeUpdate,
   onDurationChange,
 }: UseVideoPlayerOptions) {
@@ -83,7 +85,8 @@ export function useVideoPlayer({
         tick: tickRef.current,
         faceBounds,
       },
-      effects.filter((e) => e.active)
+      effects.filter((e) => e.active),
+      regions
     );
 
     if (onTimeUpdate) {
@@ -95,7 +98,7 @@ export function useVideoPlayer({
     if (isPlaying && !video.paused) {
       animationFrameRef.current = requestAnimationFrame(render);
     }
-  }, [canvas, effects, isPlaying, onTimeUpdate, faceBounds]);
+  }, [canvas, effects, isPlaying, onTimeUpdate, faceBounds, regions]);
 
   useEffect(() => {
     if (!videoPath) {

@@ -768,49 +768,117 @@ registerEffect({
   category: "glitch",
   processor: (data, { width, height }, params) => {
     const threshold = (params.threshold as number) || 50;
-    const direction = (params.direction as string) || "horizontal";
+    const angle = (params.angle as number) || 0;
 
-    if (direction === "horizontal") {
-      for (let y = 0; y < height; y++) {
-        const rowStart = y * width * 4;
-        let segmentStart = -1;
+    const src = new Uint8ClampedArray(data);
+    const angleNorm = ((angle % 360) + 360) % 360;
+    const angleRad = (angleNorm * Math.PI) / 180;
 
-        for (let x = 0; x < width; x++) {
-          const i = rowStart + x * 4;
-          const bri = (data[i] + data[i + 1] + data[i + 2]) / 3;
-
-          if (bri > threshold) {
-            if (segmentStart === -1) segmentStart = x;
-          } else {
-            if (segmentStart !== -1) {
-              sortSegment(data, rowStart, segmentStart, x - 1);
-              segmentStart = -1;
-            }
-          }
-        }
-        if (segmentStart !== -1)
-          sortSegment(data, rowStart, segmentStart, width - 1);
+    const gcd = (a: number, b: number): number => {
+      let x = Math.abs(a);
+      let y = Math.abs(b);
+      while (y !== 0) {
+        const t = x % y;
+        x = y;
+        y = t;
       }
+      return x;
+    };
+
+    const quantizeStep = (): { dx: number; dy: number } => {
+      const scale = 8;
+      let dx = Math.round(Math.cos(angleRad) * scale);
+      let dy = Math.round(Math.sin(angleRad) * scale);
+      if (dx === 0 && dy === 0) dx = 1;
+      const g = gcd(dx, dy) || 1;
+      dx = dx / g;
+      dy = dy / g;
+      return { dx, dy };
+    };
+
+    const { dx, dy } = quantizeStep();
+
+    const flushSegment = (
+      segmentOffsets: number[],
+      buckets: number[][],
+      usedKeys: number[]
+    ) => {
+      if (segmentOffsets.length <= 1) {
+        segmentOffsets.length = 0;
+        return;
+      }
+
+      usedKeys.sort((a, b) => a - b);
+
+      let out = 0;
+      for (let k = 0; k < usedKeys.length; k++) {
+        const key = usedKeys[k];
+        const arr = buckets[key];
+        for (let j = 0; j < arr.length; j += 3) {
+          const o = segmentOffsets[out++];
+          data[o] = arr[j];
+          data[o + 1] = arr[j + 1];
+          data[o + 2] = arr[j + 2];
+        }
+        arr.length = 0;
+      }
+
+      usedKeys.length = 0;
+      segmentOffsets.length = 0;
+    };
+
+    const processLine = (sx: number, sy: number) => {
+      const buckets: number[][] = new Array(766);
+      for (let i = 0; i < 766; i++) buckets[i] = [];
+      const usedKeys: number[] = [];
+      const segmentOffsets: number[] = [];
+
+      let x = sx;
+      let y = sy;
+
+      while (x >= 0 && x < width && y >= 0 && y < height) {
+        const o = (y * width + x) * 4;
+        const r = src[o];
+        const g = src[o + 1];
+        const b = src[o + 2];
+        const bri = (r + g + b) / 3;
+
+        if (bri > threshold) {
+          segmentOffsets.push(o);
+          const key = (r + g + b) | 0;
+          if (buckets[key].length === 0) usedKeys.push(key);
+          buckets[key].push(r, g, b);
+        } else {
+          flushSegment(segmentOffsets, buckets, usedKeys);
+        }
+
+        x += dx;
+        y += dy;
+      }
+
+      flushSegment(segmentOffsets, buckets, usedKeys);
+    };
+
+    if (dy === 0) {
+      const startX = dx > 0 ? 0 : width - 1;
+      for (let y = 0; y < height; y++) processLine(startX, y);
+      return;
+    }
+
+    if (dx === 0) {
+      const startY = dy > 0 ? 0 : height - 1;
+      for (let x = 0; x < width; x++) processLine(x, startY);
+      return;
+    }
+
+    if (dy > 0) {
+      for (let x = 0; x < width; x++) processLine(x, 0);
+      const sideX = dx > 0 ? 0 : width - 1;
+      for (let y = 1; y < height; y++) processLine(sideX, y);
     } else {
-      for (let x = 0; x < width; x++) {
-        let segmentStart = -1;
-
-        for (let y = 0; y < height; y++) {
-          const i = (y * width + x) * 4;
-          const bri = (data[i] + data[i + 1] + data[i + 2]) / 3;
-
-          if (bri > threshold) {
-            if (segmentStart === -1) segmentStart = y;
-          } else {
-            if (segmentStart !== -1) {
-              sortSegmentV(data, width, x, segmentStart, y - 1);
-              segmentStart = -1;
-            }
-          }
-        }
-        if (segmentStart !== -1)
-          sortSegmentV(data, width, x, segmentStart, height - 1);
-      }
+      for (let x = 0; x < width; x++) processLine(x, height - 1);
+      const sideX = dx > 0 ? 0 : width - 1;
+      for (let y = 0; y < height - 1; y++) processLine(sideX, y);
     }
   },
 });

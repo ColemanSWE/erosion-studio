@@ -82,9 +82,14 @@
   margin-bottom: 2px;
   transition: all $transition-fast;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background-color: $bg-elevated;
     border-color: $border-primary;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 }
 
@@ -118,6 +123,97 @@
 
 .effectStack {
   padding: $spacing-sm;
+}
+
+.regionGroup {
+  margin-bottom: $spacing-md;
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+  padding: $spacing-xs;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.02);
+  }
+
+  &.active {
+    border-color: $border-primary;
+    background-color: rgba(255, 255, 255, 0.03);
+  }
+}
+
+.regionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-xs $spacing-sm;
+  margin-bottom: $spacing-xs;
+  font-size: 11px;
+  font-family: $font-mono;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background-color: $bg-elevated;
+  border-radius: $radius-sm;
+}
+
+.regionHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+}
+
+.regionHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+}
+
+.colorDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.deleteRegionButton {
+  padding: 2px;
+  background: none;
+  border: none;
+  color: $text-tertiary;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color $transition-fast;
+
+  &:hover {
+    color: $error;
+  }
+}
+
+.drawRegionButton {
+  width: calc(100% - #{$spacing-sm * 2});
+  margin: $spacing-sm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  background-color: $bg-elevated;
+  border: 1px solid $border-primary;
+  border-radius: $radius-md;
+  font-size: 12px;
+  font-family: $font-mono;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all $transition-fast;
+
+  &:hover {
+    background-color: $bg-overlay;
+    border-color: $text-primary;
+  }
 }
 
 .empty {

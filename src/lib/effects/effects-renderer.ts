@@ -1,12 +1,12 @@
-import { Effect } from "./types";
+import { Effect, Region } from "./types";
 import {
   applyEffects,
   isStyleEffect,
-  getProcessingEffects,
 } from "./effect-registry";
 import { renderFrame, RenderMode } from "./renderers";
 import { emojiMap } from "./emoji-map";
 import { PALETTES, PaletteKey } from "./palettes";
+import { renderMesh } from "./mesh-renderer";
 
 import "./processors";
 
@@ -69,7 +69,8 @@ export async function initializeEmojiPalette(
 
 export function renderWithEffects(
   context: RenderContext,
-  effects: Effect[]
+  effects: Effect[],
+  regions?: Region[]
 ): void {
   const {
     ctx,
@@ -86,7 +87,9 @@ export function renderWithEffects(
   const activeStyle = getActiveStyleEffect(effects);
 
   if (!activeStyle) {
-    const processingEffects = getProcessingEffects(effects);
+    const globalEffects = effects.filter((e) => e.active && !e.regionId);
+    const regionEffects = effects.filter((e) => e.active && e.regionId);
+    
     const scale = Math.min(
       canvasWidth / sourceWidth,
       canvasHeight / sourceHeight
@@ -99,13 +102,14 @@ export function renderWithEffects(
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-    if (processingEffects.length > 0) {
-      buffer.width = sourceWidth;
-      buffer.height = sourceHeight;
-      bufferCtx.drawImage(source, 0, 0, sourceWidth, sourceHeight);
+    buffer.width = sourceWidth;
+    buffer.height = sourceHeight;
+    bufferCtx.drawImage(source, 0, 0, sourceWidth, sourceHeight);
+
+    if (globalEffects.length > 0) {
       const imageData = bufferCtx.getImageData(0, 0, sourceWidth, sourceHeight);
 
-      applyEffects(imageData.data, processingEffects, {
+      applyEffects(imageData.data, globalEffects, {
         width: sourceWidth,
         height: sourceHeight,
         time: tick,
@@ -116,32 +120,143 @@ export function renderWithEffects(
       });
 
       bufferCtx.putImageData(imageData, 0, 0);
-      ctx.drawImage(buffer, drawX, drawY, drawWidth, drawHeight);
-    } else {
-      ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
     }
+
+    if (regionEffects.length > 0 && regions && regions.length > 0) {
+      const regionGroups = new Map<string, Effect[]>();
+      for (const effect of regionEffects) {
+        if (!effect.regionId) continue;
+        if (!regionGroups.has(effect.regionId)) {
+          regionGroups.set(effect.regionId, []);
+        }
+        regionGroups.get(effect.regionId)!.push(effect);
+      }
+
+      for (const [regionId, regionEffectList] of regionGroups) {
+        const region = regions.find((r) => r.id === regionId);
+        if (!region) continue;
+
+        const rx = Math.floor(region.x * sourceWidth);
+        const ry = Math.floor(region.y * sourceHeight);
+        const rw = Math.floor(region.width * sourceWidth);
+        const rh = Math.floor(region.height * sourceHeight);
+
+        console.log("Applying region effects:", {
+          regionId,
+          region,
+          sourceWidth,
+          sourceHeight,
+          rx, ry, rw, rh,
+          effectCount: regionEffectList.length,
+        });
+
+        if (rw <= 0 || rh <= 0) continue;
+
+        const regionData = bufferCtx.getImageData(rx, ry, rw, rh);
+
+        applyEffects(regionData.data, regionEffectList, {
+          width: rw,
+          height: rh,
+          time: tick,
+          timelineFrames: context.timelineFrames,
+          faceBounds: context.faceBounds,
+          handBounds: context.handBounds,
+          poseBounds: context.poseBounds,
+        });
+
+        bufferCtx.putImageData(regionData, rx, ry);
+      }
+    }
+
+    ctx.drawImage(buffer, drawX, drawY, drawWidth, drawHeight);
     return;
   }
 
   const styleEffectIndex = effects.findIndex((e) => e.id === activeStyle.id);
   const preStyleEffects = effects
     .slice(0, styleEffectIndex)
-    .filter((e) => e.active && !isStyleEffect(e.type));
+    .filter((e) => e.active && !isStyleEffect(e.type) && !e.regionId);
   const postStyleEffects = effects
     .slice(styleEffectIndex + 1)
-    .filter((e) => e.active && !isStyleEffect(e.type));
+    .filter((e) => e.active && !isStyleEffect(e.type) && !e.regionId);
 
   const density = (activeStyle.params.density as number) || 64;
   const renderMode = styleEffectToRenderMode(activeStyle.type);
+
+  if (renderMode === "native") {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Prepare source for mesh renderer
+    buffer.width = sourceWidth;
+    buffer.height = sourceHeight;
+    bufferCtx.drawImage(source, 0, 0, sourceWidth, sourceHeight);
+
+    if (preStyleEffects.length > 0) {
+      const imageData = bufferCtx.getImageData(0, 0, sourceWidth, sourceHeight);
+      applyEffects(imageData.data, preStyleEffects, {
+        width: sourceWidth,
+        height: sourceHeight,
+        time: tick,
+        timelineFrames: context.timelineFrames,
+        faceBounds: context.faceBounds,
+        handBounds: context.handBounds,
+        poseBounds: context.poseBounds,
+      });
+      bufferCtx.putImageData(imageData, 0, 0);
+    }
+
+    // Render 3D mesh
+    const meshCanvas = renderMesh(
+      buffer,
+      activeStyle.params,
+      canvasWidth,
+      canvasHeight
+    );
+
+    // Draw mesh to output canvas
+    ctx.drawImage(meshCanvas, 0, 0, canvasWidth, canvasHeight);
+
+    if (postStyleEffects.length > 0) {
+      const canvasImageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+      applyEffects(canvasImageData.data, postStyleEffects, {
+        width: canvasWidth,
+        height: canvasHeight,
+        time: tick,
+        timelineFrames: context.timelineFrames,
+        faceBounds: context.faceBounds,
+        handBounds: context.handBounds,
+        poseBounds: context.poseBounds,
+      });
+      ctx.putImageData(canvasImageData, 0, 0);
+    }
+    return;
+  }
 
   const aspect = sourceHeight / sourceWidth;
   const charAspect = renderMode === "emoji" ? 1.0 : 0.6;
   const cols = density;
   const rows = Math.floor(cols * aspect * charAspect);
 
-  const fontSize = Math.floor(
-    Math.min(canvasWidth / cols, canvasHeight / rows)
-  );
+  if (rows < 1 || cols < 1) {
+    console.warn("Calculated dimensions too small for style effect, skipping");
+    const scale = Math.min(
+      canvasWidth / sourceWidth,
+      canvasHeight / sourceHeight
+    );
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+    const drawX = (canvasWidth - drawWidth) / 2;
+    const drawY = (canvasHeight - drawHeight) / 2;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
+    return;
+  }
+
+  const cellWidth = canvasWidth / cols;
+  const cellHeight = canvasHeight / rows;
+  const fontSize = Math.floor(Math.min(cellWidth, cellHeight));
 
   buffer.width = cols;
   buffer.height = rows;
@@ -166,8 +281,9 @@ export function renderWithEffects(
 
   if (!renderCtx) return;
 
+  const dotScale = (activeStyle.params.dotScale as number) || 1.0;
+  
   if (renderMode === "halftone") {
-    const dotScale = (activeStyle.params.dotScale as number) || 1.0;
     renderHalftone(
       renderCtx,
       imageData.data,
@@ -175,7 +291,6 @@ export function renderWithEffects(
       rows,
       canvasWidth,
       canvasHeight,
-      fontSize,
       dotScale
     );
   } else {
@@ -216,7 +331,6 @@ function renderHalftone(
   rows: number,
   canvasWidth: number,
   canvasHeight: number,
-  fontSize: number,
   dotScale: number
 ): void {
   ctx.fillStyle = "#000";
