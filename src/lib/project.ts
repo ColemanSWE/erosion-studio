@@ -1,6 +1,6 @@
-import type { Effect } from "./effects/types";
+import type { Effect, Region } from "./effects/types";
 
-interface MediaItem {
+export interface MediaItem {
   id: string;
   type: "image" | "video";
   name: string;
@@ -13,6 +13,7 @@ export interface Project {
   name: string;
   media: MediaItem[];
   effects: Effect[];
+  regions: Region[];
   duration: number;
   currentTime: number;
   version: string;
@@ -23,6 +24,7 @@ export function createEmptyProject(): Project {
     name: "Untitled Project",
     media: [],
     effects: [],
+    regions: [],
     duration: 60,
     currentTime: 0,
     version: "1.0",
@@ -40,6 +42,7 @@ export function deserializeProject(json: string): Project {
     name: data.name || "Untitled Project",
     media: data.media || [],
     effects: data.effects || [],
+    regions: data.regions || [],
     duration: data.duration || 60,
     currentTime: data.currentTime || 0,
     version: data.version || "1.0",

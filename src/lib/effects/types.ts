@@ -54,11 +54,22 @@ export type EffectType =
   | "jpeg-artifacts"
   | "codec-damage";
 
+export interface Region {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+}
+
 export interface Effect {
   id: string;
   type: EffectType;
   active: boolean;
   params: Record<string, unknown>;
+  regionId?: string;
 }
 
 export function getDefaultParams(type: EffectType): Record<string, unknown> {

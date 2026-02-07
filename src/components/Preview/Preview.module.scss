@@ -28,9 +28,59 @@
   background-color: $bg-surface;
 }
 
+.overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+
+  &.drawing {
+    pointer-events: all;
+    cursor: crosshair;
+  }
+}
+
+.region {
+  position: absolute;
+  border: 2px dashed;
+  pointer-events: all;
+  cursor: pointer;
+  transition: opacity $transition-fast;
+
+  &:hover {
+    opacity: 0.8;
+  }
+
+  &.active {
+    border-style: solid;
+    border-width: 3px;
+  }
+}
+
+.regionLabel {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  font-size: 11px;
+  font-family: $font-mono;
+  font-weight: bold;
+  padding: 2px 6px;
+  background-color: rgba(0, 0, 0, 0.8);
+  border-radius: $radius-sm;
+  white-space: nowrap;
+}
+
+.drawingRect {
+  position: absolute;
+  border: 2px dashed #fff;
+  pointer-events: none;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
 .canvas {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
   box-shadow: $shadow-lg;
+  position: relative;
+  z-index: 1;
 }

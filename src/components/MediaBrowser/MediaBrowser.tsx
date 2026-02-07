@@ -1,15 +1,7 @@
 import React from "react";
 import { Upload, Image, Film, X } from "lucide-react";
 import styles from "./MediaBrowser.module.scss";
-
-interface MediaItem {
-  id: string;
-  type: "image" | "video";
-  name: string;
-  path: string;
-  thumbnail?: string;
-  duration?: number;
-}
+import type { MediaItem } from "../../lib/project";
 
 interface MediaBrowserProps {
   media: MediaItem[];

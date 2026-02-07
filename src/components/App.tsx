@@ -17,7 +17,10 @@ import {
   saveProject,
   type Project,
 } from "../lib/project";
+import type { Region } from "../lib/effects/types";
 import styles from "./App.module.scss";
+
+const REGION_COLORS = ["#ff3366", "#33ccff", "#ffcc00", "#66ff66", "#cc66ff", "#ff9933"];
 
 function App() {
   const {
@@ -25,6 +28,7 @@ function App() {
     media,
     selectedMediaId,
     effects,
+    regions,
     currentTime,
     duration,
     isPlaying,
@@ -35,6 +39,8 @@ function App() {
     updateEffect,
     removeEffect,
     reorderEffect,
+    addRegion,
+    removeRegion,
     setCurrentTime,
     play,
     pause,
@@ -47,8 +53,12 @@ function App() {
     showEffectsPanel,
     showTimeline,
     appMode,
+    activeRegionId,
+    isDrawingRegion,
     setAppMode,
     toggleTimeline,
+    setActiveRegionId,
+    setIsDrawingRegion,
   } = useUIStore();
 
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
@@ -57,6 +67,7 @@ function App() {
     name: projectName,
     media,
     effects,
+    regions,
     duration,
     currentTime,
     version: "1.0",
@@ -81,6 +92,7 @@ function App() {
     canvas,
     effects,
     imagePath,
+    regions,
   });
 
   useVideoPlayer({
@@ -89,6 +101,7 @@ function App() {
     videoPath,
     isPlaying,
     currentTime,
+    regions,
     onTimeUpdate: setCurrentTime,
     onDurationChange: (duration) => {
       setDuration(duration);
@@ -106,7 +119,6 @@ function App() {
     }
 
     const result = await window.electron.openFile({
-      properties: ["openFile"],
       properties: ["openFile"],
       filters:
         type === "image"
@@ -168,52 +180,20 @@ function App() {
       if (selectedMedia?.type === "video") {
          result = await exportVideo(canvas, effects, duration, { format: "mp4", quality: 1.0, fps: 30 });
       } else {
-         const format = await showFormatPicker();
-         if (!format) return;
-         result = await exportImage(format as "png" | "jpeg" | "webp" | "gif", 0.95);
+         result = await exportImage();
       }
 
-      if (result && result.success) {
+      if (!result) return;
+
+      if (result.success) {
         alert(`Exported to: ${result.filePath}`);
       } else {
-        const errorMsg = result && 'error' in result ? result.error : "Unknown error";
+        const errorMsg = 'error' in result ? result.error : "Unknown error";
         alert(`Export failed: ${errorMsg}`);
       }
     } catch (error) {
       alert(`Export failed: ${error}`);
     }
-  };
-
-  const showFormatPicker = (): Promise<string | null> => {
-    return new Promise((resolve) => {
-      const format = prompt(
-        "Choose export format:\n1. PNG (lossless, still image)\n2. JPEG (lossy, still image)\n3. WebP (lossy, still image)\n4. GIF (animated, 2 seconds @ 30fps)\n\nEnter number (1-4):",
-        "1"
-      );
-      
-      if (!format) {
-        resolve(null);
-        return;
-      }
-      
-      switch (format.trim()) {
-        case "1":
-          resolve("png");
-          break;
-        case "2":
-          resolve("jpeg");
-          break;
-        case "3":
-          resolve("webp");
-          break;
-        case "4":
-          resolve("gif");
-          break;
-        default:
-          alert("Invalid format. Using PNG.");
-          resolve("png");
-      }
-    });
   };
 
   const handleUndo = useCallback(() => {
@@ -241,6 +221,31 @@ function App() {
     }
   }, [isPlaying, pause, play]);
 
+  const handleRegionDrawn = useCallback((region: Omit<Region, 'id' | 'name' | 'color'>) => {
+    const regionNumber = regions.length + 1;
+    const colorIndex = regions.length % REGION_COLORS.length;
+    const newRegion: Region = {
+      id: `region-${Date.now()}`,
+      name: `Region ${regionNumber}`,
+      color: REGION_COLORS[colorIndex],
+      ...region,
+    };
+    addRegion(newRegion);
+    setActiveRegionId(newRegion.id);
+    setIsDrawingRegion(false);
+  }, [regions, addRegion, setActiveRegionId, setIsDrawingRegion]);
+
+  const handleRemoveRegion = useCallback((id: string) => {
+    removeRegion(id);
+    if (activeRegionId === id) {
+      setActiveRegionId(null);
+    }
+  }, [removeRegion, activeRegionId, setActiveRegionId]);
+
+  const handleStartDrawingRegion = useCallback(() => {
+    setIsDrawingRegion(true);
+  }, [setIsDrawingRegion]);
+
   useKeyboardShortcuts({
     undo: handleUndo,
     redo: handleRedo,
@@ -261,10 +266,15 @@ function App() {
           <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', zIndex: 2000 }}>
              <EffectsPanel 
                effects={effects}
+               regions={regions}
+               activeRegionId={activeRegionId}
                onAddEffect={addEffect}
                onUpdateEffect={updateEffect}
                onRemoveEffect={removeEffect}
                onReorderEffect={reorderEffect}
+               onRemoveRegion={handleRemoveRegion}
+               onSelectRegion={setActiveRegionId}
+               onStartDrawingRegion={handleStartDrawingRegion}
              />
           </div>
         </>
@@ -292,15 +302,27 @@ function App() {
               />
             )}
 
-            <Preview onCanvasReady={handleCanvasReady} />
+            <Preview 
+              onCanvasReady={handleCanvasReady}
+              regions={regions}
+              activeRegionId={activeRegionId}
+              isDrawingRegion={isDrawingRegion}
+              onRegionDrawn={handleRegionDrawn}
+              onRegionSelect={setActiveRegionId}
+            />
 
             {showEffectsPanel && (
               <EffectsPanel
                 effects={effects}
+                regions={regions}
+                activeRegionId={activeRegionId}
                 onAddEffect={addEffect}
                 onUpdateEffect={updateEffect}
                 onRemoveEffect={removeEffect}
                 onReorderEffect={reorderEffect}
+                onRemoveRegion={handleRemoveRegion}
+                onSelectRegion={setActiveRegionId}
+                onStartDrawingRegion={handleStartDrawingRegion}
               />
             )}
           </div>

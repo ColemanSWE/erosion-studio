@@ -1,21 +1,14 @@
 import { create } from "zustand";
-import type { Effect, EffectType } from "../lib/effects/types";
+import type { Effect, EffectType, Region } from "../lib/effects/types";
+import type { MediaItem } from "../lib/project";
 import { getDefaultParams } from "../lib/effects/types";
-
-interface MediaItem {
-  id: string;
-  type: "image" | "video";
-  name: string;
-  path: string;
-  thumbnail?: string;
-  duration?: number;
-}
 
 interface ProjectState {
   projectName: string;
   media: MediaItem[];
   selectedMediaId?: string;
   effects: Effect[];
+  regions: Region[];
   currentTime: number;
   duration: number;
   isPlaying: boolean;
@@ -25,10 +18,14 @@ interface ProjectState {
   removeMedia: (id: string) => void;
   selectMedia: (id: string) => void;
 
-  addEffect: (type: EffectType) => void;
+  addEffect: (type: EffectType, regionId?: string) => void;
   updateEffect: (id: string, updates: Partial<Effect>) => void;
   removeEffect: (id: string) => void;
   reorderEffect: (id: string, newIndex: number) => void;
+
+  addRegion: (region: Region) => void;
+  removeRegion: (id: string) => void;
+  updateRegion: (id: string, updates: Partial<Region>) => void;
 
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
@@ -44,6 +41,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   media: [],
   selectedMediaId: undefined,
   effects: [],
+  regions: [],
   currentTime: 0,
   duration: 60,
   isPlaying: false,
@@ -65,25 +63,27 @@ export const useProjectStore = create<ProjectState>((set) => ({
 
   selectMedia: (id) => set({ selectedMediaId: id }),
 
-  addEffect: (type) => {
+  addEffect: (type, regionId) => {
     const newEffect = {
       id: `effect-${effectIdCounter++}`,
       type,
       active: true,
       params: getDefaultParams(type),
+      regionId,
     };
-    
+
     set((state) => ({
       effects: [...state.effects, newEffect],
     }));
-    
+
     if (type === "emoji") {
       (async () => {
         try {
-          const { initializeEmojiPalette } = await import("../lib/effects/effects-renderer");
+          const { initializeEmojiPalette } =
+            await import("../lib/effects/effects-renderer");
           const { PALETTES } = await import("../lib/effects/palettes");
           const palette = (newEffect.params.palette as string) || "standard";
-          
+
           if (palette in PALETTES) {
             await initializeEmojiPalette(palette as any);
           } else {
@@ -100,18 +100,23 @@ export const useProjectStore = create<ProjectState>((set) => ({
   updateEffect: (id, updates) => {
     set((state) => ({
       effects: state.effects.map((e) =>
-        e.id === id ? { ...e, ...updates } : e
+        e.id === id ? { ...e, ...updates } : e,
       ),
     }));
-    
+
     const effect = useProjectStore.getState().effects.find((e) => e.id === id);
-    if (effect?.type === "emoji" && updates.params?.palette) {
+    if (
+      effect?.type === "emoji" &&
+      updates.params &&
+      "palette" in updates.params
+    ) {
       (async () => {
         try {
-          const { initializeEmojiPalette } = await import("../lib/effects/effects-renderer");
+          const { initializeEmojiPalette } =
+            await import("../lib/effects/effects-renderer");
           const { PALETTES } = await import("../lib/effects/palettes");
-          const palette = updates.params.palette as string;
-          
+          const palette = updates.params!.palette as string;
+
           if (palette in PALETTES) {
             await initializeEmojiPalette(palette as any);
           } else {
@@ -141,6 +146,24 @@ export const useProjectStore = create<ProjectState>((set) => ({
 
       return { effects };
     }),
+
+  addRegion: (region) =>
+    set((state) => ({
+      regions: [...state.regions, region],
+    })),
+
+  removeRegion: (id) =>
+    set((state) => ({
+      regions: state.regions.filter((r) => r.id !== id),
+      effects: state.effects.filter((e) => e.regionId !== id),
+    })),
+
+  updateRegion: (id, updates) =>
+    set((state) => ({
+      regions: state.regions.map((r) =>
+        r.id === id ? { ...r, ...updates } : r,
+      ),
+    })),
 
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration }),

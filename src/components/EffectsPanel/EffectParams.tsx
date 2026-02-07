@@ -362,10 +362,26 @@ function getEffectParams(type: EffectType): ParamConfig[] {
         default: 3,
       },
       {
+        key: "mode",
+        label: "Mode",
+        type: "select",
+        options: ["mesh", "solid", "points"],
+        default: "mesh",
+      },
+      {
         key: "wireframe",
         label: "Wireframe",
         type: "checkbox",
         default: true,
+      },
+      {
+        key: "pointSize",
+        label: "Point Size",
+        type: "slider",
+        min: 0.01,
+        max: 0.2,
+        step: 0.01,
+        default: 0.08,
       },
     ],
     "detection-labels": [

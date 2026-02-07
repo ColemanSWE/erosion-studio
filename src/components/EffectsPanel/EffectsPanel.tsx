@@ -5,17 +5,24 @@ import {
   ChevronRight,
   GripVertical,
   Trash2,
+  Square,
 } from "lucide-react";
 import EffectParams from "./EffectParams";
 import styles from "./EffectsPanel.module.scss";
-import type { Effect, EffectType } from "../../lib/effects/types";
+import type { Effect, EffectType, Region } from "../../lib/effects/types";
+import { isStyleEffect } from "../../lib/effects/effect-registry";
 
 interface EffectsPanelProps {
   effects: Effect[];
-  onAddEffect: (type: EffectType) => void;
+  regions: Region[];
+  activeRegionId: string | null;
+  onAddEffect: (type: EffectType, regionId?: string) => void;
   onUpdateEffect: (id: string, updates: Partial<Effect>) => void;
   onRemoveEffect: (id: string) => void;
   onReorderEffect: (id: string, newIndex: number) => void;
+  onRemoveRegion: (id: string) => void;
+  onSelectRegion: (id: string | null) => void;
+  onStartDrawingRegion: () => void;
 }
 
 const EFFECT_CATEGORIES = {
@@ -71,10 +78,15 @@ const EFFECT_CATEGORIES = {
 
 function EffectsPanel({
   effects,
+  regions,
+  activeRegionId,
   onAddEffect,
   onUpdateEffect,
   onRemoveEffect,
   onReorderEffect,
+  onRemoveRegion,
+  onSelectRegion,
+  onStartDrawingRegion,
 }: EffectsPanelProps) {
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
@@ -98,6 +110,92 @@ function EffectsPanel({
       [effectId]: !prev[effectId],
     }));
   };
+
+  const handleAddEffect = (type: EffectType) => {
+    onAddEffect(type, activeRegionId || undefined);
+  };
+
+  const isStyleEffectDisabled = activeRegionId !== null;
+
+  const globalEffects = effects.filter((e) => !e.regionId);
+  const regionEffectsMap = new Map<string, Effect[]>();
+  
+  effects.forEach((effect) => {
+    if (effect.regionId) {
+      if (!regionEffectsMap.has(effect.regionId)) {
+        regionEffectsMap.set(effect.regionId, []);
+      }
+      regionEffectsMap.get(effect.regionId)!.push(effect);
+    }
+  });
+
+  const renderEffectCard = (effect: Effect, index: number) => (
+    <div
+      key={effect.id}
+      className={styles.effectCard}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const draggedId = e.dataTransfer.getData("text/plain");
+        if (draggedId && draggedId !== effect.id) {
+          onReorderEffect(draggedId, index);
+        }
+      }}
+    >
+      <div className={styles.effectCardHeader}>
+        <button
+          className={styles.dragHandle}
+          title="Drag to reorder"
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData("text/plain", effect.id);
+            e.dataTransfer.effectAllowed = "move";
+            const cardElement = e.currentTarget.parentElement?.parentElement;
+            if (cardElement) {
+              e.dataTransfer.setDragImage(cardElement, 20, 20);
+            }
+          }}
+        >
+          <GripVertical size={14} />
+        </button>
+        <input
+          type="checkbox"
+          checked={effect.active}
+          onChange={(e) =>
+            onUpdateEffect(effect.id, { active: e.target.checked })
+          }
+        />
+        <button
+          className={styles.expandButton}
+          onClick={() => toggleEffect(effect.id)}
+        >
+          {expandedEffects[effect.id] ? (
+            <ChevronDown size={14} />
+          ) : (
+            <ChevronRight size={14} />
+          )}
+        </button>
+        <span>{formatEffectName(effect.type)}</span>
+        <button
+          className={styles.removeButton}
+          onClick={() => onRemoveEffect(effect.id)}
+          title="Remove effect"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      {expandedEffects[effect.id] && (
+        <EffectParams
+          effect={effect}
+          onUpdate={(updates) => onUpdateEffect(effect.id, updates)}
+        />
+      )}
+    </div>
+  );
 
   return (
     <aside className={styles.effectsPanel}>
@@ -125,16 +223,21 @@ function EffectsPanel({
 
             {expandedCategories[category] && (
               <div className={styles.effectList}>
-                {effectTypes.map((type) => (
-                  <button
-                    key={type}
-                    className={styles.effectButton}
-                    onClick={() => onAddEffect(type as EffectType)}
-                  >
-                    <Plus size={14} />
-                    <span>{formatEffectName(type)}</span>
-                  </button>
-                ))}
+                {effectTypes.map((type) => {
+                  const disabled = isStyleEffectDisabled && isStyleEffect(type as EffectType);
+                  return (
+                    <button
+                      key={type}
+                      className={styles.effectButton}
+                      onClick={() => handleAddEffect(type as EffectType)}
+                      disabled={disabled}
+                      title={disabled ? "Style effects can only be applied globally" : undefined}
+                    >
+                      <Plus size={14} />
+                      <span>{formatEffectName(type)}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -156,76 +259,58 @@ function EffectsPanel({
           </div>
         ) : (
           <div className={styles.effectStack}>
-            {effects.map((effect, index) => (
-              <div
-                key={effect.id}
-                className={styles.effectCard}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const draggedId = e.dataTransfer.getData("text/plain");
-                  if (draggedId && draggedId !== effect.id) {
-                     onReorderEffect(draggedId, index);
-                  }
-                }}
-              >
-                <div className={styles.effectCardHeader}>
-                  <button
-                    className={styles.dragHandle}
-                    title="Drag to reorder"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("text/plain", effect.id);
-                      e.dataTransfer.effectAllowed = "move";
-                      // Set drag image to the card element (grandparent of handle)
-                      const cardElement = e.currentTarget.parentElement?.parentElement;
-                      if (cardElement) {
-                         e.dataTransfer.setDragImage(cardElement, 20, 20);
-                      }
-                    }}
-                  >
-                    <GripVertical size={14} />
-                  </button>
-                  <input
-                    type="checkbox"
-                    checked={effect.active}
-                    onChange={(e) =>
-                      onUpdateEffect(effect.id, { active: e.target.checked })
-                    }
-                  />
-                  <button
-                    className={styles.expandButton}
-                    onClick={() => toggleEffect(effect.id)}
-                  >
-                    {expandedEffects[effect.id] ? (
-                      <ChevronDown size={14} />
-                    ) : (
-                      <ChevronRight size={14} />
-                    )}
-                  </button>
-                  <span>{formatEffectName(effect.type)}</span>
-                  <button
-                    className={styles.removeButton}
-                    onClick={() => onRemoveEffect(effect.id)}
-                    title="Remove effect"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-
-                {expandedEffects[effect.id] && (
-                  <EffectParams
-                    effect={effect}
-                    onUpdate={(updates) => onUpdateEffect(effect.id, updates)}
-                  />
-                )}
+            <div
+              className={`${styles.regionGroup} ${activeRegionId === null ? styles.active : ''}`}
+              onClick={() => onSelectRegion(null)}
+            >
+              <div className={styles.regionHeader}>
+                <span>Global</span>
+                <span className={styles.count}>{globalEffects.length}</span>
               </div>
-            ))}
+              {globalEffects.map((effect, index) => renderEffectCard(effect, index))}
+            </div>
+
+            {regions.map((region) => {
+              const regionEffects = regionEffectsMap.get(region.id) || [];
+              return (
+                <div
+                  key={region.id}
+                  className={`${styles.regionGroup} ${activeRegionId === region.id ? styles.active : ''}`}
+                  onClick={() => onSelectRegion(region.id)}
+                >
+                  <div className={styles.regionHeader}>
+                    <div className={styles.regionHeaderLeft}>
+                      <div
+                        className={styles.colorDot}
+                        style={{ backgroundColor: region.color }}
+                      />
+                      <span>{region.name}</span>
+                    </div>
+                    <div className={styles.regionHeaderRight}>
+                      <span className={styles.count}>{regionEffects.length}</span>
+                      <button
+                        className={styles.deleteRegionButton}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveRegion(region.id);
+                        }}
+                        title="Delete region"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                  {regionEffects.map((effect, index) => renderEffectCard(effect, index))}
+                </div>
+              );
+            })}
           </div>
         )}
+
+        <button className={styles.drawRegionButton} onClick={onStartDrawingRegion}>
+          <Square size={14} />
+          <span>Draw Region</span>
+        </button>
       </div>
     </aside>
   );
