@@ -3,13 +3,11 @@ import Toolbar from "./Toolbar/Toolbar";
 import MediaBrowser from "./MediaBrowser/MediaBrowser";
 import Preview from "./Preview/Preview";
 import EffectsPanel from "./EffectsPanel/EffectsPanel";
-import Timeline from "./Timeline/Timeline";
-import Home from "./Home/Home";
-import CameraBooth from "./Camera/CameraBooth";
 import { useProjectStore } from "../stores/projectStore";
 import { useUIStore } from "../stores/uiStore";
 import { usePhotoEditor } from "../hooks/usePhotoEditor";
 import { useVideoPlayer } from "../hooks/useVideoPlayer";
+import { useCameraPlayer } from "../hooks/useCameraPlayer";
 import { useExport } from "../hooks/useExport";
 import { useHistory } from "../hooks/useHistory";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -51,8 +49,6 @@ function App() {
   const {
     showMediaBrowser,
     showEffectsPanel,
-    showTimeline,
-    appMode,
     activeRegionId,
     isDrawingRegion,
     setActiveRegionId,
@@ -106,6 +102,14 @@ function App() {
     },
   });
 
+  const isCamera = selectedMedia?.type === "camera";
+  useCameraPlayer({
+    canvas,
+    effects,
+    isActive: isCamera,
+    regions,
+  });
+
   const handleCanvasReady = useCallback((newCanvas: HTMLCanvasElement) => {
     setCanvas(newCanvas);
   }, []);
@@ -157,13 +161,18 @@ function App() {
           setDuration(info.duration);
         }
       }
-
-      // Auto-set timeline visibility based on type if coming from Home
-      // Note: We access the store state directly via hook, so we can't conditionally call hooks here.
-      // But we can toggle.
-      // Ideally we'd set a specific value, but toggle is what we have exposed for now.
-      // Let's rely on the user or a future refactor to set exact visibility.
     }
+  };
+
+  const handleAddCamera = () => {
+    const newMedia = {
+      id: `camera-${Date.now()}`,
+      type: "camera" as const,
+      name: `Live Camera`,
+      path: "",
+    };
+    addMedia(newMedia);
+    selectMedia(newMedia.id);
   };
 
   const handleExport = async () => {
@@ -256,88 +265,51 @@ function App() {
 
   return (
     <div className={styles.app}>
-      {appMode === "home" && <Home onImport={handleImport} />}
+      <Toolbar
+        projectName={projectName}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onExport={handleExport}
+        canUndo={canUndo}
+        canRedo={canRedo}
+      />
 
-      {appMode === "camera" && (
-        <>
-          <CameraBooth />
-          <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', zIndex: 2000 }}>
-             <EffectsPanel 
-               effects={effects}
-               regions={regions}
-               activeRegionId={activeRegionId}
-               onAddEffect={addEffect}
-               onUpdateEffect={updateEffect}
-               onRemoveEffect={removeEffect}
-               onReorderEffect={reorderEffect}
-               onRemoveRegion={handleRemoveRegion}
-               onSelectRegion={setActiveRegionId}
-               onStartDrawingRegion={handleStartDrawingRegion}
-             />
-          </div>
-        </>
-      )}
-
-      {appMode === "editor" && (
-        <>
-          <Toolbar
-            projectName={projectName}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            onExport={handleExport}
-            canUndo={canUndo}
-            canRedo={canRedo}
+      <div className={styles.mainContent}>
+        {showMediaBrowser && (
+          <MediaBrowser
+            media={media}
+            selectedId={selectedMediaId}
+            onImport={() => handleImport()}
+            onAddCamera={handleAddCamera}
+            onSelect={(item) => selectMedia(item.id)}
+            onRemove={removeMedia}
           />
+        )}
 
-          <div className={styles.mainContent}>
-            {showMediaBrowser && (
-              <MediaBrowser
-                media={media}
-                selectedId={selectedMediaId}
-                onImport={() => handleImport()}
-                onSelect={(item) => selectMedia(item.id)}
-                onRemove={removeMedia}
-              />
-            )}
+        <Preview 
+          onCanvasReady={handleCanvasReady}
+          regions={regions}
+          activeRegionId={activeRegionId}
+          isDrawingRegion={isDrawingRegion}
+          onRegionDrawn={handleRegionDrawn}
+          onRegionSelect={setActiveRegionId}
+        />
 
-            <Preview 
-              onCanvasReady={handleCanvasReady}
-              regions={regions}
-              activeRegionId={activeRegionId}
-              isDrawingRegion={isDrawingRegion}
-              onRegionDrawn={handleRegionDrawn}
-              onRegionSelect={setActiveRegionId}
-            />
-
-            {showEffectsPanel && (
-              <EffectsPanel
-                effects={effects}
-                regions={regions}
-                activeRegionId={activeRegionId}
-                onAddEffect={addEffect}
-                onUpdateEffect={updateEffect}
-                onRemoveEffect={removeEffect}
-                onReorderEffect={reorderEffect}
-                onRemoveRegion={handleRemoveRegion}
-                onSelectRegion={setActiveRegionId}
-                onStartDrawingRegion={handleStartDrawingRegion}
-              />
-            )}
-          </div>
-
-          {showTimeline && (
-            <Timeline
-              duration={duration}
-              currentTime={currentTime}
-              isPlaying={isPlaying}
-              onPlay={play}
-              onPause={pause}
-              onStop={stop}
-              onSeek={setCurrentTime}
-            />
-          )}
-        </>
-      )}
+        {showEffectsPanel && (
+          <EffectsPanel
+            effects={effects}
+            regions={regions}
+            activeRegionId={activeRegionId}
+            onAddEffect={addEffect}
+            onUpdateEffect={updateEffect}
+            onRemoveEffect={removeEffect}
+            onReorderEffect={reorderEffect}
+            onRemoveRegion={handleRemoveRegion}
+            onSelectRegion={setActiveRegionId}
+            onStartDrawingRegion={handleStartDrawingRegion}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -143,7 +143,7 @@ export function useVideoPlayer({
       video.pause();
       video.src = "";
     };
-  }, [videoPath, onDurationChange, render, isPlaying]);
+  }, [videoPath, onDurationChange]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -151,6 +151,9 @@ export function useVideoPlayer({
 
     if (isPlaying) {
       video.play();
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
       render();
     } else {
       video.pause();
@@ -167,6 +170,9 @@ export function useVideoPlayer({
     if (Math.abs(video.currentTime - currentTime) > 0.1) {
       video.currentTime = currentTime;
       if (!isPlaying) {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
         render();
       }
     }
@@ -174,9 +180,12 @@ export function useVideoPlayer({
 
   useEffect(() => {
     if (videoRef.current && canvas && !isPlaying) {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
       render();
     }
-  }, [effects, render, canvas, isPlaying]);
+  }, [effects, regions, render, canvas, isPlaying]);
 
   return {};
 }

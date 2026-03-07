@@ -1,10 +1,11 @@
-import { Upload, Image, Film, X } from "lucide-react";
+import { Upload, Image, Film, Camera, X } from "lucide-react";
 import styles from "./MediaBrowser.module.scss";
 import type { MediaItem } from "../../lib/project";
 
 interface MediaBrowserProps {
   media: MediaItem[];
   onImport: () => void;
+  onAddCamera: () => void;
   onSelect: (item: MediaItem) => void;
   onRemove: (id: string) => void;
   selectedId?: string;
@@ -13,6 +14,7 @@ interface MediaBrowserProps {
 function MediaBrowser({
   media,
   onImport,
+  onAddCamera,
   onSelect,
   onRemove,
   selectedId,
@@ -21,10 +23,16 @@ function MediaBrowser({
     <aside className={styles.mediaBrowser}>
       <div className={styles.header}>
         <h3>Media</h3>
-        <button className={styles.importButton} onClick={onImport}>
-          <Upload size={16} />
-          <span>Import</span>
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className={styles.importButton} onClick={onAddCamera} title="Add Live Camera">
+            <Camera size={16} />
+            <span>Cam</span>
+          </button>
+          <button className={styles.importButton} onClick={onImport} title="Import File">
+            <Upload size={16} />
+            <span>Import</span>
+          </button>
+        </div>
       </div>
 
       <div className={styles.mediaList}>
@@ -46,6 +54,8 @@ function MediaBrowser({
               <div className={styles.thumbnail}>
                 {item.type === "image" ? (
                   <Image size={24} />
+                ) : item.type === "camera" ? (
+                  <Camera size={24} />
                 ) : (
                   <Film size={24} />
                 )}

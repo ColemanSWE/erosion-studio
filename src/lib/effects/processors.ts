@@ -1,4 +1,5 @@
-import { registerEffect, ProcessConfig } from "./effect-registry";
+import { registerEffect, ProcessConfig, getEffectDefinition } from "./effect-registry";
+import { EffectType, getDefaultParams } from "./types";
 import {
   FaceBounds,
   getEyeLandmarks,
@@ -3486,16 +3487,29 @@ registerEffect({
   type: "blob-track",
   label: "Blob Track",
   category: "style",
-  processor: (data, { width, height, time = 0 }, params) => {
+  processor: (
+    data,
+    { width, height, time = 0, timelineFrames, faceBounds, handBounds, poseBounds },
+    params
+  ) => {
     const threshold = (params.threshold as number) ?? 128;
     const minBlobSize = (params.minBlobSize as number) ?? 200;
+    const maxBlobSize = (params.maxBlobSize as number) ?? 150000;
     const maxBlobs = (params.maxBlobs as number) ?? 30;
-    const style = (params.style as string) || "box";
-    const showLabels = (params.showLabels as boolean) ?? true;
-    const showConnections = (params.showConnections as boolean) ?? false;
     const flashRate = (params.flashRate as number) ?? 5;
-    const color = (params.color as string) || "#00ff88";
+    const boxLineWidth = (params.lineWidth as number) ?? 1.5;
+    const connectionLineWidth = (params.connectionWidth as number) ?? 1.0;
+    const style = (params.style as string) || "box";
+    const connections = (params.connections as string) || "none";
+    const labelStyle = (params.labelStyle as string) || "minimal";
     const invertBlobs = (params.invert as boolean) ?? false;
+    const forceSquare = (params.forceSquare as boolean) ?? false;
+    const showScanlines = (params.showScanlines as boolean) ?? true;
+    const boxPaletteName = (params.boxPalette as string) || "custom";
+    const connPaletteName = (params.connectionPalette as string) || "custom";
+    const innerEffect = (params.innerEffect as string) || "none";
+    const boxColor = (params.boxColor as string) || (params.color as string) || "#00ff88";
+    const connectionColor = (params.connectionColor as string) || "#00aaff";
 
     // Pseudo-random function seeded by time for erratic behavior
     const seed = Math.floor(time / Math.max(1, 11 - flashRate));
@@ -3589,13 +3603,26 @@ registerEffect({
     }
 
     // Step 3: Filter and sort blobs
-    let blobs = Array.from(blobMap.values()).filter(b => b.area >= minBlobSize);
+    let blobs = Array.from(blobMap.values()).filter(b => b.area >= minBlobSize && b.area <= maxBlobSize);
     blobs.sort((a, b) => b.area - a.area);
     if (blobs.length > maxBlobs) {
       blobs = blobs.slice(0, maxBlobs);
     }
 
     if (blobs.length === 0) return;
+
+    // --- Inner Effect Processing ---
+    let innerEffectData: Uint8ClampedArray | null = null;
+    if (innerEffect && innerEffect !== "none") {
+      const effectDef = getEffectDefinition(innerEffect as EffectType);
+      if (effectDef && effectDef.processor) {
+        // Create a copy of the original data to process
+        innerEffectData = new Uint8ClampedArray(data);
+        const innerParams = getDefaultParams(innerEffect as EffectType);
+        // Process the full frame with the inner effect
+        effectDef.processor(innerEffectData, { width, height, time, timelineFrames, faceBounds, handBounds, poseBounds }, innerParams);
+      }
+    }
 
     // Step 4: Render overlays using a temp canvas
     const tempCanvas = document.createElement("canvas");
@@ -3608,29 +3635,37 @@ registerEffect({
     imgData.data.set(data);
     ctx.putImageData(imgData, 0, 0);
 
-    // Parse color
-    const hexToRgb = (hex: string): string => {
+    // Color Palettes
+    const palettes: Record<string, string[]> = {
+      cyberpunk: ["#ff00ff", "#00ffff", "#ffff00", "#ff0088", "#00ff88"],
+      neon: ["#ff3366", "#33ccff", "#ccff33", "#ff9933", "#cc33ff"],
+      vintage: ["#d4b483", "#e4dfda", "#c1666b", "#48a9a6", "#4281a4"],
+      monochrome: ["#ffffff", "#cccccc", "#999999", "#666666", "#333333"],
+      danger: ["#ff0000", "#ff3300", "#ff6600", "#cc0000", "#990000"],
+    };
+
+    const getPaletteColor = (paletteName: string, customColor: string, index: number): string => {
+      if (paletteName === "custom" || !palettes[paletteName]) return customColor;
+      const palette = palettes[paletteName];
+      return palette[index % palette.length];
+    };
+
+    // Parse color helpers
+    const getRgbStr = (hex: string): string => {
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
       if (!result) return "0, 255, 136";
       return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
     };
-    const rgbStr = hexToRgb(color);
 
-    // Secondary colors for variety
-    const colors = [
-      color,
-      `rgba(${rgbStr}, 0.7)`,
-      `rgba(255, 100, 100, 0.8)`,
-      `rgba(100, 180, 255, 0.8)`,
-      `rgba(255, 255, 100, 0.8)`,
-      `rgba(255, 140, 60, 0.8)`,
-    ];
+    const boxRgbStr = getRgbStr(boxColor);
+    const connRgbStr = getRgbStr(connectionColor);
 
     ctx.lineWidth = 1.5;
     ctx.font = `bold 10px monospace`;
     ctx.textBaseline = "top";
 
     const blobCenters: { cx: number; cy: number }[] = [];
+    const blobsToDraw: BlobInfo[] = [];
 
     for (let i = 0; i < blobs.length; i++) {
       const blob = blobs[i];
@@ -3643,30 +3678,74 @@ registerEffect({
       const jitterX = Math.floor((prng(seed + i * 13.7) - 0.5) * flashRate * 1.5);
       const jitterY = Math.floor((prng(seed + i * 23.1) - 0.5) * flashRate * 1.5);
 
-      const bx = blob.minX + jitterX;
-      const by = blob.minY + jitterY;
-      const bw = blob.maxX - blob.minX;
-      const bh = blob.maxY - blob.minY;
-      const cx = bx + bw / 2;
-      const cy = by + bh / 2;
+      blobsToDraw.push({
+        ...blob,
+        minX: blob.minX + jitterX,
+        minY: blob.minY + jitterY,
+        maxX: blob.maxX + jitterX,
+        maxY: blob.maxY + jitterY,
+      });
+    }
+
+    // Draw detected blobs with stylized overlays
+    for (let i = 0; i < blobsToDraw.length; i++) {
+      const blob = blobsToDraw[i];
+      let bx = blob.minX, by = blob.minY, bw = blob.maxX - blob.minX, bh = blob.maxY - blob.minY;
+      let cx = bx + bw / 2, cy = by + bh / 2;
+
+      if (forceSquare) {
+        const side = Math.max(bw, bh);
+        bx = cx - side / 2;
+        by = cy - side / 2;
+        bw = side;
+        bh = side;
+      }
 
       blobCenters.push({ cx, cy });
 
-      // Pick a color (cycle with some randomness)
-      const colorIdx = Math.floor(prng(seed + i * 3.3) * colors.length);
-      const drawColor = colors[colorIdx];
+      // --- Inner Effect Compositing ---
+      // If we have inner effect data, we draw a masked chunk from it into the canvas
+      if (innerEffectData && innerEffect !== "none") {
+        // Create an ImageData for just this box
+        const safeBx = Math.max(0, Math.floor(bx));
+        const safeBy = Math.max(0, Math.floor(by));
+        const safeBw = Math.min(width - safeBx, Math.ceil(bw));
+        const safeBh = Math.min(height - safeBy, Math.ceil(bh));
 
+        if (safeBw > 0 && safeBh > 0) {
+          const chunkData = ctx.createImageData(safeBw, safeBh);
+          for (let cy = 0; cy < safeBh; cy++) {
+            for (let cx = 0; cx < safeBw; cx++) {
+              const srcIdx = ((safeBy + cy) * width + (safeBx + cx)) * 4;
+              const dstIdx = (cy * safeBw + cx) * 4;
+              chunkData.data[dstIdx] = innerEffectData[srcIdx];
+              chunkData.data[dstIdx + 1] = innerEffectData[srcIdx + 1];
+              chunkData.data[dstIdx + 2] = innerEffectData[srcIdx + 2];
+              chunkData.data[dstIdx + 3] = innerEffectData[srcIdx + 3]; // Alpha from processed
+            }
+          }
+          ctx.putImageData(chunkData, safeBx, safeBy);
+        }
+      }
+
+      // Resolve colors for this blob
+      const currentBoxColor = getPaletteColor(boxPaletteName, boxColor, i);
+      const boxRgbStr = getRgbStr(currentBoxColor);
+
+      const opacity = 0.4 + prng(seed + i * 13.3) * 0.6;
+      const drawColor = `rgba(${boxRgbStr}, ${opacity})`;
       ctx.strokeStyle = drawColor;
       ctx.fillStyle = drawColor;
 
-      // Randomly vary line width for erratic feel
-      ctx.lineWidth = 1 + prng(seed + i * 5.7) * 2;
+      // Randomly vary line width for erratic feel, scaled by user setting
+      const currentLineWidth = boxLineWidth + prng(seed + i * 5.7) * boxLineWidth;
+      ctx.lineWidth = currentLineWidth;
 
       if (style === "box") {
         ctx.strokeRect(bx, by, bw, bh);
       } else if (style === "corners") {
         // Draw corner brackets
-        const cornerLen = Math.min(bw, bh, 15);
+        const cornerLen = Math.min(bw, bh, 20);
         ctx.beginPath();
         // Top-left
         ctx.moveTo(bx, by + cornerLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerLen, by);
@@ -3678,7 +3757,7 @@ registerEffect({
         ctx.moveTo(bx + cornerLen, by + bh); ctx.lineTo(bx, by + bh); ctx.lineTo(bx, by + bh - cornerLen);
         ctx.stroke();
       } else if (style === "crosshair") {
-        const crossSize = Math.min(bw, bh) * 0.3;
+        const crossSize = Math.min(bw, bh) * 0.4;
         ctx.beginPath();
         // Horizontal
         ctx.moveTo(cx - crossSize, cy); ctx.lineTo(cx + crossSize, cy);
@@ -3687,33 +3766,82 @@ registerEffect({
         ctx.stroke();
         // Circle
         ctx.beginPath();
-        ctx.arc(cx, cy, crossSize * 0.6, 0, Math.PI * 2);
+        ctx.arc(cx, cy, crossSize * 0.7, 0, Math.PI * 2);
         ctx.stroke();
-      }
+      } else if (style === "grid") {
+        // Internal grid lines relative to box size
+        const cols = Math.max(2, Math.floor(prng(seed + i * 8.1) * 4) + 2);
+        const rows = Math.max(2, Math.floor(prng(seed + i * 9.2) * 4) + 2);
+        ctx.beginPath();
+        ctx.rect(bx, by, bw, bh);
+        for (let c = 1; c < cols; c++) {
+          const gx = bx + (bw / cols) * c;
+          ctx.moveTo(gx, by); ctx.lineTo(gx, by + bh);
+        }
+        for (let r = 1; r < rows; r++) {
+          const gy = by + (bh / rows) * r;
+          ctx.moveTo(bx, gy); ctx.lineTo(bx + bw, gy);
+        }
+        ctx.stroke();
+      } else if (style === "dot") {
+        // Just a center dot/circle
+        ctx.beginPath();
+        ctx.arc(cx, cy, 3 + currentLineWidth, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } // "hidden" does nothing
 
       // Labels
-      if (showLabels) {
+      if (labelStyle !== "none") {
+        let labelText = "";
         const areaRatio = (blob.area / totalPixels).toFixed(4);
-        const label = `${i}:${areaRatio}`;
+        
+        if (labelStyle === "minimal") {
+          labelText = `${i}:${areaRatio}`;
+        } else if (labelStyle === "object") {
+          labelText = `OBJ_${i.toString().padStart(2, '0')}`;
+        } else if (labelStyle === "value") {
+          labelText = prng(seed + i * 99.1).toFixed(3);
+        }
 
-        // Flickering label opacity
         const labelAlpha = 0.5 + prng(seed + i * 41.3) * 0.5;
-        ctx.fillStyle = `rgba(${rgbStr}, ${labelAlpha})`;
+        
+        if (labelStyle === "object") {
+          // Object mode: Header bar spanning the top of the box
+          const barHeight = 16;
+          ctx.fillStyle = `rgba(${boxRgbStr}, ${labelAlpha})`;
+          ctx.fillRect(bx, by - barHeight, bw, barHeight);
+          
+          ctx.fillStyle = "#000000";
+          ctx.font = `bold 10px monospace`;
+          ctx.fillText(labelText, bx + 4, by - barHeight + 3);
+        } else if (labelStyle === "value") {
+          // Value mode: Centered inside the box
+          ctx.font = `bold 14px monospace`;
+          const metrics = ctx.measureText(labelText);
+          const lblX = bx + (bw / 2) - (metrics.width / 2);
+          const lblY = by + (bh / 2) - 7;
+          
+          ctx.fillStyle = `rgba(${boxRgbStr}, ${labelAlpha})`;
+          ctx.fillText(labelText, lblX, lblY);
+        } else {
+          // Minimal mode: Small tag above top-left corner
+          ctx.font = `bold 10px monospace`;
+          ctx.fillStyle = `rgba(${boxRgbStr}, ${labelAlpha})`;
+          const metrics = ctx.measureText(labelText);
+          const lblX = Math.max(0, Math.min(bx, width - metrics.width - 4));
+          const lblY = Math.max(0, by - 13);
+          ctx.fillRect(lblX, lblY, metrics.width + 4, 12);
 
-        // Label background
-        const metrics = ctx.measureText(label);
-        const lblX = Math.max(0, Math.min(bx, width - metrics.width - 4));
-        const lblY = Math.max(0, by - 13);
-        ctx.fillRect(lblX, lblY, metrics.width + 4, 12);
-
-        ctx.fillStyle = "#000000";
-        ctx.fillText(label, lblX + 2, lblY + 1);
+          ctx.fillStyle = "#000000";
+          ctx.fillText(labelText, lblX + 2, lblY + 1);
+        }
       }
 
       // Random scan lines within some blobs for extra data-viz feel
-      if (prng(seed + i * 61.7) > 0.6) {
-        ctx.strokeStyle = `rgba(${rgbStr}, 0.3)`;
-        ctx.lineWidth = 0.5;
+      if (showScanlines && style !== "hidden" && style !== "dot" && prng(seed + i * 61.7) > 0.6) {
+        ctx.strokeStyle = `rgba(${boxRgbStr}, 0.3)`;
+        ctx.lineWidth = boxLineWidth * 0.5;
         const lineSpacing = 4 + Math.floor(prng(seed + i * 71.3) * 6);
         for (let ly = by; ly < by + bh; ly += lineSpacing) {
           ctx.beginPath();
@@ -3725,17 +3853,60 @@ registerEffect({
     }
 
     // Connection lines between blob centers
-    if (showConnections && blobCenters.length > 1) {
-      ctx.strokeStyle = `rgba(${rgbStr}, 0.25)`;
-      ctx.lineWidth = 0.5;
-      // Connect to nearest neighbors (not all-to-all) for cleaner look
+    if (connections !== "none" && blobCenters.length > 1) {
       for (let i = 0; i < blobCenters.length; i++) {
-        // Connect to next 2 blobs
-        for (let j = 1; j <= 2 && i + j < blobCenters.length; j++) {
-          if (prng(seed + i * 100 + j * 50) > 0.4) continue; // skip some
+        // Color depends on the connection origin blob
+        const currentConnColor = getPaletteColor(connPaletteName, connectionColor, i);
+        const connRgbStr = getRgbStr(currentConnColor);
+        ctx.strokeStyle = `rgba(${connRgbStr}, 0.3)`;
+        ctx.lineWidth = connectionLineWidth;
+        
+        if (connections === "neighbors") {
+          // Connect to nearest neighbors (1 or 2 indices ahead)
+          for (let j = 1; j <= 2 && i + j < blobCenters.length; j++) {
+            if (prng(seed + i * 100 + j * 50) > 0.4) continue;
+            ctx.beginPath();
+            ctx.moveTo(blobCenters[i].cx, blobCenters[i].cy);
+            ctx.lineTo(blobCenters[i + j].cx, blobCenters[i + j].cy);
+            ctx.stroke();
+          }
+        } else if (connections === "all") {
+          // Web / All-to-all - gets very chaotic, lower alpha needed
+          ctx.strokeStyle = `rgba(${connRgbStr}, 0.15)`;
+          for (let j = i + 1; j < blobCenters.length; j++) {
+            if (prng(seed * 2 + i * 33 + j * 77) > 0.8) continue; // Skip a few so it's not a solid block
+            ctx.beginPath();
+            ctx.moveTo(blobCenters[i].cx, blobCenters[i].cy);
+            ctx.lineTo(blobCenters[j].cx, blobCenters[j].cy);
+            ctx.stroke();
+          }
+        }
+      }
+      
+      // Hub is calculated across all, uses the base connection color
+      if (connections === "hub") {
+        const connRgbStr = getRgbStr(connectionColor);
+        ctx.strokeStyle = `rgba(${connRgbStr}, 0.3)`;
+        ctx.lineWidth = connectionLineWidth;
+
+        // Find center of mass of all blobs
+        let hubX = 0, hubY = 0;
+        for (const center of blobCenters) {
+          hubX += center.cx; hubY += center.cy;
+        }
+        hubX /= blobCenters.length; hubY /= blobCenters.length;
+
+        // Draw central hub point
+        ctx.fillStyle = `rgba(${connRgbStr}, 0.8)`;
+        ctx.beginPath();
+        ctx.arc(hubX, hubY, connectionLineWidth * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Connect all blobs to hub
+        for (const center of blobCenters) {
           ctx.beginPath();
-          ctx.moveTo(blobCenters[i].cx, blobCenters[i].cy);
-          ctx.lineTo(blobCenters[i + j].cx, blobCenters[i + j].cy);
+          ctx.moveTo(hubX, hubY);
+          ctx.lineTo(center.cx, center.cy);
           ctx.stroke();
         }
       }

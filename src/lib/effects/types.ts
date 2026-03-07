@@ -235,13 +235,23 @@ export function getDefaultParams(type: EffectType): Record<string, unknown> {
       return {
         threshold: 128,
         minBlobSize: 200,
+        maxBlobSize: 150000,
         maxBlobs: 30,
-        style: "box",
-        showLabels: true,
-        showConnections: false,
         flashRate: 5,
-        color: "#00ff88",
+        lineWidth: 1.5,
+        connectionWidth: 1.0,
+        style: "box",
+        connections: "none",
+        labelStyle: "minimal",
         invert: false,
+        forceSquare: false,
+        showScanlines: true,
+        boxPalette: "custom",
+        connectionPalette: "custom",
+        innerEffect: "none",
+        boxColor: "#00ff88",
+        connectionColor: "#00aaff",
+        color: "#00ff88", // Legacy, kept for compatibility if needed elsewhere
       };
     case "jpeg-artifacts":
       return {

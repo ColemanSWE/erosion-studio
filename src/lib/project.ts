@@ -2,7 +2,7 @@ import type { Effect, Region } from "./effects/types";
 
 export interface MediaItem {
   id: string;
-  type: "image" | "video";
+  type: "image" | "video" | "camera";
   name: string;
   path: string;
   thumbnail?: string;
