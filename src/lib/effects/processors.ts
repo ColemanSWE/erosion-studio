@@ -3483,6 +3483,271 @@ registerEffect({
 });
 
 registerEffect({
+  type: "blob-track",
+  label: "Blob Track",
+  category: "style",
+  processor: (data, { width, height, time = 0 }, params) => {
+    const threshold = (params.threshold as number) ?? 128;
+    const minBlobSize = (params.minBlobSize as number) ?? 200;
+    const maxBlobs = (params.maxBlobs as number) ?? 30;
+    const style = (params.style as string) || "box";
+    const showLabels = (params.showLabels as boolean) ?? true;
+    const showConnections = (params.showConnections as boolean) ?? false;
+    const flashRate = (params.flashRate as number) ?? 5;
+    const color = (params.color as string) || "#00ff88";
+    const invertBlobs = (params.invert as boolean) ?? false;
+
+    // Pseudo-random function seeded by time for erratic behavior
+    const seed = Math.floor(time / Math.max(1, 11 - flashRate));
+    const prng = (s: number): number => {
+      const x = Math.sin(s * 12.9898 + 78.233) * 43758.5453;
+      return x - Math.floor(x);
+    };
+
+    // Step 1: Build grayscale + threshold binary mask
+    const totalPixels = width * height;
+    const binary = new Uint8Array(totalPixels);
+    for (let i = 0; i < totalPixels; i++) {
+      const idx = i * 4;
+      const gray = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+      const isBright = gray >= threshold;
+      binary[i] = (invertBlobs ? !isBright : isBright) ? 1 : 0;
+    }
+
+    // Step 2: Connected-Component Labeling (two-pass with union-find)
+    const labels = new Int32Array(totalPixels);
+    const parent: number[] = [0]; // parent[0] unused, labels start at 1
+    let nextLabel = 1;
+
+    const find = (x: number): number => {
+      while (parent[x] !== x) {
+        parent[x] = parent[parent[x]]; // path compression
+        x = parent[x];
+      }
+      return x;
+    };
+
+    const union = (a: number, b: number): void => {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) {
+        parent[Math.max(ra, rb)] = Math.min(ra, rb);
+      }
+    };
+
+    // First pass
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const pos = y * width + x;
+        if (binary[pos] === 0) continue;
+
+        const left = x > 0 ? labels[pos - 1] : 0;
+        const above = y > 0 ? labels[pos - width] : 0;
+
+        if (left === 0 && above === 0) {
+          labels[pos] = nextLabel;
+          parent.push(nextLabel);
+          nextLabel++;
+        } else if (left !== 0 && above === 0) {
+          labels[pos] = left;
+        } else if (left === 0 && above !== 0) {
+          labels[pos] = above;
+        } else {
+          labels[pos] = Math.min(left, above);
+          if (left !== above) {
+            union(left, above);
+          }
+        }
+      }
+    }
+
+    // Second pass: resolve labels and compute bounding boxes
+    interface BlobInfo {
+      minX: number; minY: number; maxX: number; maxY: number;
+      area: number;
+    }
+    const blobMap = new Map<number, BlobInfo>();
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const pos = y * width + x;
+        if (labels[pos] === 0) continue;
+        const root = find(labels[pos]);
+        labels[pos] = root;
+
+        let info = blobMap.get(root);
+        if (!info) {
+          info = { minX: x, minY: y, maxX: x, maxY: y, area: 0 };
+          blobMap.set(root, info);
+        }
+        info.minX = Math.min(info.minX, x);
+        info.minY = Math.min(info.minY, y);
+        info.maxX = Math.max(info.maxX, x);
+        info.maxY = Math.max(info.maxY, y);
+        info.area++;
+      }
+    }
+
+    // Step 3: Filter and sort blobs
+    let blobs = Array.from(blobMap.values()).filter(b => b.area >= minBlobSize);
+    blobs.sort((a, b) => b.area - a.area);
+    if (blobs.length > maxBlobs) {
+      blobs = blobs.slice(0, maxBlobs);
+    }
+
+    if (blobs.length === 0) return;
+
+    // Step 4: Render overlays using a temp canvas
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const ctx = tempCanvas.getContext("2d");
+    if (!ctx) return;
+
+    const imgData = ctx.createImageData(width, height);
+    imgData.data.set(data);
+    ctx.putImageData(imgData, 0, 0);
+
+    // Parse color
+    const hexToRgb = (hex: string): string => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      if (!result) return "0, 255, 136";
+      return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
+    };
+    const rgbStr = hexToRgb(color);
+
+    // Secondary colors for variety
+    const colors = [
+      color,
+      `rgba(${rgbStr}, 0.7)`,
+      `rgba(255, 100, 100, 0.8)`,
+      `rgba(100, 180, 255, 0.8)`,
+      `rgba(255, 255, 100, 0.8)`,
+      `rgba(255, 140, 60, 0.8)`,
+    ];
+
+    ctx.lineWidth = 1.5;
+    ctx.font = `bold 10px monospace`;
+    ctx.textBaseline = "top";
+
+    const blobCenters: { cx: number; cy: number }[] = [];
+
+    for (let i = 0; i < blobs.length; i++) {
+      const blob = blobs[i];
+
+      // Erratic flicker: skip some blobs randomly each frame
+      const flickerChance = flashRate / 10;
+      if (prng(seed + i * 7.31) > (0.3 + flickerChance * 0.7)) continue;
+
+      // Jitter position slightly
+      const jitterX = Math.floor((prng(seed + i * 13.7) - 0.5) * flashRate * 1.5);
+      const jitterY = Math.floor((prng(seed + i * 23.1) - 0.5) * flashRate * 1.5);
+
+      const bx = blob.minX + jitterX;
+      const by = blob.minY + jitterY;
+      const bw = blob.maxX - blob.minX;
+      const bh = blob.maxY - blob.minY;
+      const cx = bx + bw / 2;
+      const cy = by + bh / 2;
+
+      blobCenters.push({ cx, cy });
+
+      // Pick a color (cycle with some randomness)
+      const colorIdx = Math.floor(prng(seed + i * 3.3) * colors.length);
+      const drawColor = colors[colorIdx];
+
+      ctx.strokeStyle = drawColor;
+      ctx.fillStyle = drawColor;
+
+      // Randomly vary line width for erratic feel
+      ctx.lineWidth = 1 + prng(seed + i * 5.7) * 2;
+
+      if (style === "box") {
+        ctx.strokeRect(bx, by, bw, bh);
+      } else if (style === "corners") {
+        // Draw corner brackets
+        const cornerLen = Math.min(bw, bh, 15);
+        ctx.beginPath();
+        // Top-left
+        ctx.moveTo(bx, by + cornerLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerLen, by);
+        // Top-right
+        ctx.moveTo(bx + bw - cornerLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerLen);
+        // Bottom-right
+        ctx.moveTo(bx + bw, by + bh - cornerLen); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw - cornerLen, by + bh);
+        // Bottom-left
+        ctx.moveTo(bx + cornerLen, by + bh); ctx.lineTo(bx, by + bh); ctx.lineTo(bx, by + bh - cornerLen);
+        ctx.stroke();
+      } else if (style === "crosshair") {
+        const crossSize = Math.min(bw, bh) * 0.3;
+        ctx.beginPath();
+        // Horizontal
+        ctx.moveTo(cx - crossSize, cy); ctx.lineTo(cx + crossSize, cy);
+        // Vertical
+        ctx.moveTo(cx, cy - crossSize); ctx.lineTo(cx, cy + crossSize);
+        ctx.stroke();
+        // Circle
+        ctx.beginPath();
+        ctx.arc(cx, cy, crossSize * 0.6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Labels
+      if (showLabels) {
+        const areaRatio = (blob.area / totalPixels).toFixed(4);
+        const label = `${i}:${areaRatio}`;
+
+        // Flickering label opacity
+        const labelAlpha = 0.5 + prng(seed + i * 41.3) * 0.5;
+        ctx.fillStyle = `rgba(${rgbStr}, ${labelAlpha})`;
+
+        // Label background
+        const metrics = ctx.measureText(label);
+        const lblX = Math.max(0, Math.min(bx, width - metrics.width - 4));
+        const lblY = Math.max(0, by - 13);
+        ctx.fillRect(lblX, lblY, metrics.width + 4, 12);
+
+        ctx.fillStyle = "#000000";
+        ctx.fillText(label, lblX + 2, lblY + 1);
+      }
+
+      // Random scan lines within some blobs for extra data-viz feel
+      if (prng(seed + i * 61.7) > 0.6) {
+        ctx.strokeStyle = `rgba(${rgbStr}, 0.3)`;
+        ctx.lineWidth = 0.5;
+        const lineSpacing = 4 + Math.floor(prng(seed + i * 71.3) * 6);
+        for (let ly = by; ly < by + bh; ly += lineSpacing) {
+          ctx.beginPath();
+          ctx.moveTo(bx, ly);
+          ctx.lineTo(bx + bw, ly);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Connection lines between blob centers
+    if (showConnections && blobCenters.length > 1) {
+      ctx.strokeStyle = `rgba(${rgbStr}, 0.25)`;
+      ctx.lineWidth = 0.5;
+      // Connect to nearest neighbors (not all-to-all) for cleaner look
+      for (let i = 0; i < blobCenters.length; i++) {
+        // Connect to next 2 blobs
+        for (let j = 1; j <= 2 && i + j < blobCenters.length; j++) {
+          if (prng(seed + i * 100 + j * 50) > 0.4) continue; // skip some
+          ctx.beginPath();
+          ctx.moveTo(blobCenters[i].cx, blobCenters[i].cy);
+          ctx.lineTo(blobCenters[i + j].cx, blobCenters[i + j].cy);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Grab result back into pixel data
+    const resultData = ctx.getImageData(0, 0, width, height);
+    data.set(resultData.data);
+  },
+});
+
+registerEffect({
   type: "jpeg-artifacts",
   label: "JPEG Artifacts",
   category: "glitch",
@@ -3790,3 +4055,581 @@ registerEffect({
     }
   },
 });
+
+// Frame history storage for temporal effects
+const frameHistoryStore: {
+  frames: Uint8ClampedArray[];
+  width: number;
+  height: number;
+  maxSize: number;
+} = {
+  frames: [],
+  width: 0,
+  height: 0,
+  maxSize: 16,
+};
+
+function storeFrame(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number
+): void {
+  if (frameHistoryStore.width !== width || frameHistoryStore.height !== height) {
+    frameHistoryStore.frames = [];
+    frameHistoryStore.width = width;
+    frameHistoryStore.height = height;
+  }
+
+  const frame = new Uint8ClampedArray(data);
+  frameHistoryStore.frames.unshift(frame);
+
+  if (frameHistoryStore.frames.length > frameHistoryStore.maxSize) {
+    frameHistoryStore.frames.pop();
+  }
+}
+
+function getFrameFromHistory(index: number): Uint8ClampedArray | null {
+  if (index >= 0 && index < frameHistoryStore.frames.length) {
+    return frameHistoryStore.frames[index];
+  }
+  return null;
+}
+
+// 1. Rainbow Gradient Effect
+registerEffect({
+  type: "rainbow-gradient",
+  label: "Rainbow Gradient",
+  category: "color",
+  processor: (data, { width, height, time = 0 }, params) => {
+    const speed = (params.speed as number) || 1;
+    const intensity = (params.intensity as number) || 0.5;
+    const direction = (params.direction as string) || "horizontal";
+
+    const t = time * speed * 0.01;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+
+        let position: number;
+        if (direction === "horizontal") {
+          position = x / width;
+        } else if (direction === "vertical") {
+          position = y / height;
+        } else if (direction === "diagonal") {
+          position = (x / width + y / height) / 2;
+        } else {
+          // radial
+          const centerX = width / 2;
+          const centerY = height / 2;
+          const dx = x - centerX;
+          const dy = y - centerY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+          position = dist / maxDist;
+        }
+
+        // Create rainbow gradient with time animation
+        const hue = ((position + t) % 1.0) * 360;
+        const [r, g, b] = hslToRgb(hue / 360, 1.0, 0.5);
+
+        // Blend with original
+        data[i] = data[i] * (1 - intensity) + r * intensity;
+        data[i + 1] = data[i + 1] * (1 - intensity) + g * intensity;
+        data[i + 2] = data[i + 2] * (1 - intensity) + b * intensity;
+      }
+    }
+  },
+});
+
+// 2. Gradient Rainbow Flash Effect
+registerEffect({
+  type: "gradient-flash",
+  label: "Gradient Flash",
+  category: "color",
+  processor: (data, { width, height, time = 0 }, params) => {
+    const speed = (params.speed as number) || 2;
+    const intensity = (params.intensity as number) || 0.7;
+    const flashRate = (params.flashRate as number) || 4;
+
+    const t = time * speed * 0.02;
+    const flash = Math.abs(Math.sin(t * flashRate));
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+
+        const position = (x / width + y / height) / 2;
+        const hue = ((position + t) % 1.0) * 360;
+        const [r, g, b] = hslToRgb(hue / 360, 1.0, 0.5);
+
+        const flashIntensity = intensity * flash;
+
+        data[i] = data[i] * (1 - flashIntensity) + r * flashIntensity;
+        data[i + 1] = data[i + 1] * (1 - flashIntensity) + g * flashIntensity;
+        data[i + 2] = data[i + 2] * (1 - flashIntensity) + b * flashIntensity;
+      }
+    }
+  },
+});
+
+// 3. Bitwise XOR Blend Effect
+registerEffect({
+  type: "xor-blend",
+  label: "XOR Blend",
+  category: "glitch",
+  processor: (data, { width, height }, params) => {
+    const intensity = (params.intensity as number) || 0.5;
+    const frameHistory = (params.frameHistory as number) || 1;
+
+    storeFrame(data, width, height);
+    const prevFrame = getFrameFromHistory(frameHistory);
+
+    if (!prevFrame) return;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const xorR = data[i] ^ prevFrame[i];
+      const xorG = data[i + 1] ^ prevFrame[i + 1];
+      const xorB = data[i + 2] ^ prevFrame[i + 2];
+
+      data[i] = data[i] * (1 - intensity) + xorR * intensity;
+      data[i + 1] = data[i + 1] * (1 - intensity) + xorG * intensity;
+      data[i + 2] = data[i + 2] * (1 - intensity) + xorB * intensity;
+    }
+  },
+});
+
+// 4. RGB Vertical XOR Effect
+registerEffect({
+  type: "rgb-vertical-xor",
+  label: "RGB Vertical XOR",
+  category: "glitch",
+  processor: (data, { width, height, time = 0 }, params) => {
+    const speed = (params.speed as number) || 2;
+    const amplitude = (params.amplitude as number) || 1.0;
+
+    const source = new Uint8ClampedArray(data);
+    const t = time * speed * 0.1;
+
+    for (let y = 0; y < height; y++) {
+      const offsetR = Math.floor(Math.sin(y * 0.1 + t) * 10 * amplitude);
+      const offsetG = Math.floor(Math.sin(y * 0.1 + t + Math.PI * 0.666) * 10 * amplitude);
+      const offsetB = Math.floor(Math.sin(y * 0.1 + t + Math.PI * 1.333) * 10 * amplitude);
+
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+
+        const xR = (x + offsetR + width) % width;
+        const xG = (x + offsetG + width) % width;
+        const xB = (x + offsetB + width) % width;
+
+        const iR = (y * width + xR) * 4;
+        const iG = (y * width + xG) * 4;
+        const iB = (y * width + xB) * 4;
+
+        data[i] = source[i] ^ source[iR];
+        data[i + 1] = source[i + 1] ^ source[iG + 1];
+        data[i + 2] = source[i + 2] ^ source[iB + 2];
+      }
+    }
+  },
+});
+
+// 5. Frame Trails Effect
+registerEffect({
+  type: "frame-trails",
+  label: "Frame Trails",
+  category: "glitch",
+  processor: (data, { width, height }, params) => {
+    const intensity = (params.intensity as number) || 0.7;
+    const decay = (params.decay as number) || 0.9;
+    const maxFrames = (params.maxFrames as number) || 8;
+
+    storeFrame(data, width, height);
+
+    const numFrames = Math.min(maxFrames, frameHistoryStore.frames.length);
+    if (numFrames === 0) return;
+
+    for (let i = 0; i < data.length; i += 4) {
+      let r = data[i] * (1 - intensity);
+      let g = data[i + 1] * (1 - intensity);
+      let b = data[i + 2] * (1 - intensity);
+
+      let weight = intensity;
+      for (let f = 0; f < numFrames; f++) {
+        const frame = frameHistoryStore.frames[f];
+        const frameWeight = weight * Math.pow(decay, f);
+
+        r += frame[i] * frameWeight;
+        g += frame[i + 1] * frameWeight;
+        b += frame[i + 2] * frameWeight;
+      }
+
+      data[i] = Math.min(255, r);
+      data[i + 1] = Math.min(255, g);
+      data[i + 2] = Math.min(255, b);
+    }
+  },
+});
+
+// 6. RGB Color Trails Effect
+registerEffect({
+  type: "rgb-color-trails",
+  label: "RGB Color Trails",
+  category: "glitch",
+  processor: (data, { width, height }, params) => {
+    const rDecay = (params.rDecay as number) || 0.95;
+    const gDecay = (params.gDecay as number) || 0.9;
+    const bDecay = (params.bDecay as number) || 0.85;
+    const maxFrames = (params.maxFrames as number) || 6;
+
+    storeFrame(data, width, height);
+
+    const numFrames = Math.min(maxFrames, frameHistoryStore.frames.length);
+    if (numFrames === 0) return;
+
+    for (let i = 0; i < data.length; i += 4) {
+      let r = data[i];
+      let g = data[i + 1];
+      let b = data[i + 2];
+
+      for (let f = 1; f < numFrames; f++) {
+        const frame = frameHistoryStore.frames[f];
+        r = Math.max(r, frame[i] * Math.pow(rDecay, f));
+        g = Math.max(g, frame[i + 1] * Math.pow(gDecay, f));
+        b = Math.max(b, frame[i + 2] * Math.pow(bDecay, f));
+      }
+
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+    }
+  },
+});
+
+// 7. Strobe Flash Effect
+registerEffect({
+  type: "strobe-flash",
+  label: "Strobe Flash",
+  category: "retro",
+  processor: (data, { width, height, time = 0 }, params) => {
+    const frequency = (params.frequency as number) || 8;
+    const intensity = (params.intensity as number) || 1.0;
+    const pattern = (params.pattern as string) || "pulse";
+
+    const t = time * 0.1;
+    let strobe: number;
+
+    if (pattern === "pulse") {
+      strobe = Math.sin(t * frequency) > 0 ? 1 : 0;
+    } else if (pattern === "saw") {
+      strobe = (t * frequency) % 1;
+    } else if (pattern === "square") {
+      strobe = Math.floor((t * frequency) % 2);
+    } else {
+      // triangle
+      const phase = (t * frequency) % 2;
+      strobe = phase < 1 ? phase : 2 - phase;
+    }
+
+    const mult = 1 + strobe * intensity;
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, data[i] * mult);
+      data[i + 1] = Math.min(255, data[i + 1] * mult);
+      data[i + 2] = Math.min(255, data[i + 2] * mult);
+    }
+  },
+});
+
+// 8. RGB Strobe Effect
+registerEffect({
+  type: "rgb-strobe",
+  label: "RGB Strobe",
+  category: "retro",
+  processor: (data, { width, height, time = 0 }, params) => {
+    const rFreq = (params.rFreq as number) || 8;
+    const gFreq = (params.gFreq as number) || 6;
+    const bFreq = (params.bFreq as number) || 10;
+    const intensity = (params.intensity as number) || 0.8;
+
+    const t = time * 0.1;
+
+    const rStrobe = Math.sin(t * rFreq) > 0 ? 1 : 0;
+    const gStrobe = Math.sin(t * gFreq) > 0 ? 1 : 0;
+    const bStrobe = Math.sin(t * bFreq) > 0 ? 1 : 0;
+
+    const rMult = 1 + rStrobe * intensity;
+    const gMult = 1 + gStrobe * intensity;
+    const bMult = 1 + bStrobe * intensity;
+
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, data[i] * rMult);
+      data[i + 1] = Math.min(255, data[i + 1] * gMult);
+      data[i + 2] = Math.min(255, data[i + 2] * bMult);
+    }
+  },
+});
+
+// 9. Kaleidoscope Effect
+registerEffect({
+  type: "kaleidoscope",
+  label: "Kaleidoscope",
+  category: "distortion",
+  processor: (data, { width, height, time = 0 }, params) => {
+    const segments = (params.segments as number) || 6;
+    const angle = (params.angle as number) || 0;
+    const animated = (params.animated as boolean) !== false;
+
+    const source = new Uint8ClampedArray(data);
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const rotation = animated ? time * 0.01 : angle;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const dx = x - centerX;
+        const dy = y - centerY;
+
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        let theta = Math.atan2(dy, dx) + rotation;
+
+        // Mirror across segments
+        const segmentAngle = (Math.PI * 2) / segments;
+        theta = theta % segmentAngle;
+        if (Math.floor((Math.atan2(dy, dx) + rotation) / segmentAngle) % 2 === 1) {
+          theta = segmentAngle - theta;
+        }
+
+        const srcX = Math.floor(centerX + Math.cos(theta) * dist);
+        const srcY = Math.floor(centerY + Math.sin(theta) * dist);
+
+        const i = (y * width + x) * 4;
+
+        if (srcX >= 0 && srcX < width && srcY >= 0 && srcY < height) {
+          const si = (srcY * width + srcX) * 4;
+          data[i] = source[si];
+          data[i + 1] = source[si + 1];
+          data[i + 2] = source[si + 2];
+        }
+      }
+    }
+  },
+});
+
+// 10. Mirror Blend Effect
+registerEffect({
+  type: "mirror-blend",
+  label: "Mirror Blend",
+  category: "distortion",
+  processor: (data, { width, height }, params) => {
+    const mode = (params.mode as string) || "quadrant";
+    const blendAmount = (params.blendAmount as number) || 0.5;
+
+    const source = new Uint8ClampedArray(data);
+
+    if (mode === "quadrant") {
+      // Mirror into 4 quadrants
+      const halfW = Math.floor(width / 2);
+      const halfH = Math.floor(height / 2);
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+
+          const qx = x < halfW ? x : width - 1 - x;
+          const qy = y < halfH ? y : height - 1 - y;
+          const qi = (qy * width + qx) * 4;
+
+          data[i] = data[i] * (1 - blendAmount) + source[qi] * blendAmount;
+          data[i + 1] = data[i + 1] * (1 - blendAmount) + source[qi + 1] * blendAmount;
+          data[i + 2] = data[i + 2] * (1 - blendAmount) + source[qi + 2] * blendAmount;
+        }
+      }
+    } else {
+      // horizontal and vertical blend
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+
+          const mirrorX = width - 1 - x;
+          const mirrorY = height - 1 - y;
+          const miH = (y * width + mirrorX) * 4;
+          const miV = (mirrorY * width + x) * 4;
+
+          data[i] = data[i] * (1 - blendAmount) + (source[miH] + source[miV]) * 0.5 * blendAmount;
+          data[i + 1] = data[i + 1] * (1 - blendAmount) + (source[miH + 1] + source[miV + 1]) * 0.5 * blendAmount;
+          data[i + 2] = data[i + 2] * (1 - blendAmount) + (source[miH + 2] + source[miV + 2]) * 0.5 * blendAmount;
+        }
+      }
+    }
+  },
+});
+
+// 11. Feedback Echo Effect
+registerEffect({
+  type: "feedback-echo",
+  label: "Feedback Echo",
+  category: "glitch",
+  processor: (data, { width, height }, params) => {
+    const delay = (params.delay as number) || 2;
+    const feedback = (params.feedback as number) || 0.8;
+    const scale = (params.scale as number) || 0.95;
+
+    storeFrame(data, width, height);
+    const prevFrame = getFrameFromHistory(delay);
+
+    if (!prevFrame) return;
+
+    const scaledW = Math.floor(width * scale);
+    const scaledH = Math.floor(height * scale);
+    const offsetX = Math.floor((width - scaledW) / 2);
+    const offsetY = Math.floor((height - scaledH) / 2);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+
+        // Sample from scaled previous frame
+        const sx = Math.floor((x - offsetX) * (width / scaledW));
+        const sy = Math.floor((y - offsetY) * (height / scaledH));
+
+        if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
+          const si = (sy * width + sx) * 4;
+
+          data[i] = Math.min(255, data[i] * (1 - feedback) + prevFrame[si] * feedback);
+          data[i + 1] = Math.min(255, data[i + 1] * (1 - feedback) + prevFrame[si + 1] * feedback);
+          data[i + 2] = Math.min(255, data[i + 2] * (1 - feedback) + prevFrame[si + 2] * feedback);
+        }
+      }
+    }
+  },
+});
+
+// 12. Frame Delay Effect
+registerEffect({
+  type: "frame-delay",
+  label: "Frame Delay",
+  category: "glitch",
+  processor: (data, { width, height }, params) => {
+    const delay = (params.delay as number) || 5;
+    const blendMode = (params.blendMode as string) || "replace";
+
+    storeFrame(data, width, height);
+    const delayedFrame = getFrameFromHistory(delay);
+
+    if (!delayedFrame) return;
+
+    if (blendMode === "replace") {
+      data.set(delayedFrame);
+    } else if (blendMode === "blend") {
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = (data[i] + delayedFrame[i]) / 2;
+        data[i + 1] = (data[i + 1] + delayedFrame[i + 1]) / 2;
+        data[i + 2] = (data[i + 2] + delayedFrame[i + 2]) / 2;
+      }
+    } else {
+      // xor
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = data[i] ^ delayedFrame[i];
+        data[i + 1] = data[i + 1] ^ delayedFrame[i + 1];
+        data[i + 2] = data[i + 2] ^ delayedFrame[i + 2];
+      }
+    }
+  },
+});
+
+// 13. Alpha Blend Trails Effect
+registerEffect({
+  type: "alpha-trails",
+  label: "Alpha Trails",
+  category: "glitch",
+  processor: (data, { width, height }, params) => {
+    const alpha = (params.alpha as number) || 0.3;
+    const maxFrames = (params.maxFrames as number) || 10;
+
+    storeFrame(data, width, height);
+
+    const numFrames = Math.min(maxFrames, frameHistoryStore.frames.length);
+    if (numFrames === 0) return;
+
+    for (let i = 0; i < data.length; i += 4) {
+      let r = data[i];
+      let g = data[i + 1];
+      let b = data[i + 2];
+
+      for (let f = 1; f < numFrames; f++) {
+        const frame = frameHistoryStore.frames[f];
+        const frameAlpha = alpha * Math.pow(0.8, f);
+
+        r = r * (1 - frameAlpha) + frame[i] * frameAlpha;
+        g = g * (1 - frameAlpha) + frame[i + 1] * frameAlpha;
+        b = b * (1 - frameAlpha) + frame[i + 2] * frameAlpha;
+      }
+
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+    }
+  },
+});
+
+// 14. Square Swap Effect
+registerEffect({
+  type: "square-swap",
+  label: "Square Swap",
+  category: "glitch",
+  processor: (data, { width, height, time = 0 }, params) => {
+    const gridSize = (params.gridSize as number) || 4;
+    const swapPattern = (params.swapPattern as string) || "random";
+    const animated = (params.animated as boolean) !== false;
+
+    const source = new Uint8ClampedArray(data);
+    const cellW = Math.floor(width / gridSize);
+    const cellH = Math.floor(height / gridSize);
+
+    const seed = animated ? Math.floor(time / 10) : 0;
+
+    for (let gy = 0; gy < gridSize; gy++) {
+      for (let gx = 0; gx < gridSize; gx++) {
+        let targetGx, targetGy;
+
+        if (swapPattern === "random") {
+          targetGx = Math.floor(pseudoRandom(seed + gy * gridSize + gx) * gridSize);
+          targetGy = Math.floor(pseudoRandom(seed + 1000 + gy * gridSize + gx) * gridSize);
+        } else if (swapPattern === "flip") {
+          targetGx = gridSize - 1 - gx;
+          targetGy = gridSize - 1 - gy;
+        } else {
+          // rotate
+          targetGx = gy;
+          targetGy = gridSize - 1 - gx;
+        }
+
+        const srcX = gx * cellW;
+        const srcY = gy * cellH;
+        const dstX = targetGx * cellW;
+        const dstY = targetGy * cellH;
+
+        for (let y = 0; y < cellH; y++) {
+          for (let x = 0; x < cellW; x++) {
+            const sy = srcY + y;
+            const sx = srcX + x;
+            const dy = dstY + y;
+            const dx = dstX + x;
+
+            if (sy < height && sx < width && dy < height && dx < width) {
+              const si = (sy * width + sx) * 4;
+              const di = (dy * width + dx) * 4;
+
+              data[di] = source[si];
+              data[di + 1] = source[si + 1];
+              data[di + 2] = source[si + 2];
+            }
+          }
+        }
+      }
+    }
+  },
+});
+

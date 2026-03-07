@@ -1,4 +1,4 @@
-@import "./variables";
+@use "variables";
 
 * {
   box-sizing: border-box;
@@ -13,9 +13,9 @@ body {
 }
 
 body {
-  font-family: $font-primary;
-  background-color: $bg-base;
-  color: $text-primary;
+  font-family: variables.$font-primary;
+  background-color: variables.$bg-base;
+  color: variables.$text-primary;
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -30,7 +30,7 @@ body {
 
 code,
 pre {
-  font-family: $font-mono;
+  font-family: variables.$font-mono;
 }
 
 button {
@@ -53,14 +53,14 @@ textarea {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
-  background-color: $bg-surface;
-  border: 1px solid $border-primary;
-  border-radius: $radius-md;
-  padding: $spacing-sm;
+  background-color: variables.$bg-surface;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-md;
+  padding: variables.$spacing-sm;
 
   &:focus {
     outline: none;
-    border-color: $accent-primary;
+    border-color: variables.$accent-primary;
   }
 
   &:disabled {
@@ -75,15 +75,15 @@ textarea {
 }
 
 ::-webkit-scrollbar-track {
-  background: $bg-surface;
+  background: variables.$bg-surface;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: $border-primary;
+  background: variables.$border-primary;
   border-radius: 0;
 
   &:hover {
-    background: $border-accent;
+    background: variables.$border-accent;
   }
 }
 

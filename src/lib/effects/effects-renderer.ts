@@ -6,6 +6,7 @@ import { PALETTES, PaletteKey } from "./palettes";
 import { renderMesh } from "./mesh-renderer";
 
 import "./processors";
+import "./standard-processors";
 
 import { FaceBounds, HandBounds, PoseBounds } from "./face-detector";
 
@@ -62,6 +63,25 @@ export async function initializeEmojiPalette(
     return;
   }
   await emojiMap.generatePalette(palette.emojis);
+}
+
+// Cache for style effect render canvas to avoid creating new canvas every frame
+let styleRenderCanvas: HTMLCanvasElement | null = null;
+let styleRenderCtx: CanvasRenderingContext2D | null = null;
+
+function getOrCreateStyleCanvas(width: number, height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  if (!styleRenderCanvas || styleRenderCanvas.width !== width || styleRenderCanvas.height !== height) {
+    styleRenderCanvas = document.createElement("canvas");
+    styleRenderCanvas.width = width;
+    styleRenderCanvas.height = height;
+    styleRenderCtx = styleRenderCanvas.getContext("2d", { willReadFrequently: true });
+  }
+  
+  if (!styleRenderCtx) {
+    throw new Error("Failed to get 2D context for style render canvas");
+  }
+  
+  return { canvas: styleRenderCanvas, ctx: styleRenderCtx };
 }
 
 export function renderWithEffects(
@@ -262,12 +282,9 @@ export function renderWithEffects(
     poseBounds: context.poseBounds,
   });
 
-  const renderCanvas = document.createElement("canvas");
-  renderCanvas.width = canvasWidth;
-  renderCanvas.height = canvasHeight;
-  const renderCtx = renderCanvas.getContext("2d", { willReadFrequently: true });
-
-  if (!renderCtx) return;
+  const { canvas: renderCanvas, ctx: renderCtx } = getOrCreateStyleCanvas(canvasWidth, canvasHeight);
+  
+  renderCtx.clearRect(0, 0, canvasWidth, canvasHeight);
 
   const dotScale = (activeStyle.params.dotScale as number) || 1.0;
 

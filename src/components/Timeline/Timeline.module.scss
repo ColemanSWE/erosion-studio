@@ -1,9 +1,9 @@
-@import "../../styles/variables";
+@use "../../styles/variables";
 
 .timeline {
   height: 200px;
-  border-top: 2px solid $border-primary;
-  background-color: $bg-surface;
+  border-top: 2px solid variables.$border-primary;
+  background-color: variables.$bg-surface;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -12,10 +12,10 @@
 .controls {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
-  padding: $spacing-md;
-  border-bottom: 1px solid $border-primary;
-  background-color: $bg-elevated;
+  gap: variables.$spacing-sm;
+  padding: variables.$spacing-md;
+  border-bottom: 1px solid variables.$border-primary;
+  background-color: variables.$bg-elevated;
 
   button {
     width: 32px;
@@ -23,31 +23,31 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid $border-primary;
-    background-color: $bg-surface;
-    border-radius: $radius-md;
-    transition: all $transition-fast;
+    border: 1px solid variables.$border-primary;
+    background-color: variables.$bg-surface;
+    border-radius: variables.$radius-md;
+    transition: all variables.$transition-fast;
 
     &:hover {
-      background-color: $bg-overlay;
-      border-color: $accent-primary;
+      background-color: variables.$bg-overlay;
+      border-color: variables.$accent-primary;
     }
   }
 }
 
 .timecode {
-  font-family: $font-mono;
+  font-family: variables.$font-mono;
   font-size: 12px;
-  color: $text-secondary;
+  color: variables.$text-secondary;
   margin-left: auto;
-  padding: 0 $spacing-sm;
+  padding: 0 variables.$spacing-sm;
 }
 
 .trackContainer {
   flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
-  background-color: $bg-base;
+  background-color: variables.$bg-base;
 }
 
 .track {

@@ -6,6 +6,7 @@ import {
   GripVertical,
   Trash2,
   Square,
+  Search,
 } from "lucide-react";
 import EffectParams from "./EffectParams";
 import styles from "./EffectsPanel.module.scss";
@@ -40,6 +41,14 @@ const EFFECT_CATEGORIES = {
     "fragment-glitch",
     "data-destroy",
     "chaos",
+    "xor-blend",
+    "rgb-vertical-xor",
+    "frame-trails",
+    "rgb-color-trails",
+    "feedback-echo",
+    "frame-delay",
+    "alpha-trails",
+    "square-swap",
   ],
   distortion: [
     "displacement",
@@ -49,6 +58,8 @@ const EFFECT_CATEGORIES = {
     "heavy-distortion",
     "melt",
     "perlin-distort",
+    "kaleidoscope",
+    "mirror-blend",
   ],
   color: [
     "invert",
@@ -61,10 +72,22 @@ const EFFECT_CATEGORIES = {
     "vignette",
     "chromatic-aberration",
     "bloom",
+    "rainbow-gradient",
+    "gradient-flash",
   ],
-  retro: ["vhs", "crt", "film-grain", "scanlines", "dither", "scan-sweep"],
+  retro: ["vhs", "crt", "film-grain", "scanlines", "dither", "scan-sweep", "strobe-flash", "rgb-strobe", "posterize-time"],
   noise: ["noise", "bitcrush"],
-  style: ["pixelate", "emoji", "ascii", "matrix", "halftone", "3d-mesh"],
+  style: ["pixelate", "emoji", "ascii", "matrix", "halftone", "3d-mesh", "blob-track"],
+  standard: [
+    "contrast",
+    "brightness",
+    "saturation",
+    "exposure",
+    "sepia",
+    "grayscale",
+    "temperature",
+    "tint",
+  ],
   face: [
     "face-pixelate",
     "face-blur",
@@ -88,10 +111,13 @@ function EffectsPanel({
   onSelectRegion,
   onStartDrawingRegion,
 }: EffectsPanelProps) {
+  const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
   >({
     glitch: true,
+    style: true,
+    standard: true,
   });
   const [expandedEffects, setExpandedEffects] = useState<
     Record<string, boolean>
@@ -203,45 +229,64 @@ function EffectsPanel({
         <h3>Effects</h3>
       </div>
 
-      <div className={styles.categories}>
-        {Object.entries(EFFECT_CATEGORIES).map(([category, effectTypes]) => (
-          <div key={category} className={styles.category}>
-            <button
-              className={styles.categoryHeader}
-              onClick={() => toggleCategory(category)}
-            >
-              {expandedCategories[category] ? (
-                <ChevronDown size={16} />
-              ) : (
-                <ChevronRight size={16} />
-              )}
-              <span>
-                {category.charAt(0).toUpperCase() + category.slice(1)}
-              </span>
-              <span className={styles.count}>{effectTypes.length}</span>
-            </button>
+      <div className={styles.searchContainer}>
+        <Search size={14} className={styles.searchIcon} />
+        <input
+          type="text"
+          placeholder="Search effects..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className={styles.searchInput}
+        />
+      </div>
 
-            {expandedCategories[category] && (
-              <div className={styles.effectList}>
-                {effectTypes.map((type) => {
-                  const disabled = isStyleEffectDisabled && isStyleEffect(type as EffectType);
-                  return (
-                    <button
-                      key={type}
-                      className={styles.effectButton}
-                      onClick={() => handleAddEffect(type as EffectType)}
-                      disabled={disabled}
-                      title={disabled ? "Style effects can only be applied globally" : undefined}
-                    >
-                      <Plus size={14} />
-                      <span>{formatEffectName(type)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
+      <div className={styles.categories}>
+        {Object.entries(EFFECT_CATEGORIES).map(([category, effectTypes]) => {
+          const filteredEffects = effectTypes.filter((type) =>
+            formatEffectName(type).toLowerCase().includes(searchQuery.toLowerCase())
+          );
+
+          if (filteredEffects.length === 0) return null;
+
+          return (
+            <div key={category} className={styles.category}>
+              <button
+                className={styles.categoryHeader}
+                onClick={() => toggleCategory(category)}
+              >
+                {expandedCategories[category] || searchQuery ? (
+                  <ChevronDown size={16} />
+                ) : (
+                  <ChevronRight size={16} />
+                )}
+                <span>
+                  {category.charAt(0).toUpperCase() + category.slice(1)}
+                </span>
+                <span className={styles.count}>{filteredEffects.length}</span>
+              </button>
+
+              {(expandedCategories[category] || searchQuery) && (
+                <div className={styles.effectList}>
+                  {filteredEffects.map((type) => {
+                    const disabled = isStyleEffectDisabled && isStyleEffect(type as EffectType);
+                    return (
+                      <button
+                        key={type}
+                        className={styles.effectButton}
+                        onClick={() => handleAddEffect(type as EffectType)}
+                        disabled={disabled}
+                        title={disabled ? "Style effects can only be applied globally" : undefined}
+                      >
+                        <Plus size={14} />
+                        <span>{formatEffectName(type)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className={styles.activeEffects}>

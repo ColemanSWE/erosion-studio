@@ -28,7 +28,8 @@ interface EffectDefinition {
     | "retro"
     | "noise"
     | "style"
-    | "face";
+    | "face"
+    | "standard";
   processor: EffectProcessor;
 }
 

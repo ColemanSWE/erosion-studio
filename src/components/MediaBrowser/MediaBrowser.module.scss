@@ -1,17 +1,17 @@
-@import "../../styles/variables";
+@use "../../styles/variables";
 
 .mediaBrowser {
   width: 280px;
-  border-right: 2px solid $border-primary;
-  background-color: $bg-surface;
+  border-right: 2px solid variables.$border-primary;
+  background-color: variables.$bg-surface;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
 }
 
 .header {
-  padding: $spacing-md;
-  border-bottom: 1px solid $border-primary;
+  padding: variables.$spacing-md;
+  border-bottom: 1px solid variables.$border-primary;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -21,31 +21,31 @@
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 1px;
-    font-family: $font-mono;
+    font-family: variables.$font-mono;
   }
 }
 
 .importButton {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
-  padding: $spacing-xs $spacing-sm;
-  border: 1px solid $border-primary;
-  background-color: $bg-elevated;
-  border-radius: $radius-md;
+  gap: variables.$spacing-sm;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  border: 1px solid variables.$border-primary;
+  background-color: variables.$bg-elevated;
+  border-radius: variables.$radius-md;
   font-size: 12px;
-  transition: all $transition-fast;
+  transition: all variables.$transition-fast;
 
   &:hover {
-    background-color: $bg-overlay;
-    border-color: $accent-primary;
+    background-color: variables.$bg-overlay;
+    border-color: variables.$accent-primary;
   }
 }
 
 .mediaList {
   flex: 1;
   overflow-y: auto;
-  padding: $spacing-sm;
+  padding: variables.$spacing-sm;
 }
 
 .empty {
@@ -54,16 +54,16 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: $text-tertiary;
+  color: variables.$text-tertiary;
   text-align: center;
-  gap: $spacing-sm;
+  gap: variables.$spacing-sm;
 
   p {
     font-size: 13px;
 
     &.hint {
       font-size: 11px;
-      color: $text-tertiary;
+      color: variables.$text-tertiary;
     }
   }
 }
@@ -71,37 +71,37 @@
 .mediaItem {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
-  padding: $spacing-sm;
-  border: 1px solid $border-secondary;
-  background-color: $bg-elevated;
-  border-radius: $radius-md;
-  margin-bottom: $spacing-sm;
+  gap: variables.$spacing-sm;
+  padding: variables.$spacing-sm;
+  border: 1px solid variables.$border-secondary;
+  background-color: variables.$bg-elevated;
+  border-radius: variables.$radius-md;
+  margin-bottom: variables.$spacing-sm;
   cursor: pointer;
-  transition: all $transition-fast;
+  transition: all variables.$transition-fast;
 
   &:hover {
-    border-color: $border-primary;
-    background-color: $bg-overlay;
+    border-color: variables.$border-primary;
+    background-color: variables.$bg-overlay;
   }
 
   &.selected {
-    border-color: $accent-primary;
-    background-color: $bg-overlay;
+    border-color: variables.$accent-primary;
+    background-color: variables.$bg-overlay;
   }
 }
 
 .thumbnail {
   width: 40px;
   height: 40px;
-  border: 1px solid $border-primary;
-  background-color: $bg-base;
+  border: 1px solid variables.$border-primary;
+  background-color: variables.$bg-base;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: $radius-sm;
+  border-radius: variables.$radius-sm;
   flex-shrink: 0;
-  color: $text-secondary;
+  color: variables.$text-secondary;
 }
 
 .info {
@@ -114,7 +114,7 @@
 
 .name {
   font-size: 12px;
-  font-family: $font-mono;
+  font-family: variables.$font-mono;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -122,18 +122,18 @@
 
 .duration {
   font-size: 10px;
-  color: $text-tertiary;
-  font-family: $font-mono;
+  color: variables.$text-tertiary;
+  font-family: variables.$font-mono;
 }
 
 .removeButton {
-  padding: $spacing-xs;
-  border: 1px solid $border-primary;
-  background-color: $bg-surface;
-  border-radius: $radius-sm;
-  color: $error;
+  padding: variables.$spacing-xs;
+  border: 1px solid variables.$border-primary;
+  background-color: variables.$bg-surface;
+  border-radius: variables.$radius-sm;
+  color: variables.$error;
   opacity: 0;
-  transition: all $transition-fast;
+  transition: all variables.$transition-fast;
   flex-shrink: 0;
 
   .mediaItem:hover & {
@@ -141,7 +141,7 @@
   }
 
   &:hover {
-    background-color: $error;
-    color: $text-inverse;
+    background-color: variables.$error;
+    color: variables.$text-inverse;
   }
 }

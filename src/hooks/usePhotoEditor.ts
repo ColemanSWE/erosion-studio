@@ -21,6 +21,7 @@ export function usePhotoEditor({
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
   const [faceBounds, setFaceBounds] = useState<FaceBounds[]>([]);
+  const [isAnimating, setIsAnimating] = useState(false);
   
   // Buffer canvas for effects processing
   const bufferRef = useRef<HTMLCanvasElement | null>(null);
@@ -31,6 +32,18 @@ export function usePhotoEditor({
     bufferRef.current = buffer;
     bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
   }, []);
+
+  // Check if any effects need animation
+  useEffect(() => {
+    const needsAnimation = effects.some(e => 
+      e.active && [
+        'glitch', 'datamosh', 'vhs', 'scanlines', 'crt', 
+        'chromatic', 'pixelshift', 'rgbshift', 'timewarp',
+        'bitcrush', 'pixelsort', 'slitscan', 'feedback'
+      ].includes(e.type)
+    );
+    setIsAnimating(needsAnimation);
+  }, [effects]);
 
   const renderFrame = useCallback((tick: number) => {
     if (!canvas || !imageRef.current || !bufferRef.current || !bufferCtxRef.current) return;
@@ -83,8 +96,11 @@ export function usePhotoEditor({
     renderFrame(tickRef.current);
 
     tickRef.current++;
-    animationFrameRef.current = requestAnimationFrame(render);
-  }, [canvas, renderFrame]);
+    
+    if (isAnimating) {
+      animationFrameRef.current = requestAnimationFrame(render);
+    }
+  }, [canvas, renderFrame, isAnimating]);
 
   useEffect(() => {
     if (!imagePath) {
@@ -126,9 +142,12 @@ export function usePhotoEditor({
 
   useEffect(() => {
     if (imageRef.current && canvas) {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
       render();
     }
-  }, [effects, render, canvas]);
+  }, [effects, render, canvas, isAnimating]);
 
   const exportImage = useCallback(
     async (format: "png" | "jpeg" | "webp" | "gif" = "png", quality = 0.95) => {

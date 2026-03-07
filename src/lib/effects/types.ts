@@ -51,8 +51,31 @@ export type EffectType =
   | "scan-sweep"
   | "posterize-time"
   | "detection-labels"
+  | "blob-track"
   | "jpeg-artifacts"
-  | "codec-damage";
+  | "codec-damage"
+  | "rainbow-gradient"
+  | "gradient-flash"
+  | "xor-blend"
+  | "rgb-vertical-xor"
+  | "frame-trails"
+  | "rgb-color-trails"
+  | "strobe-flash"
+  | "rgb-strobe"
+  | "kaleidoscope"
+  | "mirror-blend"
+  | "feedback-echo"
+  | "frame-delay"
+  | "alpha-trails"
+  | "square-swap"
+  | "contrast"
+  | "saturation"
+  | "brightness"
+  | "exposure"
+  | "sepia"
+  | "grayscale"
+  | "temperature"
+  | "tint";
 
 export interface Region {
   id: string;
@@ -208,6 +231,18 @@ export function getDefaultParams(type: EffectType): Record<string, unknown> {
         boxThickness: 2,
         showConfidence: false,
       };
+    case "blob-track":
+      return {
+        threshold: 128,
+        minBlobSize: 200,
+        maxBlobs: 30,
+        style: "box",
+        showLabels: true,
+        showConnections: false,
+        flashRate: 5,
+        color: "#00ff88",
+        invert: false,
+      };
     case "jpeg-artifacts":
       return {
         quality: 30,
@@ -221,6 +256,103 @@ export function getDefaultParams(type: EffectType): Record<string, unknown> {
         colorBleed: 50,
         temporal: true,
       };
+    case "rainbow-gradient":
+      return {
+        speed: 1,
+        intensity: 0.5,
+        direction: "horizontal",
+      };
+    case "gradient-flash":
+      return {
+        speed: 2,
+        intensity: 0.7,
+        flashRate: 4,
+      };
+    case "xor-blend":
+      return {
+        intensity: 0.5,
+        frameHistory: 1,
+      };
+    case "rgb-vertical-xor":
+      return {
+        speed: 2,
+        amplitude: 1.0,
+      };
+    case "frame-trails":
+      return {
+        intensity: 0.7,
+        decay: 0.9,
+        maxFrames: 8,
+      };
+    case "rgb-color-trails":
+      return {
+        rDecay: 0.95,
+        gDecay: 0.9,
+        bDecay: 0.85,
+        maxFrames: 6,
+      };
+    case "strobe-flash":
+      return {
+        frequency: 8,
+        intensity: 1.0,
+        pattern: "pulse",
+      };
+    case "rgb-strobe":
+      return {
+        rFreq: 8,
+        gFreq: 6,
+        bFreq: 10,
+        intensity: 0.8,
+      };
+    case "kaleidoscope":
+      return {
+        segments: 6,
+        angle: 0,
+        animated: true,
+      };
+    case "mirror-blend":
+      return {
+        mode: "quadrant",
+        blendAmount: 0.5,
+      };
+    case "feedback-echo":
+      return {
+        delay: 2,
+        feedback: 0.8,
+        scale: 0.95,
+      };
+    case "frame-delay":
+      return {
+        delay: 5,
+        blendMode: "replace",
+      };
+    case "alpha-trails":
+      return {
+        alpha: 0.3,
+        maxFrames: 10,
+      };
+    case "square-swap":
+      return {
+        gridSize: 4,
+        swapPattern: "random",
+        animated: true,
+      };
+    case "contrast":
+      return { value: 100 };
+    case "saturation":
+      return { value: 100 };
+    case "brightness":
+      return { value: 0 };
+    case "exposure":
+      return { value: 0 };
+    case "sepia":
+      return { value: 100 };
+    case "grayscale":
+      return { value: 100 };
+    case "temperature":
+      return { value: 0 };
+    case "tint":
+      return { value: 0 };
     default:
       return {};
   }

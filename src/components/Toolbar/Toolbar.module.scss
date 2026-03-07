@@ -1,12 +1,12 @@
-@import "../../styles/variables";
+@use "../../styles/variables";
 
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: $spacing-md;
-  border-bottom: 2px solid $border-primary;
-  background-color: $bg-surface;
+  padding: variables.$spacing-md;
+  border-bottom: 2px solid variables.$border-primary;
+  background-color: variables.$bg-surface;
   height: 60px;
   flex-shrink: 0;
 }
@@ -16,13 +16,13 @@
 .right {
   display: flex;
   align-items: center;
-  gap: $spacing-md;
+  gap: variables.$spacing-md;
   flex: 1;
 }
 
 .center {
   justify-content: center;
-  gap: $spacing-sm;
+  gap: variables.$spacing-sm;
 }
 
 .right {
@@ -30,7 +30,7 @@
 }
 
 .logo {
-  font-family: $font-mono;
+  font-family: variables.$font-mono;
   font-weight: bold;
   font-size: 16px;
   letter-spacing: -0.5px;
@@ -38,24 +38,24 @@
 
 .projectName {
   font-size: 14px;
-  color: $text-secondary;
-  font-family: $font-mono;
+  color: variables.$text-secondary;
+  font-family: variables.$font-mono;
 }
 
 .button {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
-  padding: $spacing-sm $spacing-md;
-  border: 1px solid $border-primary;
-  background-color: $bg-elevated;
-  border-radius: $radius-md;
-  transition: all $transition-fast;
+  gap: variables.$spacing-sm;
+  padding: variables.$spacing-sm variables.$spacing-md;
+  border: 1px solid variables.$border-primary;
+  background-color: variables.$bg-elevated;
+  border-radius: variables.$radius-md;
+  transition: all variables.$transition-fast;
   font-size: 13px;
 
   &:hover:not(:disabled) {
-    background-color: $bg-overlay;
-    border-color: $accent-primary;
+    background-color: variables.$bg-overlay;
+    border-color: variables.$accent-primary;
   }
 
   &:disabled {
@@ -65,11 +65,11 @@
 
 .exportButton {
   @extend .button;
-  background-color: $accent-primary;
-  color: $text-inverse;
-  border-color: $accent-primary;
+  background-color: variables.$accent-primary;
+  color: variables.$text-inverse;
+  border-color: variables.$accent-primary;
 
   &:hover {
-    background-color: $accent-secondary;
+    background-color: variables.$accent-secondary;
   }
 }
