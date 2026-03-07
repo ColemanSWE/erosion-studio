@@ -1,7 +1,19 @@
 import { create } from "zustand";
-import type { Effect, EffectType, Region } from "../lib/effects/types";
+import type {
+  Effect,
+  EffectType,
+  Region,
+  TimelineClip,
+  EffectParamTrack,
+  Keyframe,
+} from "../lib/effects/types";
 import type { MediaItem } from "../lib/project";
-import { getDefaultParams } from "../lib/effects/types";
+import { getEffectDefinition } from "../lib/effects/effect-registry";
+
+function getDefaultParams(type: EffectType): Record<string, unknown> {
+  const def = getEffectDefinition(type);
+  return def ? { ...def.defaultParams } : {};
+}
 
 interface ProjectState {
   projectName: string;
@@ -12,6 +24,11 @@ interface ProjectState {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
+
+  /** Timeline clips (media placed on the timeline) */
+  clips: TimelineClip[];
+  /** Per-effect param animation tracks */
+  effectParamTracks: EffectParamTrack[];
 
   setProjectName: (name: string) => void;
   addMedia: (item: MediaItem) => void;
@@ -32,6 +49,18 @@ interface ProjectState {
   play: () => void;
   pause: () => void;
   stop: () => void;
+
+  // Timeline clip actions
+  addClip: (clip: TimelineClip) => void;
+  removeClip: (id: string) => void;
+  updateClip: (id: string, updates: Partial<TimelineClip>) => void;
+
+  // Effect param track actions
+  addEffectParamTrack: (track: EffectParamTrack) => void;
+  removeEffectParamTrack: (id: string) => void;
+  addKeyframe: (trackId: string, keyframe: Keyframe) => void;
+  updateKeyframe: (trackId: string, keyframeId: string, updates: Partial<Keyframe>) => void;
+  removeKeyframe: (trackId: string, keyframeId: string) => void;
 }
 
 let effectIdCounter = 0;
@@ -45,6 +74,8 @@ export const useProjectStore = create<ProjectState>((set) => ({
   currentTime: 0,
   duration: 60,
   isPlaying: false,
+  clips: [],
+  effectParamTracks: [],
 
   setProjectName: (name) => set({ projectName: name }),
 
@@ -59,6 +90,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
       media: state.media.filter((m) => m.id !== id),
       selectedMediaId:
         state.selectedMediaId === id ? undefined : state.selectedMediaId,
+      clips: state.clips.filter((c) => c.mediaId !== id),
     })),
 
   selectMedia: (id) => set({ selectedMediaId: id }),
@@ -133,6 +165,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   removeEffect: (id) =>
     set((state) => ({
       effects: state.effects.filter((e) => e.id !== id),
+      effectParamTracks: state.effectParamTracks.filter((t) => t.effectId !== id),
     })),
 
   reorderEffect: (id, newIndex) =>
@@ -170,4 +203,54 @@ export const useProjectStore = create<ProjectState>((set) => ({
   play: () => set({ isPlaying: true }),
   pause: () => set({ isPlaying: false }),
   stop: () => set({ isPlaying: false, currentTime: 0 }),
+
+  // Timeline clips
+  addClip: (clip) =>
+    set((state) => ({ clips: [...state.clips, clip] })),
+  removeClip: (id) =>
+    set((state) => ({ clips: state.clips.filter((c) => c.id !== id) })),
+  updateClip: (id, updates) =>
+    set((state) => ({
+      clips: state.clips.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    })),
+
+  // Effect param tracks
+  addEffectParamTrack: (track) =>
+    set((state) => ({ effectParamTracks: [...state.effectParamTracks, track] })),
+  removeEffectParamTrack: (id) =>
+    set((state) => ({
+      effectParamTracks: state.effectParamTracks.filter((t) => t.id !== id),
+    })),
+  addKeyframe: (trackId, keyframe) =>
+    set((state) => ({
+      effectParamTracks: state.effectParamTracks.map((t) =>
+        t.id === trackId
+          ? {
+              ...t,
+              keyframes: [...t.keyframes, keyframe].sort((a, b) => a.time - b.time),
+            }
+          : t,
+      ),
+    })),
+  updateKeyframe: (trackId, keyframeId, updates) =>
+    set((state) => ({
+      effectParamTracks: state.effectParamTracks.map((t) =>
+        t.id === trackId
+          ? {
+              ...t,
+              keyframes: t.keyframes
+                .map((k) => (k.id === keyframeId ? { ...k, ...updates } : k))
+                .sort((a, b) => a.time - b.time),
+            }
+          : t,
+      ),
+    })),
+  removeKeyframe: (trackId, keyframeId) =>
+    set((state) => ({
+      effectParamTracks: state.effectParamTracks.map((t) =>
+        t.id === trackId
+          ? { ...t, keyframes: t.keyframes.filter((k) => k.id !== keyframeId) }
+          : t,
+      ),
+    })),
 }));

@@ -11,7 +11,7 @@ import {
 import EffectParams from "./EffectParams";
 import styles from "./EffectsPanel.module.scss";
 import type { Effect, EffectType, Region } from "../../lib/effects/types";
-import { isStyleEffect } from "../../lib/effects/effect-registry";
+import { isStyleEffect, getAllEffects } from "../../lib/effects/effect-registry";
 
 interface EffectsPanelProps {
   effects: Effect[];
@@ -26,78 +26,7 @@ interface EffectsPanelProps {
   onStartDrawingRegion: () => void;
 }
 
-const EFFECT_CATEGORIES = {
-  glitch: [
-    "glitch",
-    "motion-smear",
-    "block-corrupt",
-    "pixel-sort",
-    "datamosh",
-    "jpeg-artifacts",
-    "codec-damage",
-    "rgb-channel-separation",
-    "block-shoving",
-    "screen-tear",
-    "fragment-glitch",
-    "data-destroy",
-    "chaos",
-    "xor-blend",
-    "rgb-vertical-xor",
-    "frame-trails",
-    "rgb-color-trails",
-    "feedback-echo",
-    "frame-delay",
-    "alpha-trails",
-    "square-swap",
-  ],
-  distortion: [
-    "displacement",
-    "wave-distortion",
-    "twirl",
-    "ripple",
-    "heavy-distortion",
-    "melt",
-    "perlin-distort",
-    "kaleidoscope",
-    "mirror-blend",
-  ],
-  color: [
-    "invert",
-    "posterize",
-    "solarize",
-    "duotone",
-    "color-shift",
-    "channel-swap",
-    "thermal",
-    "vignette",
-    "chromatic-aberration",
-    "bloom",
-    "rainbow-gradient",
-    "gradient-flash",
-  ],
-  retro: ["vhs", "crt", "film-grain", "scanlines", "dither", "scan-sweep", "strobe-flash", "rgb-strobe", "posterize-time"],
-  noise: ["noise", "bitcrush"],
-  style: ["pixelate", "emoji", "ascii", "matrix", "halftone", "3d-mesh", "blob-track"],
-  standard: [
-    "contrast",
-    "brightness",
-    "saturation",
-    "exposure",
-    "sepia",
-    "grayscale",
-    "temperature",
-    "tint",
-  ],
-  face: [
-    "face-pixelate",
-    "face-blur",
-    "face-color-replace",
-    "face-eye-censor",
-    "face-mouth-censor",
-    "face-landmark-glitch",
-    "detection-labels",
-  ],
-} as const;
+
 
 function EffectsPanel({
   effects,
@@ -111,6 +40,13 @@ function EffectsPanel({
   onSelectRegion,
   onStartDrawingRegion,
 }: EffectsPanelProps) {
+  const allDefs = getAllEffects();
+  const EFFECT_CATEGORIES = allDefs.reduce((acc, def) => {
+    if (!acc[def.category]) acc[def.category] = [];
+    acc[def.category].push(def.type);
+    return acc;
+  }, {} as Record<string, string[]>);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>

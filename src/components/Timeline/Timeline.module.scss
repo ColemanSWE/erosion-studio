@@ -1,0 +1,454 @@
+@use "../../styles/variables";
+
+// ─── Layout ──────────────────────────────────────────────────────────────────
+.timeline {
+  display: flex;
+  flex-direction: column;
+  background: variables.$bg-surface;
+  border-top: 1px solid variables.$border-primary;
+  user-select: none;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.timelineHeader {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-sm;
+  padding: 0 variables.$spacing-sm;
+  height: 28px;
+  background: variables.$bg-base;
+  border-bottom: 1px solid variables.$border-secondary;
+  flex-shrink: 0;
+}
+
+.timelineTitle {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  font-weight: 600;
+  color: variables.$text-secondary;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  flex: 1;
+}
+
+.headerBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid variables.$border-secondary;
+  color: variables.$text-secondary;
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  cursor: pointer;
+  transition: color variables.$transition-fast, border-color variables.$transition-fast;
+
+  &:hover {
+    color: variables.$text-primary;
+    border-color: variables.$border-primary;
+  }
+
+  &.active {
+    color: variables.$text-primary;
+    border-color: variables.$accent-primary;
+  }
+}
+
+.zoomControls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.zoomLabel {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-tertiary;
+  min-width: 36px;
+  text-align: center;
+}
+
+// ─── Body ─────────────────────────────────────────────────────────────────────
+.timelineBody {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+// ─── Labels column ────────────────────────────────────────────────────────────
+.labelsColumn {
+  width: 170px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 1px solid variables.$border-secondary;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+.labelsHeader {
+  height: 28px;  // matches ruler height
+  border-bottom: 1px solid variables.$border-secondary;
+  background: variables.$bg-elevated;
+}
+
+// ─── Tracks area ─────────────────────────────────────────────────────────────
+.tracksArea {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+
+  &::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: variables.$bg-base;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: variables.$border-primary;
+  }
+}
+
+// ─── Ruler ────────────────────────────────────────────────────────────────────
+.ruler {
+  position: sticky;
+  top: 0;
+  height: 28px;
+  background: variables.$bg-elevated;
+  border-bottom: 1px solid variables.$border-secondary;
+  z-index: 5;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.rulerCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+// ─── Playhead ────────────────────────────────────────────────────────────────
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #ff3366;
+  pointer-events: none;
+  z-index: 10;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -5px;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid #ff3366;
+  }
+}
+
+// ─── Track rows ──────────────────────────────────────────────────────────────
+.trackRow {
+  display: flex;
+  height: 40px;
+  border-bottom: 1px solid variables.$border-secondary;
+  position: relative;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.02);
+  }
+}
+
+.trackRowTall {
+  height: 56px;
+}
+
+// Track label (left side in labelsColumn, mirrored height)
+.trackLabel {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-xs;
+  padding: 0 variables.$spacing-sm;
+  height: 40px;
+  border-bottom: 1px solid variables.$border-secondary;
+  background: variables.$bg-elevated;
+  cursor: pointer;
+
+  &:hover {
+    background: variables.$bg-overlay;
+  }
+
+  &.active {
+    background: variables.$bg-overlay;
+    border-left: 2px solid variables.$accent-primary;
+  }
+}
+
+.trackLabelTall {
+  height: 56px;
+}
+
+.trackLabelText {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-secondary;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.trackLabelActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity variables.$transition-fast;
+
+  .trackLabel:hover & {
+    opacity: 1;
+  }
+}
+
+.trackIcon {
+  color: variables.$text-tertiary;
+  flex-shrink: 0;
+}
+
+.trackLabelBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: none;
+  color: variables.$text-tertiary;
+  cursor: pointer;
+  padding: 0;
+
+  &:hover {
+    color: variables.$text-primary;
+  }
+
+  &.danger:hover {
+    color: variables.$error;
+  }
+}
+
+// ─── Drop zone ───────────────────────────────────────────────────────────────
+.dropZone {
+  position: relative;
+  flex: 1;
+  height: 100%;
+
+  &.dragOver {
+    background: rgba(255, 255, 255, 0.05);
+    outline: 1px dashed variables.$border-accent;
+    outline-offset: -2px;
+  }
+}
+
+// ─── Media Clips ─────────────────────────────────────────────────────────────
+.clip {
+  position: absolute;
+  top: 4px;
+  height: calc(100% - 8px);
+  background: #1a3050;
+  border: 1px solid #2a5080;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  cursor: grab;
+  overflow: hidden;
+  min-width: 4px;
+
+  &:hover {
+    border-color: #4a90d9;
+  }
+
+  &.selected {
+    border-color: variables.$accent-primary;
+    background: #1e3a5a;
+  }
+}
+
+.clipName {
+  font-family: variables.$font-mono;
+  font-size: 9px;
+  color: #9ab;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.clipHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  background: transparent;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  &.left { left: 0; }
+  &.right { right: 0; }
+}
+
+// ─── Effect range bar ────────────────────────────────────────────────────────
+.effectBar {
+  position: absolute;
+  top: 8px;
+  height: calc(100% - 16px);
+  background: #1a3030;
+  border: 1px solid #2a6060;
+  border-radius: 2px;
+  cursor: grab;
+  overflow: hidden;
+  min-width: 4px;
+
+  &:active { cursor: grabbing; }
+  &:hover { border-color: #4ad0d0; }
+}
+
+.effectBarFull {
+  top: 0;
+  height: 100%;
+  border-radius: 0;
+}
+
+.effectBarLabel {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: variables.$font-mono;
+  font-size: 9px;
+  color: #6db;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.effectBarHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  background: transparent;
+
+  &:hover { background: rgba(255, 255, 255, 0.15); }
+  &.left { left: 0; border-left: 2px solid #4ad0d0; }
+  &.right { right: 0; border-right: 2px solid #4ad0d0; }
+}
+
+// ─── Keyframes ────────────────────────────────────────────────────────────────
+.keyframeRow {
+  height: 24px;
+  border-top: 1px solid variables.$border-secondary;
+  position: relative;
+}
+
+.keyframe {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: #ffaa00;
+  border: 1px solid #ffcc44;
+  cursor: pointer;
+  z-index: 2;
+
+  &:hover {
+    background: #ffcc00;
+    border-color: #fff;
+  }
+
+  &.selected {
+    background: #fff;
+    border-color: #ffcc44;
+  }
+}
+
+// ─── Empty state ─────────────────────────────────────────────────────────────
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: variables.$spacing-sm;
+  color: variables.$text-tertiary;
+  font-family: variables.$font-mono;
+  font-size: 11px;
+}
+
+// ─── Tooltip / Popup ─────────────────────────────────────────────────────────
+.keyframePopup {
+  position: absolute;
+  background: variables.$bg-overlay;
+  border: 1px solid variables.$border-primary;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  z-index: 100;
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-primary;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: variables.$shadow-md;
+}
+
+.keyframeInput {
+  background: variables.$bg-base;
+  border: 1px solid variables.$border-primary;
+  color: variables.$text-primary;
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  padding: 2px 4px;
+  width: 80px;
+
+  &:focus {
+    outline: none;
+    border-color: #ffaa00;
+  }
+}
+
+// ─── Add keyframe button ─────────────────────────────────────────────────────
+.addKeyframeBtn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  border: 1px solid variables.$border-secondary;
+  color: variables.$text-tertiary;
+  cursor: pointer;
+  font-size: 10px;
+  z-index: 3;
+
+  &:hover {
+    color: #ffaa00;
+    border-color: #ffaa00;
+  }
+}

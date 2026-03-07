@@ -6,7 +6,6 @@ import { PALETTES, PaletteKey } from "./palettes";
 import { renderMesh } from "./mesh-renderer";
 
 import "./processors";
-import "./standard-processors";
 
 import { FaceBounds, HandBounds, PoseBounds } from "./face-detector";
 

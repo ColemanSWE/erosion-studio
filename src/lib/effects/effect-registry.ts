@@ -1,4 +1,4 @@
-import { Effect, EffectType, getDefaultParams } from "./types";
+import { Effect, EffectType, EffectParamConfig } from "./types";
 
 import { FaceBounds, HandBounds, PoseBounds } from "./face-detector";
 
@@ -18,7 +18,7 @@ export type EffectProcessor = (
   params: Record<string, unknown>
 ) => void;
 
-interface EffectDefinition {
+export interface EffectDefinition {
   type: EffectType;
   label: string;
   category:
@@ -30,6 +30,8 @@ interface EffectDefinition {
     | "style"
     | "face"
     | "standard";
+  defaultParams: Record<string, unknown>;
+  paramsConfig: EffectParamConfig[];
   processor: EffectProcessor;
 }
 
@@ -65,7 +67,7 @@ export function applyEffect(
   const definition = registry.get(effect.type);
   if (!definition) return;
 
-  const params = { ...getDefaultParams(effect.type), ...effect.params };
+  const params = { ...definition.defaultParams, ...effect.params };
   definition.processor(data, config, params);
 }
 
@@ -79,17 +81,8 @@ export function applyEffects(
   }
 }
 
-const STYLE_EFFECT_TYPES: EffectType[] = [
-  "pixelate",
-  "emoji",
-  "ascii",
-  "matrix",
-  "halftone",
-  "3d-mesh",
-];
-
 export function isStyleEffect(type: EffectType): boolean {
-  return STYLE_EFFECT_TYPES.includes(type);
+  return getEffectDefinition(type)?.category === "style";
 }
 
 export function getProcessingEffects(effects: Effect[]): Effect[] {
