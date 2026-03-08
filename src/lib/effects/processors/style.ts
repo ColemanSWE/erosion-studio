@@ -84,7 +84,7 @@ registerEffect({
 registerEffect({
   type: "detection-labels",
   label: "Detection Labels",
-  category: "style",
+  category: "standard",
     defaultParams: {
         showFaces: true,
         showHands: true,
@@ -203,7 +203,7 @@ registerEffect({
 registerEffect({
   type: "blob-track",
   label: "Blob Track",
-  category: "style",
+  category: "standard",
     defaultParams: {
         threshold: 128,
         minBlobSize: 200,

@@ -22,6 +22,7 @@ import styles from "./App.module.scss";
 import previewStyles from "./Preview/Preview.module.scss";
 import { Camera, Video, Square as StopIcon } from "lucide-react";
 import { resolveEffectsAtTime } from "../lib/timeline";
+import "../lib/effects/processors";
 
 const REGION_COLORS = ["#ff3366", "#33ccff", "#ffcc00", "#66ff66", "#cc66ff", "#ff9933"];
 
@@ -90,31 +91,38 @@ function App() {
     canRedo,
   } = useHistory(projectSnapshot);
 
-  const { exportVideo } = useExport();
+  const { exportVideo, exportImage: exportImageFile } = useExport();
 
   // ─── Playback Heartbeat ──────────────────────────────────────────────────
+  // Use refs so the rAF loop doesn't tear down on every frame
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
+  const durationRef = useRef(duration);
+  durationRef.current = duration;
+
   useEffect(() => {
     if (!isPlaying) return;
 
+    let rafId: number;
     let lastTime = performance.now();
+
     const tick = (now: number) => {
-      if (!isPlaying) return;
-      
       const dt = (now - lastTime) / 1000;
       lastTime = now;
-      
-      const nextTime = currentTime + dt;
-      if (nextTime >= duration) {
-        setCurrentTime(duration);
+
+      const next = currentTimeRef.current + dt;
+      if (next >= durationRef.current) {
+        setCurrentTime(durationRef.current);
         pause();
       } else {
-        setCurrentTime(nextTime);
-        requestAnimationFrame(tick);
+        setCurrentTime(next);
+        rafId = requestAnimationFrame(tick);
       }
     };
-    const id = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(id);
-  }, [isPlaying, duration, currentTime, setCurrentTime, pause]);
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, setCurrentTime, pause]);
 
   // ─── Timeline Rendering logic ─────────────────────────────────────────────
   const activeClip = clips.find(
@@ -146,6 +154,10 @@ function App() {
     regions,
   });
 
+  const handleVideoDurationChange = useCallback((dur: number) => {
+    if (dur > durationRef.current) setDuration(dur);
+  }, [setDuration]);
+
   useVideoPlayer({
     canvas,
     effects: resolvedEffects,
@@ -155,9 +167,7 @@ function App() {
       ? currentTime - activeClip.startTime // Local time within clip
       : currentTime,
     regions,
-    onDurationChange: (dur) => {
-       if (!activeClip && dur > duration) setDuration(dur);
-    },
+    onDurationChange: handleVideoDurationChange,
   });
 
   const { stream, videoRef: _videoRef } = useCameraPlayer({
@@ -238,23 +248,26 @@ function App() {
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
       const fileName = filePath.split("/").pop() || "Unknown";
-      const isVideo = /\.(mp4|mov|webm)$/i.test(fileName);
+      const isVideo = /\.(mp4|mov|webm|avi|mkv)$/i.test(fileName);
+
+      let videoDuration: number | undefined;
+      if (isVideo && window.electron?.ffmpeg) {
+        const info = await window.electron.ffmpeg.getVideoInfo(filePath);
+        if (info.success && info.duration && isFinite(info.duration)) {
+          videoDuration = info.duration;
+          if (info.duration > duration) setDuration(info.duration);
+        }
+      }
 
       const newMedia = {
         id: `media-${Date.now()}`,
         type: isVideo ? "video" : "image",
         name: fileName,
         path: filePath,
+        duration: videoDuration,
       } as const;
 
       addMedia(newMedia);
-
-      if (isVideo && window.electron.ffmpeg) {
-        const info = await window.electron.ffmpeg.getVideoInfo(filePath);
-        if (info.success && info.duration) {
-           if (info.duration > duration) setDuration(info.duration);
-        }
-      }
     }
   };
 
@@ -269,6 +282,39 @@ function App() {
     selectMedia(newMedia.id);
   };
 
+  const handleDropFiles = useCallback(async (files: FileList) => {
+    for (const file of Array.from(files)) {
+      const isVideo = /\.(mp4|mov|webm|avi|mkv)$/i.test(file.name);
+      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
+      if (!isVideo && !isImage) continue;
+
+      // Build a pseudo file:// path from the file object
+      // In Electron, File objects have a `path` property
+      const filePath = (file as any).path || file.name;
+
+      let videoDuration: number | undefined;
+      if (isVideo && window.electron?.ffmpeg && filePath.startsWith("/")) {
+        try {
+          const info = await window.electron.ffmpeg.getVideoInfo(filePath);
+          if (info.success && info.duration && isFinite(info.duration)) {
+            videoDuration = info.duration;
+            if (info.duration > duration) setDuration(info.duration);
+          }
+        } catch {}
+      }
+
+      const newMedia = {
+        id: `media-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        type: isVideo ? "video" : "image",
+        name: file.name,
+        path: filePath.startsWith("/") ? filePath : URL.createObjectURL(file),
+        duration: videoDuration,
+      } as const;
+
+      addMedia(newMedia);
+    }
+  }, [addMedia, duration, setDuration]);
+
   const handleExport = async () => {
     if (!canvas) {
       alert("No canvas available for export");
@@ -277,11 +323,21 @@ function App() {
 
     try {
       let result;
-      
+
       if (renderSource?.type === "video") {
-         result = await exportVideo(canvas, effects, duration, { format: "mp4", quality: 1.0, fps: 30 });
+        pause();
+        setCurrentTime(0);
+        // Brief delay to allow the video player to seek
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        play();
+
+        // Use webm — universally supported by MediaRecorder on all platforms
+        result = await exportVideo(canvas, effects, duration, { format: "webm", quality: 0.9, fps: 30 });
+        
+        pause();
       } else {
-         result = await exportImage();
+        // Image or camera snapshot → still image export
+        result = await exportImageFile(canvas, "png");
       }
 
       if (!result) return;
@@ -377,6 +433,7 @@ function App() {
             onAddCamera={handleAddCamera}
             onSelect={(item) => selectMedia(item.id)}
             onRemove={removeMedia}
+            onDropFiles={handleDropFiles}
           />
         )}
 

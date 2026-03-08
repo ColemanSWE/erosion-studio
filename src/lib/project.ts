@@ -67,6 +67,14 @@ export async function saveProject(
     }
 
     const json = serializeProject(project);
+    // Encode JSON string to byte array
+    const encoder = new TextEncoder();
+    const bytes = Array.from(encoder.encode(json));
+    const writeResult = await window.electron.file.writeBinary(result.filePath, bytes);
+
+    if (!writeResult.success) {
+      return { success: false, error: writeResult.error };
+    }
 
     return {
       success: true,

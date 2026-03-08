@@ -48,7 +48,7 @@ interface TimelineProps {
   onStop: () => void;
 }
 
-const MIN_ZOOM = 10;
+const MIN_ZOOM = 2;
 const MAX_ZOOM = 400;
 const DEFAULT_ZOOM = 60; // 60px per second = 1min fills ~3600px
 
@@ -110,18 +110,29 @@ export function Timeline({
     [],
   );
 
-  // Wheel to zoom (horizontal)
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      setZoom((z) =>
-        Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z * (e.deltaY < 0 ? 1.2 : 0.85))),
-      );
-    }
-  }, []);
+  // Wheel to zoom (horizontal) — must use native listener with passive:false
+  // because React mounts onWheel as passive by default, blocking preventDefault()
+  useEffect(() => {
+    const el = tracksAreaRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        setZoom((z) =>
+          Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z * (e.deltaY < 0 ? 1.2 : 0.85)))
+        );
+      }
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []); // tracksAreaRef.current is stable after mount
 
   const activeEffects = effects.filter((e) => e.active);
-  const totalWidth = Math.max(duration * zoom + 120, 400);
+  // Extend duration to cover all placed clips
+  const maxClipEnd = clips.reduce((max, c) => Math.max(max, c.endTime), duration);
+  const effectiveDuration = Math.max(duration, maxClipEnd);
+  // Add generous right padding so the ruler always extends well past all content
+  const totalWidth = Math.max(effectiveDuration * zoom + 500, 800);
   const LABEL_W = 170;
   const RULER_H = 28;
   const ROW_H = 40;
@@ -254,11 +265,10 @@ export function Timeline({
           ref={tracksAreaRef}
           className={styles.tracksArea}
           onScroll={syncScroll}
-          onWheel={handleWheel}
         >
           {/* Sticky ruler */}
           <TimelineRuler
-            duration={duration}
+            duration={effectiveDuration + (500 / zoom)}
             currentTime={currentTime}
             zoom={zoom}
             onSeek={onSeek}

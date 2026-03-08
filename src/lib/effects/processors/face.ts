@@ -8,7 +8,11 @@ registerEffect({
   label: "Eye Censor Bar",
   category: "face",
     defaultParams: { style: "solid", color: "#000000", thickness: 1.5 },
-  paramsConfig: [],
+  paramsConfig: [
+    { key: "style", label: "Style", type: "select", options: ["solid", "pixelated", "blurred"] },
+    { key: "color", label: "Color", type: "color" },
+    { key: "thickness", label: "Thickness", type: "slider", min: 0.5, max: 5.0, step: 0.1 }
+  ],
   processor: (data, { width, height, faceBounds = [] }, params) => {
     const style = (params.style as string) || "solid";
     const color = (params.color as string) || "#000000";
@@ -205,7 +209,11 @@ registerEffect({
   label: "Mouth Censor Bar",
   category: "face",
     defaultParams: { style: "solid", color: "#000000", thickness: 1.2 },
-  paramsConfig: [],
+  paramsConfig: [
+    { key: "style", label: "Style", type: "select", options: ["solid", "pixelated", "blurred"] },
+    { key: "color", label: "Color", type: "color" },
+    { key: "thickness", label: "Thickness", type: "slider", min: 0.5, max: 4.0, step: 0.1 }
+  ],
   processor: (data, { width, height, faceBounds = [] }, params) => {
     const style = (params.style as string) || "solid";
     const color = (params.color as string) || "#000000";
@@ -374,7 +382,11 @@ registerEffect({
   label: "Landmark Glitch",
   category: "face",
     defaultParams: { intensity: 50, lineCount: 15, color: "#00ff88" },
-  paramsConfig: [],
+  paramsConfig: [
+    { key: "intensity", label: "Intensity", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "lineCount", label: "Line Count", type: "slider", min: 1, max: 50, step: 1 },
+    { key: "color", label: "Color", type: "color" }
+  ],
   processor: (data, { width, height, faceBounds = [], time = 0 }, params) => {
     const intensity = (params.intensity as number) || 50;
     const lineCount = (params.lineCount as number) || 15;
@@ -475,6 +487,219 @@ registerEffect({
             Math.floor(pseudoRandom(seed + i * 400) * 2)
           );
           drawLine(x1, y1, x2, y2, thickness);
+        }
+      }
+    }
+  },
+});
+
+registerEffect({
+  type: "face-pixelate",
+  label: "Face Pixelate",
+  category: "face",
+  defaultParams: { blockSize: 16 },
+  paramsConfig: [
+    { key: "blockSize", label: "Block Size", type: "slider", min: 4, max: 100, step: 1 }
+  ],
+  processor: (data, { width, height, faceBounds = [] }, params) => {
+    const blockSize = (params.blockSize as number) || 16;
+    if (faceBounds.length === 0) return;
+    const source = new Uint8ClampedArray(data);
+
+    for (const face of faceBounds) {
+      const faceX = Math.floor(face.x * width);
+      const faceY = Math.floor(face.y * height);
+      const faceW = Math.floor(face.width * width);
+      const faceH = Math.floor(face.height * height);
+
+      const startX = Math.max(0, faceX);
+      const startY = Math.max(0, faceY);
+      const endX = Math.min(width, faceX + faceW);
+      const endY = Math.min(height, faceY + faceH);
+
+      for (let by = startY; by < endY; by += blockSize) {
+        for (let bx = startX; bx < endX; bx += blockSize) {
+          const blockEndX = Math.min(bx + blockSize, endX);
+          const blockEndY = Math.min(by + blockSize, endY);
+
+          let rSum = 0, gSum = 0, bSum = 0, count = 0;
+          for (let y = by; y < blockEndY; y++) {
+            for (let x = bx; x < blockEndX; x++) {
+              if (isPointInFaceBounds(x, y, width, height, face)) {
+                const i = (y * width + x) * 4;
+                rSum += source[i];
+                gSum += source[i + 1];
+                bSum += source[i + 2];
+                count++;
+              }
+            }
+          }
+
+          if (count > 0) {
+            const r = Math.round(rSum / count);
+            const g = Math.round(gSum / count);
+            const b = Math.round(bSum / count);
+
+            for (let y = by; y < blockEndY; y++) {
+              for (let x = bx; x < blockEndX; x++) {
+                if (isPointInFaceBounds(x, y, width, height, face)) {
+                  const i = (y * width + x) * 4;
+                  data[i] = r;
+                  data[i + 1] = g;
+                  data[i + 2] = b;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+});
+
+registerEffect({
+  type: "face-blur",
+  label: "Face Blur",
+  category: "face",
+  defaultParams: { radius: 20 },
+  paramsConfig: [
+    { key: "radius", label: "Blur Radius", type: "slider", min: 1, max: 100, step: 1 }
+  ],
+  processor: (data, { width, height, faceBounds = [] }, params) => {
+    const radius = (params.radius as number) || 20;
+    if (faceBounds.length === 0 || radius <= 0) return;
+
+    const source = new Uint8ClampedArray(data);
+    const boxPasses = 3;
+    const boxRadius = Math.ceil(radius / boxPasses);
+
+    for (const face of faceBounds) {
+      const padding = 0.15;
+      const faceX = Math.floor((face.x - face.width * padding) * width);
+      const faceY = Math.floor((face.y - face.height * padding) * height);
+      const faceW = Math.floor(face.width * (1 + padding * 2) * width);
+      const faceH = Math.floor(face.height * (1 + padding * 2) * height);
+
+      const startX = Math.max(0, faceX);
+      const startY = Math.max(0, faceY);
+      const endX = Math.min(width, faceX + faceW);
+      const endY = Math.min(height, faceY + faceH);
+      const regionW = endX - startX;
+      const regionH = endY - startY;
+
+      if (regionW <= 0 || regionH <= 0) continue;
+
+      const regionSize = regionW * regionH * 4;
+      let current = new Uint8ClampedArray(regionSize);
+      let temp = new Uint8ClampedArray(regionSize);
+
+      for (let y = 0; y < regionH; y++) {
+        for (let x = 0; x < regionW; x++) {
+          const srcI = ((startY + y) * width + (startX + x)) * 4;
+          const dstI = (y * regionW + x) * 4;
+          current[dstI] = source[srcI];
+          current[dstI + 1] = source[srcI + 1];
+          current[dstI + 2] = source[srcI + 2];
+          current[dstI + 3] = source[srcI + 3];
+        }
+      }
+
+      for (let pass = 0; pass < boxPasses; pass++) {
+        for (let y = 0; y < regionH; y++) {
+          for (let x = 0; x < regionW; x++) {
+            let rSum = 0, gSum = 0, bSum = 0, count = 0;
+            const minKX = Math.max(0, x - boxRadius);
+            const maxKX = Math.min(regionW - 1, x + boxRadius);
+            for (let kx = minKX; kx <= maxKX; kx++) {
+              const i = (y * regionW + kx) * 4;
+              rSum += current[i]; gSum += current[i + 1]; bSum += current[i + 2];
+              count++;
+            }
+            const i = (y * regionW + x) * 4;
+            temp[i] = Math.round(rSum / count);
+            temp[i + 1] = Math.round(gSum / count);
+            temp[i + 2] = Math.round(bSum / count);
+            temp[i + 3] = current[i + 3];
+          }
+        }
+        for (let x = 0; x < regionW; x++) {
+          for (let y = 0; y < regionH; y++) {
+            let rSum = 0, gSum = 0, bSum = 0, count = 0;
+            const minKY = Math.max(0, y - boxRadius);
+            const maxKY = Math.min(regionH - 1, y + boxRadius);
+            for (let ky = minKY; ky <= maxKY; ky++) {
+              const i = (ky * regionW + x) * 4;
+              rSum += temp[i]; gSum += temp[i + 1]; bSum += temp[i + 2];
+              count++;
+            }
+            const i = (y * regionW + x) * 4;
+            current[i] = Math.round(rSum / count);
+            current[i + 1] = Math.round(gSum / count);
+            current[i + 2] = Math.round(bSum / count);
+          }
+        }
+      }
+
+      for (let y = 0; y < regionH; y++) {
+        for (let x = 0; x < regionW; x++) {
+          const dstI = ((startY + y) * width + (startX + x)) * 4;
+          const srcI = (y * regionW + x) * 4;
+          data[dstI] = current[srcI];
+          data[dstI + 1] = current[srcI + 1];
+          data[dstI + 2] = current[srcI + 2];
+        }
+      }
+    }
+  },
+});
+
+registerEffect({
+  type: "face-color-replace",
+  label: "Face Color Replace",
+  category: "face",
+  defaultParams: { mode: "solid", color: "#ff00ff" },
+  paramsConfig: [
+    { key: "mode", label: "Mode", type: "select", options: ["solid", "gradient", "thermal"] },
+    { key: "color", label: "Color", type: "color" }
+  ],
+  processor: (data, { width, height, faceBounds = [] }, params) => {
+    const mode = (params.mode as string) || "solid";
+    const color = (params.color as string) || "#ff00ff";
+    if (faceBounds.length === 0) return;
+
+    const [r, g, b] = hexToRgb(color).r !== undefined 
+      ? [hexToRgb(color).r, hexToRgb(color).g, hexToRgb(color).b]
+      : [255, 0, 255];
+
+    for (const face of faceBounds) {
+      const faceX = Math.floor(face.x * width);
+      const faceY = Math.floor(face.y * height);
+      const faceW = Math.floor(face.width * width);
+      const faceH = Math.floor(face.height * height);
+
+      const startX = Math.max(0, faceX);
+      const startY = Math.max(0, faceY);
+      const endX = Math.min(width, faceX + faceW);
+      const endY = Math.min(height, faceY + faceH);
+
+      for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+          if (!isPointInFaceBounds(x, y, width, height, face)) continue;
+          const i = (y * width + x) * 4;
+          const origR = data[i], origG = data[i + 1], origB = data[i + 2];
+          if (mode === "solid") {
+            data[i] = r; data[i + 1] = g; data[i + 2] = b;
+          } else if (mode === "gradient") {
+            const brightness = (origR + origG + origB) / 3 / 255;
+            data[i] = Math.round(r * brightness);
+            data[i + 1] = Math.round(g * brightness);
+            data[i + 2] = Math.round(b * brightness);
+          } else if (mode === "thermal") {
+            const brightness = (origR + origG + origB) / 3 / 255;
+            data[i] = Math.round(255 * brightness);
+            data[i + 1] = Math.round(255 * brightness * 0.5);
+            data[i + 2] = Math.round(255 * (1 - brightness));
+          }
         }
       }
     }

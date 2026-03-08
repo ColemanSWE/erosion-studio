@@ -7,6 +7,14 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  position: relative;
+  transition: border-color 0.15s ease;
+
+  &.dragOver {
+    border-right-color: variables.$accent-primary;
+    outline: 2px dashed variables.$accent-primary;
+    outline-offset: -4px;
+  }
 }
 
 .header {
@@ -144,4 +152,26 @@
     background-color: variables.$error;
     color: variables.$text-inverse;
   }
+}
+
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  background: variables.$accent-primary;
+  opacity: 0.15;
+  border-radius: variables.$radius-md;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: variables.$spacing-sm;
+  color: variables.$accent-primary;
+  font-family: variables.$font-mono;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.dropHint {
+  outline: 2px dashed variables.$accent-primary;
+  border-radius: variables.$radius-md;
 }

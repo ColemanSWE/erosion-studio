@@ -53,6 +53,7 @@ function EffectsPanel({
   >({
     glitch: true,
     style: true,
+    face: true,
     standard: true,
   });
   const [expandedEffects, setExpandedEffects] = useState<

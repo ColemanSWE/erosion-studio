@@ -34,10 +34,11 @@ export function MediaTrack({
     media.find((m) => m.id === mediaId)?.name ?? "Unknown";
 
   const getMediaDuration = (mediaId: string) => {
-    // Images default to 5s on timeline; videos use duration from store
     const m = media.find((m) => m.id === mediaId);
     if (!m) return 5;
-    return m.type === "video" ? 10 : 5; // fallback; real duration set on drop
+    // Use actual stored duration if available, fallback to type-based defaults
+    if (m.duration && m.duration > 0 && isFinite(m.duration)) return m.duration;
+    return m.type === "image" ? 5 : 10;
   };
 
   // ─── Drop from MediaBrowser ───────────────────────────────────────────────
@@ -85,8 +86,20 @@ export function MediaTrack({
     (e: React.DragEvent, clipId: string) => {
       e.dataTransfer.setData("application/timeline-clip", clipId);
       e.dataTransfer.effectAllowed = "move";
+      
+      const dropRefEl = dropRef.current;
+      if (dropRefEl) {
+        const rect = dropRefEl.getBoundingClientRect();
+        const mouseXInTrack = e.clientX - rect.left;
+        const clip = clips.find(c => c.id === clipId);
+        if (clip) {
+          const clipStartXInTrack = clip.startTime * zoom;
+          const offsetX = mouseXInTrack - clipStartXInTrack;
+          e.dataTransfer.setData("application/timeline-clip-offset", String(offsetX));
+        }
+      }
     },
-    [],
+    [clips, zoom],
   );
 
   const handleClipDrop = useCallback(
@@ -100,8 +113,11 @@ export function MediaTrack({
       const clip = clips.find((c) => c.id === clipId);
       if (!clip) return;
 
+      const offsetXStr = e.dataTransfer.getData("application/timeline-clip-offset");
+      const offsetX = offsetXStr ? parseFloat(offsetXStr) : 0;
+
       const rect = dropRefEl.getBoundingClientRect();
-      const x = e.clientX - rect.left;
+      const x = e.clientX - rect.left - offsetX;
       const newStart = Math.max(0, x / zoom);
       const clipLen = clip.endTime - clip.startTime;
       const newEnd = Math.min(duration, newStart + clipLen);
@@ -162,7 +178,8 @@ export function MediaTrack({
     [clips, zoom, duration, onUpdateClip],
   );
 
-  const totalWidth = Math.max(duration * zoom, 200);
+  const maxClipEnd = clips.reduce((max, c) => Math.max(max, c.endTime), duration);
+  const totalWidth = Math.max(maxClipEnd * zoom + 120, 400);
 
   return (
     <div

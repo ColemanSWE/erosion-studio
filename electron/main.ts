@@ -18,6 +18,9 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Allow loading local file:// resources (video/images from disk)
+      // Safe for a fully-local desktop app with no untrusted web content
+      webSecurity: false,
     },
   });
 

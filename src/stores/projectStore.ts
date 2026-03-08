@@ -72,7 +72,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   effects: [],
   regions: [],
   currentTime: 0,
-  duration: 60,
+  duration: 10,
   isPlaying: false,
   clips: [],
   effectParamTracks: [],

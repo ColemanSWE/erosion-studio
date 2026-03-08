@@ -51,7 +51,7 @@ export function TimelineRuler({
     ctx.font = `9px "JetBrains Mono", monospace`;
     ctx.textBaseline = "top";
 
-    for (let t = startSec; t <= Math.min(endSec, duration + minorInterval); t = parseFloat((t + minorInterval).toFixed(6))) {
+    for (let t = startSec; t <= endSec; t = parseFloat((t + minorInterval).toFixed(6))) {
       const x = t * zoom - scrollLeft;
       if (x < -1 || x > w + 1) continue;
 

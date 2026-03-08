@@ -20,7 +20,7 @@ export function usePhotoEditor({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
-  const [faceBounds, setFaceBounds] = useState<FaceBounds[]>([]);
+  const faceBoundsRef = useRef<FaceBounds[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
   
   // Buffer canvas for effects processing
@@ -64,12 +64,12 @@ export function usePhotoEditor({
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         tick,
-        faceBounds,
+        faceBounds: faceBoundsRef.current,
       },
       effects.filter((e) => e.active),
       regions
     );
-  }, [canvas, effects, faceBounds, regions]);
+  }, [canvas, effects, regions]);
 
   const render = useCallback(() => {
     if (!canvas || !imageRef.current) return;
@@ -111,17 +111,19 @@ export function usePhotoEditor({
     }
 
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    if (!imagePath.startsWith("blob:") && !imagePath.startsWith("data:")) {
+      img.crossOrigin = "anonymous";
+    }
 
     img.onload = async () => {
       imageRef.current = img;
       
       try {
         const faces = await detectFaces(img);
-        setFaceBounds(faces);
+        faceBoundsRef.current = faces;
       } catch (error) {
         console.error("Face detection failed:", error);
-        setFaceBounds([]);
+        faceBoundsRef.current = [];
       }
       
       render();
@@ -131,7 +133,13 @@ export function usePhotoEditor({
       console.error("Failed to load image:", imagePath);
     };
 
-    img.src = imagePath.startsWith("data:") ? imagePath : `file://${imagePath}`;
+    if (imagePath.startsWith("data:") || imagePath.startsWith("blob:")) {
+      img.src = imagePath;
+    } else if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+      img.src = imagePath;
+    } else {
+      img.src = `file://${imagePath}`;
+    }
 
     return () => {
       if (animationFrameRef.current) {

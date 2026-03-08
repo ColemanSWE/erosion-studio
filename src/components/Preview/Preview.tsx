@@ -105,15 +105,39 @@ function Preview({
   }, [width, height, updateCanvasBounds]);
 
   const mouseToNormalized = (clientX: number, clientY: number) => {
-    if (!canvasBounds || !canvasContainerRef.current) return null;
-    
-    const parentRect = canvasContainerRef.current.getBoundingClientRect();
-    const x = clientX - parentRect.left - canvasBounds.left;
-    const y = clientY - parentRect.top - canvasBounds.top;
-    
-    const normalizedX = Math.max(0, Math.min(1, x / canvasBounds.width));
-    const normalizedY = Math.max(0, Math.min(1, y / canvasBounds.height));
-    
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    // Always compute from live canvas rect to avoid stale cached values
+    const canvasRect = canvas.getBoundingClientRect();
+    const cssW = canvasRect.width;
+    const cssH = canvasRect.height;
+
+    if (canvas.width === 0 || canvas.height === 0) return null;
+
+    const contentAspect = canvas.width / canvas.height;
+    const cssAspect = cssW / cssH;
+
+    let contentW: number, contentH: number, offsetX: number, offsetY: number;
+    if (contentAspect > cssAspect) {
+      contentW = cssW;
+      contentH = cssW / contentAspect;
+      offsetX = 0;
+      offsetY = (cssH - contentH) / 2;
+    } else {
+      contentH = cssH;
+      contentW = cssH * contentAspect;
+      offsetX = (cssW - contentW) / 2;
+      offsetY = 0;
+    }
+
+    // Position relative to the content area (accounting for letterbox/pillarbox)
+    const relX = clientX - canvasRect.left - offsetX;
+    const relY = clientY - canvasRect.top - offsetY;
+
+    const normalizedX = Math.max(0, Math.min(1, relX / contentW));
+    const normalizedY = Math.max(0, Math.min(1, relY / contentH));
+
     return { x: normalizedX, y: normalizedY };
   };
 
