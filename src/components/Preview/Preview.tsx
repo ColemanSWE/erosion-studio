@@ -11,6 +11,7 @@ interface PreviewProps {
   isDrawingRegion?: boolean;
   onRegionDrawn?: (region: Omit<Region, 'id' | 'name' | 'color'>) => void;
   onRegionSelect?: (id: string | null) => void;
+  captureHud?: React.ReactNode;
 }
 
 interface CanvasBounds {
@@ -68,6 +69,7 @@ function Preview({
   isDrawingRegion = false,
   onRegionDrawn,
   onRegionSelect,
+  captureHud,
 }: PreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -215,6 +217,7 @@ function Preview({
             />
           )}
         </div>
+        {captureHud}
       </div>
     </main>
   );

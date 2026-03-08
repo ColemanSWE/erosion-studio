@@ -84,3 +84,75 @@
   position: relative;
   z-index: 1;
 }
+
+// ─── Camera capture HUD ──────────────────────────────────────────────────────
+.captureHud {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-sm;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid variables.$border-primary;
+  padding: 8px 16px;
+  backdrop-filter: blur(8px);
+}
+
+.captureBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-family: variables.$font-mono;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all variables.$transition-fast;
+  background: transparent;
+
+  &.snap {
+    color: variables.$text-primary;
+    border-color: variables.$border-primary;
+
+    &:hover {
+      background: variables.$border-primary;
+      color: variables.$bg-base;
+    }
+  }
+
+  &.record {
+    color: variables.$error;
+    border-color: variables.$error;
+    animation: none;
+
+    &:hover {
+      background: variables.$error;
+      color: variables.$bg-base;
+    }
+
+    &.recording {
+      background: variables.$error;
+      color: variables.$bg-base;
+      animation: pulse 1s ease-in-out infinite;
+    }
+  }
+}
+
+.recTimer {
+  font-family: variables.$font-mono;
+  font-size: 11px;
+  color: variables.$error;
+  min-width: 42px;
+  text-align: center;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

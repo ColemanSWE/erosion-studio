@@ -25,10 +25,15 @@ interface RenderContext {
   poseBounds?: PoseBounds[];
 }
 
+// Style effects that have a dedicated render mode (not pixel processors)
+const RENDER_MODE_STYLE_EFFECTS = new Set([
+  "pixelate", "emoji", "ascii", "matrix", "halftone", "3d-mesh",
+]);
+
 export function getActiveStyleEffect(effects: Effect[]): Effect | null {
   for (let i = effects.length - 1; i >= 0; i--) {
     const effect = effects[i];
-    if (effect.active && isStyleEffect(effect.type)) {
+    if (effect.active && isStyleEffect(effect.type) && RENDER_MODE_STYLE_EFFECTS.has(effect.type)) {
       return effect;
     }
   }
@@ -47,6 +52,8 @@ function styleEffectToRenderMode(type: string): RenderMode | "halftone" {
       return "matrix";
     case "halftone":
       return "halftone";
+    case "3d-mesh":
+      return "native";
     default:
       return "native";
   }

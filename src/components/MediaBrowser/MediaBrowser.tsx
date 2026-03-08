@@ -49,6 +49,14 @@ function MediaBrowser({
               className={`${styles.mediaItem} ${
                 selectedId === item.id ? styles.selected : ""
               }`}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(
+                  "application/media-item",
+                  JSON.stringify(item),
+                );
+                e.dataTransfer.effectAllowed = "copy";
+              }}
               onClick={() => onSelect(item)}
             >
               <div className={styles.thumbnail}>

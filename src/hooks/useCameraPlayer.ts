@@ -175,5 +175,5 @@ export function useCameraPlayer({
     }
   }, [effects, regions, render, canvas, isActive]);
 
-  return {};
+  return { stream, videoRef };
 }

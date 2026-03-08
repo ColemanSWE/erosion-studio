@@ -1,0 +1,328 @@
+import React, { useRef, useState, useCallback, useEffect } from "react";
+import {
+  Play,
+  Pause,
+  Square,
+  ZoomIn,
+  ZoomOut,
+  Clock,
+} from "lucide-react";
+import type {
+  Effect,
+  TimelineClip,
+  EffectParamTrack,
+  Keyframe,
+} from "../../lib/effects/types";
+import type { MediaItem } from "../../lib/project";
+import { TimelineRuler } from "./TimelineRuler";
+import { MediaTrack } from "./MediaTrack";
+import { EffectTrack } from "./EffectTrack";
+import { formatTime } from "../../lib/timeline";
+import styles from "./Timeline.module.scss";
+
+interface TimelineProps {
+  media: MediaItem[];
+  effects: Effect[];
+  clips: TimelineClip[];
+  effectParamTracks: EffectParamTrack[];
+  currentTime: number;
+  duration: number;
+  isPlaying: boolean;
+
+  onAddClip: (clip: TimelineClip) => void;
+  onRemoveClip: (id: string) => void;
+  onUpdateClip: (id: string, updates: Partial<TimelineClip>) => void;
+
+  onUpdateEffect: (id: string, updates: Partial<Effect>) => void;
+  onRemoveEffect: (id: string) => void;
+
+  onAddEffectParamTrack: (track: EffectParamTrack) => void;
+  onRemoveEffectParamTrack: (id: string) => void;
+  onAddKeyframe: (trackId: string, kf: Keyframe) => void;
+  onUpdateKeyframe: (trackId: string, kfId: string, updates: Partial<Keyframe>) => void;
+  onRemoveKeyframe: (trackId: string, kfId: string) => void;
+
+  onSeek: (time: number) => void;
+  onPlay: () => void;
+  onPause: () => void;
+  onStop: () => void;
+}
+
+const MIN_ZOOM = 10;
+const MAX_ZOOM = 400;
+const DEFAULT_ZOOM = 60; // 60px per second = 1min fills ~3600px
+
+export function Timeline({
+  media,
+  effects,
+  clips,
+  effectParamTracks,
+  currentTime,
+  duration,
+  isPlaying,
+  onAddClip,
+  onRemoveClip,
+  onUpdateClip,
+  onUpdateEffect,
+  onRemoveEffect,
+  onAddEffectParamTrack,
+  onRemoveEffectParamTrack,
+  onAddKeyframe,
+  onUpdateKeyframe,
+  onRemoveKeyframe,
+  onSeek,
+  onPlay,
+  onPause,
+  onStop,
+}: TimelineProps) {
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const tracksAreaRef = useRef<HTMLDivElement>(null);
+  const labelsRef = useRef<HTMLDivElement>(null);
+  const [scrollLeft, setScrollLeft] = useState(0);
+
+  // Keep labels column scroll in sync with tracks area (vertical only — horizontal is independent)
+  const syncScroll = useCallback(() => {
+    const ta = tracksAreaRef.current;
+    const lb = labelsRef.current;
+    if (!ta || !lb) return;
+    lb.scrollTop = ta.scrollTop;
+    setScrollLeft(ta.scrollLeft);
+  }, []);
+
+  // Auto-scroll playhead into view during playback
+  useEffect(() => {
+    if (!isPlaying) return;
+    const ta = tracksAreaRef.current;
+    if (!ta) return;
+    const px = currentTime * zoom;
+    const { scrollLeft: sl, clientWidth } = ta;
+    if (px < sl || px > sl + clientWidth - 60) {
+      ta.scrollLeft = px - clientWidth / 2;
+    }
+  }, [currentTime, isPlaying, zoom]);
+
+  const zoomIn = useCallback(
+    () => setZoom((z) => Math.min(MAX_ZOOM, z * 1.5)),
+    [],
+  );
+  const zoomOut = useCallback(
+    () => setZoom((z) => Math.max(MIN_ZOOM, z / 1.5)),
+    [],
+  );
+
+  // Wheel to zoom (horizontal)
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setZoom((z) =>
+        Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z * (e.deltaY < 0 ? 1.2 : 0.85))),
+      );
+    }
+  }, []);
+
+  const activeEffects = effects.filter((e) => e.active);
+  const totalWidth = Math.max(duration * zoom + 120, 400);
+  const LABEL_W = 170;
+  const RULER_H = 28;
+  const ROW_H = 40;
+
+  // ─── Label rows —— must mirror track rows exactly ─────────────────────────
+  const renderLabels = () => {
+    const labels: React.ReactNode[] = [];
+
+    // Header spacer (mirrors ruler)
+    labels.push(<div key="ruler-spacer" className={styles.labelsHeader} />);
+
+    // Media track label
+    labels.push(
+      <div key="media-label" className={styles.trackLabel} style={{ height: ROW_H }}>
+        <Clock size={12} className={styles.trackIcon} />
+        <span className={styles.trackLabelText}>Media</span>
+      </div>,
+    );
+
+    // Effect track labels
+    for (const effect of activeEffects) {
+      const tracks = effectParamTracks.filter((t) => t.effectId === effect.id);
+      const hasParamRows = tracks.length > 0;
+      const effectName = effect.type
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+
+      labels.push(
+        <div key={effect.id}>
+          <div
+            className={styles.trackLabel}
+            style={{
+              height: ROW_H,
+              borderLeft: `2px solid ${effect.startTime != null || effect.endTime != null ? "#4ad0d0" : "#555"}`,
+            }}
+          >
+            <span className={styles.trackLabelText}>{effectName}</span>
+            <div className={styles.trackLabelActions}>
+              <button
+                className={`${styles.trackLabelBtn} ${styles.danger}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveEffect(effect.id);
+                }}
+                title="Remove effect"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+          {/* Param track labels */}
+          {hasParamRows &&
+            tracks.map((t) => (
+              <div key={t.id} className={styles.trackLabel} style={{ height: 24, paddingLeft: 20 }}>
+                <span className={styles.trackLabelText} style={{ color: "#ffaa00", fontSize: 9 }}>
+                  {t.paramKey}
+                </span>
+                <div className={styles.trackLabelActions}>
+                  <button
+                    className={`${styles.trackLabelBtn} ${styles.danger}`}
+                    onClick={() => onRemoveEffectParamTrack(t.id)}
+                    title="Remove param track"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+        </div>,
+      );
+    }
+
+    return labels;
+  };
+
+  return (
+    <div className={styles.timeline} style={{ height: 220 }}>
+      {/* ── Header bar ───────────────────────────────────────────────────── */}
+      <div className={styles.timelineHeader}>
+        <span className={styles.timelineTitle}>Timeline</span>
+
+        <button
+          className={styles.headerBtn}
+          onClick={isPlaying ? onPause : onPlay}
+          title={isPlaying ? "Pause" : "Play"}
+        >
+          {isPlaying ? <Pause size={12} /> : <Play size={12} />}
+        </button>
+        <button className={styles.headerBtn} onClick={onStop} title="Stop">
+          <Square size={12} />
+        </button>
+
+        <span
+          style={{
+            fontFamily: "monospace",
+            fontSize: 10,
+            color: "#666",
+            minWidth: 60,
+            textAlign: "center",
+          }}
+        >
+          {formatTime(currentTime)}
+        </span>
+
+        <div className={styles.zoomControls}>
+          <button className={styles.headerBtn} onClick={zoomOut} title="Zoom Out">
+            <ZoomOut size={12} />
+          </button>
+          <span className={styles.zoomLabel}>{Math.round(zoom)}px/s</span>
+          <button className={styles.headerBtn} onClick={zoomIn} title="Zoom In">
+            <ZoomIn size={12} />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Body ─────────────────────────────────────────────────────────── */}
+      <div className={styles.timelineBody} style={{ flex: 1, overflow: "hidden" }}>
+        {/* Labels column */}
+        <div
+          ref={labelsRef}
+          className={styles.labelsColumn}
+          style={{ width: LABEL_W, overflowY: "hidden" }}
+        >
+          {renderLabels()}
+        </div>
+
+        {/* Tracks area */}
+        <div
+          ref={tracksAreaRef}
+          className={styles.tracksArea}
+          onScroll={syncScroll}
+          onWheel={handleWheel}
+        >
+          {/* Sticky ruler */}
+          <TimelineRuler
+            duration={duration}
+            currentTime={currentTime}
+            zoom={zoom}
+            onSeek={onSeek}
+            scrollLeft={scrollLeft}
+          />
+
+          {/* Playhead line spanning all rows */}
+          <div
+            style={{
+              position: "absolute",
+              left: currentTime * zoom,
+              top: RULER_H,
+              bottom: 0,
+              width: 1,
+              background: "rgba(255,51,102,0.3)",
+              pointerEvents: "none",
+              zIndex: 4,
+            }}
+          />
+
+          {/* Media track row */}
+          <div className={styles.trackRow} style={{ width: totalWidth, height: ROW_H }}>
+            <MediaTrack
+              clips={clips}
+              media={media}
+              zoom={zoom}
+              duration={duration}
+              currentTime={currentTime}
+              onAddClip={onAddClip}
+              onUpdateClip={onUpdateClip}
+              onRemoveClip={onRemoveClip}
+            />
+          </div>
+
+          {/* Effect track rows */}
+          {activeEffects.map((effect) => {
+            const tracks = effectParamTracks.filter((t) => t.effectId === effect.id);
+            return (
+              <EffectTrack
+                key={effect.id}
+                effect={effect}
+                paramTracks={tracks}
+                zoom={zoom}
+                duration={duration}
+                currentTime={currentTime}
+                onUpdateEffect={onUpdateEffect}
+                onAddParamTrack={onAddEffectParamTrack}
+                onRemoveParamTrack={onRemoveEffectParamTrack}
+                onAddKeyframe={onAddKeyframe}
+                onUpdateKeyframe={onUpdateKeyframe}
+                onRemoveKeyframe={onRemoveKeyframe}
+              />
+            );
+          })}
+
+          {activeEffects.length === 0 && (
+            <div className={styles.emptyState} style={{ height: 80 }}>
+              <span>Add effects to see effect tracks</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default Timeline;

@@ -3,6 +3,84 @@ import { EffectType, EffectParamConfig } from "../types";
 import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
 import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
 
+// ─── Register style effects that are rendered by effects-renderer.ts ────────
+// These effects don't have pixel processors — they are handled by the renderer
+// via styleEffectToRenderMode(). We register them so they appear in the panel.
+
+registerEffect({
+  type: "pixelate",
+  label: "Pixelate",
+  category: "style",
+  defaultParams: { density: 64 },
+  paramsConfig: [
+    { key: "density", label: "Density", type: "slider", min: 8, max: 200, step: 1 },
+  ],
+  processor: () => {},  // handled by renderer
+});
+
+registerEffect({
+  type: "emoji",
+  label: "Emoji",
+  category: "style",
+  defaultParams: { density: 48, palette: "standard" },
+  paramsConfig: [
+    { key: "density", label: "Density", type: "slider", min: 8, max: 128, step: 1 },
+    { key: "palette", label: "Palette", type: "select", options: ["standard", "nature", "food", "faces", "animals", "objects", "halloween", "christmas"] },
+  ],
+  processor: () => {},
+});
+
+registerEffect({
+  type: "ascii",
+  label: "ASCII",
+  category: "style",
+  defaultParams: { density: 80 },
+  paramsConfig: [
+    { key: "density", label: "Density", type: "slider", min: 16, max: 200, step: 1 },
+  ],
+  processor: () => {},
+});
+
+registerEffect({
+  type: "matrix",
+  label: "Matrix",
+  category: "style",
+  defaultParams: { density: 64 },
+  paramsConfig: [
+    { key: "density", label: "Density", type: "slider", min: 16, max: 200, step: 1 },
+  ],
+  processor: () => {},
+});
+
+registerEffect({
+  type: "halftone",
+  label: "Halftone",
+  category: "style",
+  defaultParams: { density: 64, dotScale: 1.0 },
+  paramsConfig: [
+    { key: "density", label: "Density", type: "slider", min: 8, max: 200, step: 1 },
+    { key: "dotScale", label: "Dot Scale", type: "slider", min: 0.1, max: 3.0, step: 0.05 },
+  ],
+  processor: () => {},
+});
+
+registerEffect({
+  type: "3d-mesh",
+  label: "3D Mesh",
+  category: "style",
+  defaultParams: { density: 2, displacementScale: 3, wireframe: true, mode: "mesh", pointSize: 0.08 },
+  paramsConfig: [
+    { key: "density", label: "Density", type: "slider", min: 0.5, max: 10, step: 0.1 },
+    { key: "displacementScale", label: "Displacement", type: "slider", min: 0, max: 10, step: 0.1 },
+    { key: "wireframe", label: "Wireframe", type: "checkbox" },
+    { key: "mode", label: "Mode", type: "select", options: ["mesh", "points"] },
+    { key: "pointSize", label: "Point Size", type: "slider", min: 0.01, max: 0.5, step: 0.01 },
+  ],
+  processor: () => {},
+});
+
+// ─── Detection / tracking style effects with real processors ───────────────
+
 registerEffect({
   type: "detection-labels",
   label: "Detection Labels",
@@ -15,7 +93,13 @@ registerEffect({
         boxThickness: 2,
         showConfidence: false,
       },
-  paramsConfig: [],
+  paramsConfig: [
+    { key: "showFaces", label: "Show Faces", type: "checkbox" },
+    { key: "showHands", label: "Show Hands", type: "checkbox" },
+    { key: "showPose", label: "Show Pose", type: "checkbox" },
+    { key: "labelSize", label: "Label Size", type: "slider", min: 8, max: 32, step: 1 },
+    { key: "boxThickness", label: "Box Thickness", type: "slider", min: 1, max: 8, step: 0.5 },
+  ],
   processor: (
     data,
     { width, height, faceBounds = [], handBounds = [], poseBounds = [] },
@@ -141,7 +225,26 @@ registerEffect({
         connectionColor: "#00aaff",
         color: "#00ff88", // Legacy, kept for compatibility if needed elsewhere
       },
-  paramsConfig: [],
+  paramsConfig: [
+    { key: "threshold", label: "Threshold", type: "slider", min: 0, max: 255, step: 1 },
+    { key: "minBlobSize", label: "Min Blob Size", type: "slider", min: 10, max: 5000, step: 10 },
+    { key: "maxBlobSize", label: "Max Blob Size", type: "slider", min: 1000, max: 500000, step: 1000 },
+    { key: "maxBlobs", label: "Max Blobs", type: "slider", min: 1, max: 100, step: 1 },
+    { key: "flashRate", label: "Flash Rate", type: "slider", min: 1, max: 10, step: 1 },
+    { key: "lineWidth", label: "Line Width", type: "slider", min: 0.5, max: 8, step: 0.5 },
+    { key: "connectionWidth", label: "Connection Width", type: "slider", min: 0.5, max: 5, step: 0.5 },
+    { key: "style", label: "Style", type: "select", options: ["box", "corners", "crosshair", "grid", "dot", "hidden"] },
+    { key: "connections", label: "Connections", type: "select", options: ["none", "neighbors", "all", "hub"] },
+    { key: "labelStyle", label: "Label Style", type: "select", options: ["minimal", "object", "value", "none"] },
+    { key: "invert", label: "Invert", type: "checkbox" },
+    { key: "forceSquare", label: "Force Square", type: "checkbox" },
+    { key: "showScanlines", label: "Show Scanlines", type: "checkbox" },
+    { key: "boxPalette", label: "Box Palette", type: "select", options: ["custom", "cyberpunk", "neon", "vintage", "monochrome", "danger"] },
+    { key: "connectionPalette", label: "Connection Palette", type: "select", options: ["custom", "cyberpunk", "neon", "vintage", "monochrome", "danger"] },
+    { key: "innerEffect", label: "Inner Effect", type: "select", options: ["none", "invert", "glitch", "block-corrupt", "pixel-sort", "edge-detect", "noise", "pixelate"] },
+    { key: "boxColor", label: "Box Color", type: "color" },
+    { key: "connectionColor", label: "Connection Color", type: "color" },
+  ],
   processor: (
     data,
     { width, height, time = 0, timelineFrames, faceBounds, handBounds, poseBounds },

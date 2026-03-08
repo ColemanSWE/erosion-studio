@@ -293,6 +293,30 @@
   pointer-events: none;
 }
 
+.removeClipBtn {
+  position: absolute;
+  right: 6px;
+  background: transparent;
+  border: none;
+  color: variables.$text-tertiary;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity variables.$transition-fast, color variables.$transition-fast;
+  z-index: 5;
+
+  &:hover {
+    color: variables.$error;
+  }
+
+  .clip:hover & {
+    opacity: 1;
+  }
+}
+
 .clipHandle {
   position: absolute;
   top: 0;
