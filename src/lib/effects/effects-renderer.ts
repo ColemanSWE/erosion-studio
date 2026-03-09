@@ -293,6 +293,9 @@ export function renderWithEffects(
   renderCtx.clearRect(0, 0, canvasWidth, canvasHeight);
 
   const dotScale = (activeStyle.params.dotScale as number) || 1.0;
+  const halftoneShape = (activeStyle.params.shape as string) || "circle";
+  const halftoneAngle = (activeStyle.params.angle as number) || 0;
+  const halftoneColorMode = (activeStyle.params.colorMode as string) || "colored";
 
   if (renderMode === "halftone") {
     renderHalftone(
@@ -303,6 +306,9 @@ export function renderWithEffects(
       canvasWidth,
       canvasHeight,
       dotScale,
+      halftoneShape,
+      halftoneAngle,
+      halftoneColorMode,
     );
   } else {
     renderFrame(renderCtx, imageData.data, cols, rows, {
@@ -310,6 +316,8 @@ export function renderWithEffects(
       fontSize,
       mode: renderMode as RenderMode,
       emojiMap,
+      charset: (activeStyle.params.charset as string) || "standard",
+      colorMode: (activeStyle.params.colorMode as string) || "colored",
     });
   }
 
@@ -343,6 +351,9 @@ function renderHalftone(
   canvasWidth: number,
   canvasHeight: number,
   dotScale: number,
+  shape: string = "circle",
+  angle: number = 0,
+  colorMode: string = "colored",
 ): void {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -353,6 +364,15 @@ function renderHalftone(
 
   const offsetX = (canvasWidth - cols * cellWidth) / 2;
   const offsetY = (canvasHeight - rows * cellHeight) / 2;
+
+  // Apply rotation around canvas center
+  const angleRad = (angle * Math.PI) / 180;
+  if (angleRad !== 0) {
+    ctx.save();
+    ctx.translate(canvasWidth / 2, canvasHeight / 2);
+    ctx.rotate(angleRad);
+    ctx.translate(-canvasWidth / 2, -canvasHeight / 2);
+  }
 
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
@@ -368,11 +388,81 @@ function renderHalftone(
         const cx = offsetX + x * cellWidth + cellWidth / 2;
         const cy = offsetY + y * cellHeight + cellHeight / 2;
 
-        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fill();
+        // Color mode
+        if (colorMode === "mono") {
+          const val = Math.floor(brightness * 255);
+          ctx.fillStyle = `rgb(${val}, ${val}, ${val})`;
+        } else if (colorMode === "cmyk") {
+          // Simulate CMYK separation with dot offsets
+          const rNorm = r / 255, gNorm = g / 255, bNorm = b / 255;
+          const k = 1 - Math.max(rNorm, gNorm, bNorm);
+          const cCmyk = k < 1 ? (1 - rNorm - k) / (1 - k) : 0;
+          const mCmyk = k < 1 ? (1 - gNorm - k) / (1 - k) : 0;
+          const yCmyk = k < 1 ? (1 - bNorm - k) / (1 - k) : 0;
+
+          const sep = maxRadius * 0.25;
+          // Cyan
+          const cRadius = cCmyk * maxRadius * 0.6;
+          if (cRadius > 0.3) {
+            ctx.fillStyle = "rgba(0, 255, 255, 0.7)";
+            drawShape(ctx, cx - sep, cy, cRadius, shape);
+          }
+          // Magenta
+          const mRadius = mCmyk * maxRadius * 0.6;
+          if (mRadius > 0.3) {
+            ctx.fillStyle = "rgba(255, 0, 255, 0.7)";
+            drawShape(ctx, cx + sep * 0.5, cy - sep, mRadius, shape);
+          }
+          // Yellow
+          const yRadius = yCmyk * maxRadius * 0.6;
+          if (yRadius > 0.3) {
+            ctx.fillStyle = "rgba(255, 255, 0, 0.7)";
+            drawShape(ctx, cx + sep * 0.5, cy + sep, yRadius, shape);
+          }
+          // Black (key)
+          const kRadius = k * maxRadius * 0.4;
+          if (kRadius > 0.3) {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+            drawShape(ctx, cx, cy, kRadius, shape);
+          }
+          continue;
+        } else {
+          ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        }
+
+        drawShape(ctx, cx, cy, radius, shape);
       }
     }
+  }
+
+  if (angleRad !== 0) {
+    ctx.restore();
+  }
+}
+
+function drawShape(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  shape: string,
+): void {
+  if (shape === "square") {
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  } else if (shape === "diamond") {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - radius);
+    ctx.lineTo(cx + radius, cy);
+    ctx.lineTo(cx, cy + radius);
+    ctx.lineTo(cx - radius, cy);
+    ctx.closePath();
+    ctx.fill();
+  } else if (shape === "line") {
+    ctx.fillRect(cx - radius, cy - radius * 0.2, radius * 2, radius * 0.4);
+  } else {
+    // circle (default)
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
   }
 }

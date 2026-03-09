@@ -73,3 +73,36 @@
     background-color: variables.$accent-secondary;
   }
 }
+
+.resolutionSelect {
+  padding: variables.$spacing-sm variables.$spacing-md;
+  border: 1px solid variables.$border-primary;
+  background-color: variables.$bg-elevated;
+  border-radius: variables.$radius-md;
+  font-size: 13px;
+  font-family: variables.$font-mono;
+  color: inherit;
+  cursor: pointer;
+  transition: all variables.$transition-fast;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 26px;
+
+  &:hover {
+    border-color: variables.$accent-primary;
+    background-color: variables.$bg-overlay;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: variables.$accent-primary;
+  }
+
+  option {
+    background-color: variables.$bg-surface;
+    color: inherit;
+  }
+}

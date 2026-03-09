@@ -2000,3 +2000,222 @@ registerEffect({
     }
   },
 });
+
+interface DatamoshTransitionState {
+  moshBuffer: Uint8ClampedArray | null;
+  prevSecondary: Uint8ClampedArray | null;
+  mvXBuffer: Float32Array | null;
+  mvYBuffer: Float32Array | null;
+  width: number;
+  height: number;
+  inTransition: boolean;
+}
+
+const datamoshTransitState: DatamoshTransitionState = {
+  moshBuffer: null,
+  prevSecondary: null,
+  mvXBuffer: null,
+  mvYBuffer: null,
+  width: 0,
+  height: 0,
+  inTransition: false,
+};
+
+registerEffect({
+  type: "datamosh-transition",
+  label: "Datamosh Transition",
+  category: "glitch",
+  defaultParams: {
+    intensity: 50,
+    blockSize: 16,
+  },
+  paramsConfig: [
+    {
+      key: "intensity",
+      label: "Smear Intensity",
+      type: "slider",
+      min: 0,
+      max: 100,
+      step: 1,
+    },
+    {
+      key: "blockSize",
+      label: "Block Size",
+      type: "slider",
+      min: 8,
+      max: 64,
+      step: 8,
+    },
+  ],
+  processor: (data, { width, height, timelineFrames }, params) => {
+    const intensity = (params.intensity as number) ?? 50;
+    const blockSize = (params.blockSize as number) || 16;
+
+    if (intensity === 0) return;
+
+    const strength = intensity / 50;
+    const blocksX = Math.ceil(width / blockSize);
+    const blocksY = Math.ceil(height / blockSize);
+    const totalBlocks = blocksX * blocksY;
+
+    const needsInit =
+      datamoshTransitState.width !== width ||
+      datamoshTransitState.height !== height;
+
+    if (needsInit) {
+      datamoshTransitState.moshBuffer = new Uint8ClampedArray(data);
+      datamoshTransitState.prevSecondary = null;
+      datamoshTransitState.width = width;
+      datamoshTransitState.height = height;
+      datamoshTransitState.mvXBuffer = new Float32Array(totalBlocks);
+      datamoshTransitState.mvYBuffer = new Float32Array(totalBlocks);
+      datamoshTransitState.inTransition = false;
+    }
+
+    const secondarySource =
+      timelineFrames && timelineFrames.length > 0 ? timelineFrames[0] : null;
+
+    if (!secondarySource) {
+      // Not in a transition. Update mosh buffer with current primary clip so it's ready to freeze.
+      if (datamoshTransitState.moshBuffer) {
+        datamoshTransitState.moshBuffer.set(data);
+      }
+      datamoshTransitState.inTransition = false;
+      datamoshTransitState.prevSecondary = null;
+      return;
+    }
+
+    // --- We are IN a transition ---
+    const secData = secondarySource.data;
+
+    // Fast fail if secondary dimensions differ (rare but possible in some pipeline states)
+    if (secData.length !== data.length) return;
+
+    if (!datamoshTransitState.inTransition || !datamoshTransitState.prevSecondary) {
+      // First frame of transition! Freeze the I-frame (already in moshBuffer).
+      datamoshTransitState.prevSecondary = new Uint8ClampedArray(secData);
+      datamoshTransitState.inTransition = true;
+      if (datamoshTransitState.mvXBuffer) datamoshTransitState.mvXBuffer.fill(0);
+      if (datamoshTransitState.mvYBuffer) datamoshTransitState.mvYBuffer.fill(0);
+      // Let the first frame be unmoshed but frozen.
+      data.set(datamoshTransitState.moshBuffer!);
+      return;
+    }
+
+    const moshBuffer = datamoshTransitState.moshBuffer!;
+    const prevSecondary = datamoshTransitState.prevSecondary!;
+    const mvX = datamoshTransitState.mvXBuffer!;
+    const mvY = datamoshTransitState.mvYBuffer!;
+
+    // 1. Calculate Motion Vectors from the SECONDARY clip
+    for (let by = 0; by < blocksY; by++) {
+      for (let bx = 0; bx < blocksX; bx++) {
+        const bi = by * blocksX + bx;
+        const startX = bx * blockSize;
+        const startY = by * blockSize;
+        const endX = Math.min(startX + blockSize, width);
+        const endY = Math.min(startY + blockSize, height);
+
+        let bestDx = 0,
+          bestDy = 0,
+          bestScore = Infinity;
+        const search = 16;
+
+        for (let dy = -search; dy <= search; dy += 8) {
+          for (let dx = -search; dx <= search; dx += 8) {
+            let score = 0;
+            let samples = 0;
+            for (let py = startY; py < endY; py += 8) {
+              for (let px = startX; px < endX; px += 8) {
+                const sx = px + dx;
+                const sy = py + dy;
+                if (sx < 0 || sx >= width || sy < 0 || sy >= height) continue;
+
+                const ci = (py * width + px) * 4;
+                const si = (sy * width + sx) * 4;
+
+                const lumC = secData[ci] + secData[ci + 1] + secData[ci + 2];
+                const lumP =
+                  prevSecondary[si] + prevSecondary[si + 1] + prevSecondary[si + 2];
+
+                score += Math.abs(lumC - lumP);
+                samples++;
+              }
+            }
+            if (samples > 0) score /= samples;
+            if (score < bestScore) {
+              bestScore = score;
+              bestDx = dx;
+              bestDy = dy;
+            }
+          }
+        }
+
+        // Smooth momentum for motion vectors
+        mvX[bi] = mvX[bi] * 0.5 + bestDx * 0.5;
+        mvY[bi] = mvY[bi] * 0.5 + bestDy * 0.5;
+      }
+    }
+
+    // 2. Apply motion vectors to the MOSH BUFFER (the frozen primary clip)
+    const tempBuffer = new Uint8ClampedArray(moshBuffer);
+
+    // Apply fluid smoothing to the vectors
+    const smoothMVX = new Float32Array(totalBlocks);
+    const smoothMVY = new Float32Array(totalBlocks);
+
+    for (let by = 0; by < blocksY; by++) {
+      for (let bx = 0; bx < blocksX; bx++) {
+        const bi = by * blocksX + bx;
+        let sumX = 0,
+          sumY = 0,
+          count = 0;
+
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const ny = by + ky;
+            const nx = bx + kx;
+            if (ny >= 0 && ny < blocksY && nx >= 0 && nx < blocksX) {
+              const ni = ny * blocksX + nx;
+              sumX += mvX[ni];
+              sumY += mvY[ni];
+              count++;
+            }
+          }
+        }
+        smoothMVX[bi] = sumX / count;
+        smoothMVY[bi] = sumY / count;
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const bx = Math.min(blocksX - 1, Math.floor(x / blockSize));
+        const by = Math.min(blocksY - 1, Math.floor(y / blockSize));
+        const bi = by * blocksX + bx;
+
+        const dx = smoothMVX[bi] * strength;
+        const dy = smoothMVY[bi] * strength;
+
+        const srcX = x + dx;
+        const srcY = y + dy;
+
+        const r = bilinearSample(tempBuffer, width, height, srcX, srcY, 0);
+        const g = bilinearSample(tempBuffer, width, height, srcX, srcY, 1);
+        const b = bilinearSample(tempBuffer, width, height, srcX, srcY, 2);
+
+        const di = (y * width + x) * 4;
+        moshBuffer[di] = r;
+        moshBuffer[di + 1] = g;
+        moshBuffer[di + 2] = b;
+        moshBuffer[di + 3] = 255;
+      }
+    }
+
+    // Output is the warped I-frame
+    data.set(moshBuffer);
+
+    // Update prev secondary frame for next iteration
+    datamoshTransitState.prevSecondary!.set(secData);
+  },
+});

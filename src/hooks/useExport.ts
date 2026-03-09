@@ -1,14 +1,7 @@
 import { useState, useCallback } from "react";
-import type { Effect } from "../lib/effects/types";
-import { GIFEncoder, quantize, applyPalette } from "gifenc";
+import type { ExportSettings } from "../components/ExportDialog/ExportDialog";
 
-interface ExportOptions {
-  format: "mp4" | "webm" | "gif";
-  quality: number;
-  fps: number;
-}
-
-/** Helper: convert a canvas dataURL to a byte array for IPC transfer */
+/** Convert a canvas data-URL to a byte array for IPC transfer. */
 function dataUrlToBytes(dataUrl: string): number[] {
   const base64 = dataUrl.split(",")[1];
   const binary = atob(base64);
@@ -19,31 +12,59 @@ function dataUrlToBytes(dataUrl: string): number[] {
   return bytes;
 }
 
-export function useExport() {
+export interface ExportHook {
+  /** Start an offline (frame-by-frame) export via FFmpeg. */
+  exportOffline: (
+    canvas: HTMLCanvasElement,
+    duration: number,
+    settings: ExportSettings,
+    /** Called once per frame.  `seek(time)` should update the app's
+     *  currentTime so the canvas re-renders to that frame. It must
+     *  return a Promise that resolves after the canvas has been drawn. */
+    seek: (time: number) => Promise<void>,
+  ) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+
+  /** Real-time WebM export (legacy, used when format=webm). */
+  exportRealtime: (
+    canvas: HTMLCanvasElement,
+    duration: number,
+    fps: number,
+  ) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+
+  /** Still image export. */
+  exportImage: (
+    canvas: HTMLCanvasElement,
+    format: "png" | "jpeg" | "webp",
+    quality?: number,
+  ) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+
+  isExporting: boolean;
+  exportProgress: number;
+}
+
+export function useExport(): ExportHook {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
 
-  /**
-   * Export video: records the canvas using MediaRecorder for webm,
-   * or renders multiple frames for gif.
-   */
-  const exportVideo = useCallback(
+  // ── Offline frame-by-frame export (MP4, WebM, GIF via FFmpeg) ──────────
+  const exportOffline = useCallback(
     async (
       canvas: HTMLCanvasElement,
-      _effects: Effect[],
       duration: number,
-      options: ExportOptions = { format: "webm", quality: 0.9, fps: 30 }
+      settings: ExportSettings,
+      seek: (time: number) => Promise<void>,
     ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
       if (!window.electron) {
         return { success: false, error: "Electron API not available" };
       }
 
-      const ext = options.format === "gif" ? "gif" : "webm";
+      const ext = settings.format === "gif" ? "gif" : settings.format === "webm" ? "webm" : "mp4";
 
       const saveResult = await window.electron.saveFile({
         filters: [
-          { name: "WebM Video", extensions: ["webm"] },
-          { name: "GIF Animation", extensions: ["gif"] },
+          ...(ext === "mp4" ? [{ name: "MP4 Video", extensions: ["mp4"] }] : []),
+          ...(ext === "webm" ? [{ name: "WebM Video", extensions: ["webm"] }] : []),
+          ...(ext === "gif" ? [{ name: "GIF Animation", extensions: ["gif"] }] : []),
         ],
         defaultPath: `export.${ext}`,
       });
@@ -58,74 +79,54 @@ export function useExport() {
         setIsExporting(true);
         setExportProgress(0);
 
-        if (options.format === "gif") {
-          // ── GIF export via gifenc ────────────────────────────────────────
-          const numFrames = Math.max(1, Math.round(duration * options.fps));
-          const gif = GIFEncoder();
-          const ctx = canvas.getContext("2d");
-          if (!ctx) throw new Error("No canvas 2D context");
+        // 1. Create temp directory for frames
+        const tmpResult = await window.electron.ffmpeg.createTempDir();
+        if (!tmpResult.success || !tmpResult.path) {
+          throw new Error(tmpResult.error || "Failed to create temp dir");
+        }
+        const framesDir = tmpResult.path;
 
-          // Build shared palette from first frame
-          const firstData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const palette = quantize(firstData.data, 256);
+        const fps = settings.fps || 30;
+        const totalFrames = Math.max(1, Math.round(duration * fps));
 
-          for (let i = 0; i < numFrames; i++) {
-            setExportProgress(Math.round((i / numFrames) * 90));
-            await new Promise<void>((r) => setTimeout(r, 0)); // yield to keep UI alive
+        // 2. Render each frame
+        for (let i = 0; i < totalFrames; i++) {
+          const time = (i / totalFrames) * duration;
 
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const index = applyPalette(imageData.data, palette);
-            gif.writeFrame(index, canvas.width, canvas.height, {
-              palette,
-              delay: Math.round(1000 / options.fps),
-            });
+          // Seek the timeline to this exact time and wait for the canvas to render
+          await seek(time);
+
+          // Extract the frame from the canvas
+          const dataUrl = canvas.toDataURL("image/png");
+          const bytes = dataUrlToBytes(dataUrl);
+
+          // Write frame to temp dir
+          const frameName = `frame_${String(i).padStart(6, "0")}.png`;
+          const framePath = `${framesDir}/${frameName}`;
+          const writeResult = await window.electron.file.writeBinary(framePath, bytes);
+          if (!writeResult.success) {
+            throw new Error(writeResult.error || "Failed to write frame");
           }
 
-          gif.finish();
-          const rawBytes = gif.bytes();
-          const bytes: number[] = Array.from({ length: rawBytes.length }, (_, i) => rawBytes[i]);
-          setExportProgress(95);
-          const writeResult = await window.electron.file.writeBinary(filePath, bytes);
-          if (!writeResult.success) throw new Error(writeResult.error);
-        } else {
-          // ── WebM export via MediaRecorder ─────────────────────────────────
-          const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-            ? "video/webm;codecs=vp9"
-            : "video/webm";
-
-          const stream = canvas.captureStream(options.fps);
-          const recorder = new MediaRecorder(stream, {
-            mimeType,
-            videoBitsPerSecond: Math.round(options.quality * 8_000_000),
-          });
-
-          const chunks: Blob[] = [];
-          recorder.ondataavailable = (e) => {
-            if (e.data.size > 0) chunks.push(e.data);
-          };
-
-          await new Promise<void>((resolve, reject) => {
-            recorder.onstop = () => resolve();
-            recorder.onerror = () => reject(new Error("MediaRecorder error"));
-            recorder.start(100); // collect data every 100ms
-
-            // Stop after duration elapses
-            setTimeout(() => {
-              if (recorder.state !== "inactive") recorder.stop();
-            }, duration * 1000);
-          });
-
-          setExportProgress(80);
-
-          const blob = new Blob(chunks, { type: "video/webm" });
-          const arrayBuffer = await blob.arrayBuffer();
-          const uint8 = new Uint8Array(arrayBuffer);
-          const bytes: number[] = Array.from({ length: uint8.length }, (_, i) => uint8[i]);
-
-          setExportProgress(95);
-          const writeResult = await window.electron.file.writeBinary(filePath, bytes);
-          if (!writeResult.success) throw new Error(writeResult.error);
+          setExportProgress(Math.round(((i + 1) / totalFrames) * 80));
         }
+
+        // 3. Encode frames into final video via FFmpeg
+        setExportProgress(85);
+        const ffmpegFormat = ext as "mp4" | "webm" | "gif";
+        const encodeResult = await window.electron.ffmpeg.encodeVideo(
+          framesDir,
+          filePath,
+          fps,
+          ffmpegFormat,
+        );
+        if (!encodeResult.success) {
+          throw new Error(encodeResult.error || "FFmpeg encoding failed");
+        }
+
+        // 4. Clean up temp dir
+        setExportProgress(95);
+        await window.electron.ffmpeg.cleanupTempDir(framesDir);
 
         setExportProgress(100);
         setIsExporting(false);
@@ -135,17 +136,96 @@ export function useExport() {
         return { success: false, error: String(error) };
       }
     },
-    []
+    [],
   );
 
-  /**
-   * Export image: renders current canvas to PNG/JPEG/WebP and writes to disk.
-   */
+  // ── Real-time WebM export via MediaRecorder ────────────────────────────
+  const exportRealtime = useCallback(
+    async (
+      canvas: HTMLCanvasElement,
+      duration: number,
+      fps: number,
+    ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+      if (!window.electron) {
+        return { success: false, error: "Electron API not available" };
+      }
+
+      const saveResult = await window.electron.saveFile({
+        filters: [{ name: "WebM Video", extensions: ["webm"] }],
+        defaultPath: "export.webm",
+      });
+
+      if (saveResult.canceled || !saveResult.filePath) {
+        return { success: false, error: "Export canceled" };
+      }
+
+      const filePath = saveResult.filePath;
+
+      try {
+        setIsExporting(true);
+        setExportProgress(0);
+
+        const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+          ? "video/webm;codecs=vp9"
+          : "video/webm";
+
+        const stream = canvas.captureStream(fps);
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 8_000_000,
+        });
+
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        await new Promise<void>((resolve, reject) => {
+          recorder.onstop = () => resolve();
+          recorder.onerror = () => reject(new Error("MediaRecorder error"));
+          recorder.start(100);
+
+          // Progress ticker
+          const startMs = Date.now();
+          const progressInterval = setInterval(() => {
+            const elapsed = (Date.now() - startMs) / 1000;
+            setExportProgress(Math.min(90, Math.round((elapsed / duration) * 90)));
+          }, 250);
+
+          setTimeout(() => {
+            clearInterval(progressInterval);
+            if (recorder.state !== "inactive") recorder.stop();
+          }, duration * 1000);
+        });
+
+        setExportProgress(80);
+
+        const blob = new Blob(chunks, { type: "video/webm" });
+        const arrayBuffer = await blob.arrayBuffer();
+        const uint8 = new Uint8Array(arrayBuffer);
+        const bytes: number[] = Array.from({ length: uint8.length }, (_, i) => uint8[i]);
+
+        setExportProgress(95);
+        const writeResult = await window.electron.file.writeBinary(filePath, bytes);
+        if (!writeResult.success) throw new Error(writeResult.error);
+
+        setExportProgress(100);
+        setIsExporting(false);
+        return { success: true, filePath };
+      } catch (error) {
+        setIsExporting(false);
+        return { success: false, error: String(error) };
+      }
+    },
+    [],
+  );
+
+  // ── Still image export ────────────────────────────────────────────────
   const exportImage = useCallback(
     async (
       canvas: HTMLCanvasElement,
       format: "png" | "jpeg" | "webp" = "png",
-      quality = 0.95
+      quality = 0.95,
     ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
       if (!window.electron) {
         return { success: false, error: "Electron API not available" };
@@ -167,7 +247,6 @@ export function useExport() {
       const filePath = saveResult.filePath;
 
       try {
-        // Determine actual format from chosen extension
         const ext = filePath.split(".").pop()?.toLowerCase();
         const actualFormat: "png" | "jpeg" | "webp" =
           ext === "jpg" || ext === "jpeg" ? "jpeg" : ext === "webp" ? "webp" : "png";
@@ -182,11 +261,12 @@ export function useExport() {
         return { success: false, error: String(error) };
       }
     },
-    []
+    [],
   );
 
   return {
-    exportVideo,
+    exportOffline,
+    exportRealtime,
     exportImage,
     isExporting,
     exportProgress,

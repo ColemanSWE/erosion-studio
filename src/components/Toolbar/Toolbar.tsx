@@ -1,4 +1,6 @@
 import { FileText, Undo, Redo, Download } from "lucide-react";
+import { PREDEFINED_RESOLUTIONS } from "../../lib/project";
+import type { Resolution } from "../../lib/project";
 import styles from "./Toolbar.module.scss";
 
 interface ToolbarProps {
@@ -8,6 +10,8 @@ interface ToolbarProps {
   onExport: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  resolution: Resolution;
+  onResolutionChange: (resolution: Resolution) => void;
 }
 
 function Toolbar({
@@ -17,7 +21,14 @@ function Toolbar({
   onExport,
   canUndo,
   canRedo,
+  resolution,
+  onResolutionChange,
 }: ToolbarProps) {
+  const handleResolutionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selected = PREDEFINED_RESOLUTIONS.find((r) => r.name === e.target.value);
+    if (selected) onResolutionChange(selected);
+  };
+
   return (
     <header className={styles.toolbar}>
       <div className={styles.left}>
@@ -30,6 +41,18 @@ function Toolbar({
       </div>
 
       <div className={styles.right}>
+        <select
+          className={styles.resolutionSelect}
+          value={resolution.name}
+          onChange={handleResolutionChange}
+          title="Canvas resolution"
+        >
+          {PREDEFINED_RESOLUTIONS.map((r) => (
+            <option key={r.name} value={r.name}>
+              {r.name} ({r.width}×{r.height})
+            </option>
+          ))}
+        </select>
         <button
           className={styles.button}
           onClick={onUndo}

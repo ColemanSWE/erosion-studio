@@ -75,7 +75,20 @@ export type EffectType =
   | "sepia"
   | "grayscale"
   | "temperature"
-  | "tint";
+  | "tint"
+  | "ascii-overlay"
+  | "voronoi-mosaic"
+  | "contour-lines"
+  | "glitch-displacement"
+  | "color-quantize"
+  | "grid-overlay"
+  | "flow-field"
+  | "neon-wireframe"
+  | "particle-disintegration"
+  | "reaction-diffusion"
+  | "droste"
+  | "slit-scan"
+  | "datamosh-transition";
 
 export interface Region {
   id: string;

@@ -8,10 +8,18 @@ contextBridge.exposeInMainWorld("electron", {
   ffmpeg: {
     extractFrames: (videoPath: string, outputDir: string, fps?: number) =>
       ipcRenderer.invoke("ffmpeg:extractFrames", videoPath, outputDir, fps),
-    encodeVideo: (framesDir: string, outputPath: string, fps?: number) =>
-      ipcRenderer.invoke("ffmpeg:encodeVideo", framesDir, outputPath, fps),
+    encodeVideo: (
+      framesDir: string,
+      outputPath: string,
+      fps?: number,
+      format?: "mp4" | "webm" | "gif"
+    ) =>
+      ipcRenderer.invoke("ffmpeg:encodeVideo", framesDir, outputPath, fps, format),
     getVideoInfo: (videoPath: string) =>
       ipcRenderer.invoke("ffmpeg:getVideoInfo", videoPath),
+    createTempDir: () => ipcRenderer.invoke("ffmpeg:createTempDir"),
+    cleanupTempDir: (dirPath: string) =>
+      ipcRenderer.invoke("ffmpeg:cleanupTempDir", dirPath),
   },
   file: {
     readBinary: (filePath: string) =>
@@ -41,7 +49,8 @@ export interface ElectronAPI {
     encodeVideo: (
       framesDir: string,
       outputPath: string,
-      fps?: number
+      fps?: number,
+      format?: "mp4" | "webm" | "gif"
     ) => Promise<{
       success: boolean;
       outputPath?: string;
@@ -53,6 +62,15 @@ export interface ElectronAPI {
       width?: number;
       height?: number;
       fps?: number;
+      error?: string;
+    }>;
+    createTempDir: () => Promise<{
+      success: boolean;
+      path?: string;
+      error?: string;
+    }>;
+    cleanupTempDir: (dirPath: string) => Promise<{
+      success: boolean;
       error?: string;
     }>;
   };

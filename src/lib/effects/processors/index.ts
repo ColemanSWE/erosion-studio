@@ -6,3 +6,5 @@ import "./style";
 import "./face";
 import "./noise";
 import "./standard";
+import "./creative";
+import "./experimental";

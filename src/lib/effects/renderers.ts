@@ -14,10 +14,18 @@ export interface RenderConfig {
   mode: RenderMode;
   emojiMap: EmojiMap;
   theme?: string;
+  charset?: string;
+  colorMode?: string;
   // NOTE: Processing params (dither, invert, etc) are now handled before this function!
 }
 
-const ASCII_CHARS = " .:-=+*#%@";
+const ASCII_CHARSETS: Record<string, string> = {
+  standard: " .:-=+*#%@",
+  blocks: " ░▒▓█",
+  binary: "01",
+  dots: " ·•●",
+  kanji: " 人大中小上下左右",
+};
 const BAYER_MATRIX_4x4 = [
   [0, 8, 2, 10],
   [12, 4, 14, 6],
@@ -25,9 +33,10 @@ const BAYER_MATRIX_4x4 = [
   [15, 7, 13, 5],
 ];
 
-function getAsciiChar(brightness: number): string {
-  const index = Math.floor((brightness / 255) * (ASCII_CHARS.length - 1));
-  return ASCII_CHARS[index];
+function getAsciiChar(brightness: number, charset: string = "standard"): string {
+  const chars = ASCII_CHARSETS[charset] || ASCII_CHARSETS.standard;
+  const index = Math.floor((brightness / 255) * (chars.length - 1));
+  return chars[index];
 }
 
 // The renderer now assumes `pixelData` is ALREADY fully processed
@@ -39,7 +48,7 @@ export function renderFrame(
   height: number,
   config: RenderConfig
 ) {
-  const { fontSize, mode, emojiMap } = config;
+  const { fontSize, mode, emojiMap, charset, colorMode } = config;
 
   // Clear canvas
   ctx.fillStyle = "#000";
@@ -117,8 +126,16 @@ export function renderFrame(
         ctx.fillText(char, centerX, centerY);
       } else if (mode === "ascii-color") {
         const brightness = (r + g + b) / 3;
-        const char = getAsciiChar(brightness);
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        const char = getAsciiChar(brightness, charset);
+        if (colorMode === "green") {
+          ctx.fillStyle = `rgb(0,${Math.floor(brightness)},0)`;
+        } else if (colorMode === "amber") {
+          ctx.fillStyle = `rgb(${Math.floor(brightness)},${Math.floor(brightness * 0.75)},0)`;
+        } else if (colorMode === "white") {
+          ctx.fillStyle = `rgb(${Math.floor(brightness)},${Math.floor(brightness)},${Math.floor(brightness)})`;
+        } else {
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+        }
         ctx.fillText(char, centerX, centerY);
       } else if (mode === "matrix") {
         const brightness = (r + g + b) / 3;

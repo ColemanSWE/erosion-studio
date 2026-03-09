@@ -4,6 +4,8 @@ import MediaBrowser from "./MediaBrowser/MediaBrowser";
 import Preview from "./Preview/Preview";
 import EffectsPanel from "./EffectsPanel/EffectsPanel";
 import { Timeline } from "./Timeline/Timeline";
+import ExportDialog from "./ExportDialog/ExportDialog";
+import type { ExportSettings } from "./ExportDialog/ExportDialog";
 import { useProjectStore } from "../stores/projectStore";
 import { useUIStore } from "../stores/uiStore";
 import { usePhotoEditor } from "../hooks/usePhotoEditor";
@@ -33,6 +35,7 @@ function App() {
     selectedMediaId,
     effects,
     regions,
+    resolution,
     currentTime,
     duration,
     isPlaying,
@@ -48,6 +51,7 @@ function App() {
     addRegion,
     removeRegion,
     setCurrentTime,
+    setResolution,
     play,
     pause,
     stop,
@@ -79,6 +83,7 @@ function App() {
     media,
     effects,
     regions,
+    resolution,
     duration,
     currentTime,
     version: "1.0",
@@ -91,7 +96,8 @@ function App() {
     canRedo,
   } = useHistory(projectSnapshot);
 
-  const { exportVideo, exportImage: exportImageFile } = useExport();
+  const { exportOffline, exportRealtime, exportImage: exportImageFile, isExporting, exportProgress } = useExport();
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   // ─── Playback Heartbeat ──────────────────────────────────────────────────
   // Use refs so the rAF loop doesn't tear down on every frame
@@ -125,14 +131,27 @@ function App() {
   }, [isPlaying, setCurrentTime, pause]);
 
   // ─── Timeline Rendering logic ─────────────────────────────────────────────
-  const activeClip = clips.find(
-    (c) => currentTime >= c.startTime && currentTime <= c.endTime
-  );
-  const activeMedia = activeClip ? media.find((m) => m.id === activeClip.mediaId) : null;
+  const activeClips = clips
+    .filter((c) => currentTime >= c.startTime && currentTime <= c.endTime)
+    .sort((a, b) => a.startTime - b.startTime); // Primary is first, secondary (transitioning in) is next
+
+  const activeMediaList = activeClips
+    .map((c) => ({
+      clip: c,
+      media: media.find((m) => m.id === c.mediaId),
+      isFallback: false,
+    }))
+    .filter((m) => m.media != null) as { clip: any; media: any; isFallback: boolean }[];
+
   const selectedMedia = media.find((m) => m.id === selectedMediaId);
-  
+
   // Use selected media if no clip is active (fallback behavior)
-  const renderSource = activeMedia || selectedMedia;
+  const renderSources =
+    activeMediaList.length > 0
+      ? activeMediaList
+      : selectedMedia
+        ? [{ clip: undefined, media: selectedMedia, isFallback: true }]
+        : [];
   // Resolve effects based on timeline keyframes and time windows
   const resolvedEffects = resolveEffectsAtTime(
     effects,
@@ -140,9 +159,25 @@ function App() {
     currentTime
   );
 
-  const isCamera = renderSource?.type === "camera";
-  const isVideo = renderSource?.type === "video";
-  const isImage = renderSource?.type === "image";
+  const isCamera = renderSources.length > 0 && renderSources[0].media?.type === "camera";
+  const isVideo = renderSources.length > 0 && renderSources.some((s) => s.media?.type === "video");
+  const isImage = renderSources.length > 0 && renderSources.some((s) => s.media?.type === "image");
+
+  // Filter sources by type for the respective hooks
+  const imageSources = renderSources
+    .filter((s) => s.media.type === "image")
+    .map((s) => ({
+      id: s.clip ? s.clip.id : s.media.id,
+      path: s.media.path,
+    }));
+
+  const videoSources = renderSources
+    .filter((s) => s.media.type === "video")
+    .map((s) => ({
+      id: s.clip ? s.clip.id : s.media.id,
+      path: s.media.path,
+      localTime: s.clip ? currentTime - s.clip.startTime : currentTime,
+    }));
 
   // ─── Rendering Hooks ─────────────────────────────────────────────────────
   // Only the hook corresponding to the active source type will draw.
@@ -150,7 +185,7 @@ function App() {
   const { exportImage } = usePhotoEditor({
     canvas,
     effects: resolvedEffects,
-    imagePath: isImage ? renderSource.path : undefined,
+    activeImages: imageSources,
     regions,
   });
 
@@ -161,11 +196,9 @@ function App() {
   useVideoPlayer({
     canvas,
     effects: resolvedEffects,
-    videoPath: isVideo ? renderSource.path : undefined,
+    activeVideos: videoSources,
     isPlaying,
-    currentTime: activeClip 
-      ? currentTime - activeClip.startTime // Local time within clip
-      : currentTime,
+    currentTime,
     regions,
     onDurationChange: handleVideoDurationChange,
   });
@@ -315,7 +348,11 @@ function App() {
     }
   }, [addMedia, duration, setDuration]);
 
-  const handleExport = async () => {
+  const handleExport = () => {
+    setShowExportDialog(true);
+  };
+
+  const handleExportConfirm = async (settings: ExportSettings) => {
     if (!canvas) {
       alert("No canvas available for export");
       return;
@@ -323,33 +360,46 @@ function App() {
 
     try {
       let result;
+      const fmt = settings.format;
 
-      if (renderSource?.type === "video") {
+      if (fmt === "png" || fmt === "jpeg") {
+        // Still image export
+        result = await exportImageFile(canvas, fmt === "jpeg" ? "jpeg" : "png");
+      } else if (fmt === "webm" && isVideo) {
+        // Real-time WebM via MediaRecorder — play the timeline
         pause();
         setCurrentTime(0);
-        // Brief delay to allow the video player to seek
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((r) => setTimeout(r, 300));
         play();
-
-        // Use webm — universally supported by MediaRecorder on all platforms
-        result = await exportVideo(canvas, effects, duration, { format: "webm", quality: 0.9, fps: 30 });
-        
+        result = await exportRealtime(canvas, duration, settings.fps);
         pause();
       } else {
-        // Image or camera snapshot → still image export
-        result = await exportImageFile(canvas, "png");
+        // Offline frame-by-frame export (MP4, GIF, or WebM-offline)
+        pause();
+
+        const seek = (time: number): Promise<void> => {
+          return new Promise((resolve) => {
+            setCurrentTime(time);
+            // Wait two rAF cycles so the video player can seek and render
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+          });
+        };
+
+        result = await exportOffline(canvas, duration, settings, seek);
       }
 
-      if (!result) return;
+      setShowExportDialog(false);
 
+      if (!result) return;
       if (result.success) {
         alert(`Exported to: ${result.filePath}`);
       } else {
-        const errorMsg = 'error' in result ? result.error : "Unknown error";
+        const errorMsg = "error" in result ? result.error : "Unknown error";
         alert(`Export failed: ${errorMsg}`);
       }
     } catch (error) {
       alert(`Export failed: ${error}`);
+      setShowExportDialog(false);
     }
   };
 
@@ -422,6 +472,8 @@ function App() {
         onExport={handleExport}
         canUndo={canUndo}
         canRedo={canRedo}
+        resolution={resolution}
+        onResolutionChange={setResolution}
       />
 
       <div className={styles.mainContent}>
@@ -437,7 +489,9 @@ function App() {
           />
         )}
 
-        <Preview 
+        <Preview
+          width={resolution.width}
+          height={resolution.height}
           onCanvasReady={handleCanvasReady}
           regions={regions}
           activeRegionId={activeRegionId}
@@ -525,6 +579,15 @@ function App() {
           onPlay={play}
           onPause={pause}
           onStop={stop}
+        />
+      )}
+      {showExportDialog && (
+        <ExportDialog
+          isVideo={isVideo || false}
+          isExporting={isExporting}
+          exportProgress={exportProgress}
+          onExport={handleExportConfirm}
+          onCancel={() => setShowExportDialog(false)}
         />
       )}
     </div>

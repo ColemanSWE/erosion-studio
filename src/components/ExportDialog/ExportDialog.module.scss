@@ -1,0 +1,216 @@
+@use "../../styles/variables";
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: variables.$z-modal;
+  backdrop-filter: blur(4px);
+}
+
+.dialog {
+  background: variables.$bg-surface;
+  border: 2px solid variables.$border-primary;
+  min-width: 400px;
+  max-width: 480px;
+  box-shadow: variables.$shadow-lg;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: variables.$spacing-md variables.$spacing-lg;
+  border-bottom: 1px solid variables.$border-secondary;
+
+  h2 {
+    font-family: variables.$font-mono;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0;
+  }
+}
+
+.closeBtn {
+  background: none;
+  border: 1px solid variables.$border-primary;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  cursor: pointer;
+  color: variables.$text-secondary;
+  transition: all variables.$transition-fast;
+
+  &:hover {
+    color: variables.$text-primary;
+    border-color: variables.$accent-primary;
+  }
+}
+
+.body {
+  padding: variables.$spacing-lg;
+  display: flex;
+  flex-direction: column;
+  gap: variables.$spacing-lg;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: variables.$spacing-sm;
+}
+
+.label {
+  font-family: variables.$font-mono;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: variables.$text-secondary;
+}
+
+.optionGroup {
+  display: flex;
+  gap: 0;
+  border: 1px solid variables.$border-primary;
+}
+
+.option {
+  flex: 1;
+  padding: variables.$spacing-sm variables.$spacing-md;
+  background: variables.$bg-elevated;
+  border: none;
+  border-right: 1px solid variables.$border-primary;
+  font-family: variables.$font-mono;
+  font-size: 12px;
+  color: variables.$text-secondary;
+  cursor: pointer;
+  transition: all variables.$transition-fast;
+  text-align: center;
+
+  &:last-child {
+    border-right: none;
+  }
+
+  &:hover {
+    background: variables.$bg-overlay;
+    color: variables.$text-primary;
+  }
+
+  &.active {
+    background: variables.$accent-primary;
+    color: variables.$text-inverse;
+  }
+}
+
+.formatHint {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-tertiary;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.footer {
+  display: flex;
+  gap: variables.$spacing-md;
+  padding: variables.$spacing-md variables.$spacing-lg;
+  border-top: 1px solid variables.$border-secondary;
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  padding: variables.$spacing-sm variables.$spacing-lg;
+  background: variables.$bg-elevated;
+  border: 1px solid variables.$border-primary;
+  font-family: variables.$font-mono;
+  font-size: 12px;
+  color: variables.$text-secondary;
+  cursor: pointer;
+  transition: all variables.$transition-fast;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+
+  &:hover {
+    border-color: variables.$accent-primary;
+    color: variables.$text-primary;
+  }
+}
+
+.exportBtn {
+  padding: variables.$spacing-sm variables.$spacing-xl;
+  background: variables.$accent-primary;
+  border: 1px solid variables.$accent-primary;
+  font-family: variables.$font-mono;
+  font-size: 12px;
+  font-weight: 700;
+  color: variables.$text-inverse;
+  cursor: pointer;
+  transition: all variables.$transition-fast;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+
+  &:hover {
+    background: variables.$accent-secondary;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+/* ── Export progress overlay ─────────────────────────────────────────────── */
+
+.progressOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: variables.$z-modal + 1;
+  flex-direction: column;
+  gap: variables.$spacing-lg;
+}
+
+.progressBox {
+  background: variables.$bg-surface;
+  border: 2px solid variables.$border-primary;
+  padding: variables.$spacing-xl;
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: variables.$spacing-md;
+  align-items: center;
+}
+
+.progressLabel {
+  font-family: variables.$font-mono;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.progressBarContainer {
+  width: 100%;
+  height: 6px;
+  background: variables.$bg-overlay;
+  border: 1px solid variables.$border-primary;
+  overflow: hidden;
+}
+
+.progressBar {
+  height: 100%;
+  background: variables.$accent-primary;
+  transition: width 150ms ease;
+}
+
+.progressPercent {
+  font-family: variables.$font-mono;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -1px;
+}

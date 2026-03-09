@@ -4,20 +4,25 @@ import type { Effect, Region } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 
+interface ActiveImage {
+  id: string;
+  path: string;
+}
+
 interface UsePhotoEditorOptions {
   canvas: HTMLCanvasElement | null;
   effects: Effect[];
-  imagePath?: string;
+  activeImages: ActiveImage[];
   regions?: Region[];
 }
 
 export function usePhotoEditor({
   canvas,
   effects,
-  imagePath,
+  activeImages,
   regions = [],
 }: UsePhotoEditorOptions) {
-  const imageRef = useRef<HTMLImageElement | null>(null);
+  const imagesMapRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
   const faceBoundsRef = useRef<FaceBounds[]>([]);
@@ -46,38 +51,56 @@ export function usePhotoEditor({
   }, [effects]);
 
   const renderFrame = useCallback((tick: number) => {
-    if (!canvas || !imageRef.current || !bufferRef.current || !bufferCtxRef.current) return;
+    if (!canvas || activeImages.length === 0 || !bufferRef.current || !bufferCtxRef.current) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const img = imageRef.current;
+    const primaryImageDef = activeImages[0];
+    const primaryImage = imagesMapRef.current.get(primaryImageDef.id);
+    if (!primaryImage) return;
+
+    // Secondary images for transitions
+    const secondaryFrames: ImageData[] = [];
+    for (let i = 1; i < activeImages.length; i++) {
+        const secDef = activeImages[i];
+        const secImage = imagesMapRef.current.get(secDef.id);
+        if (secImage) {
+            bufferCtxRef.current.drawImage(secImage, 0, 0, canvas.width, canvas.height);
+            secondaryFrames.push(
+                bufferCtxRef.current.getImageData(0, 0, canvas.width, canvas.height)
+            );
+        }
+    }
 
     renderWithEffects(
       {
         ctx,
         buffer: bufferRef.current,
         bufferCtx: bufferCtxRef.current,
-        source: img,
+        source: primaryImage,
         sourceWidth: canvas.width,
         sourceHeight: canvas.height,
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         tick,
         faceBounds: faceBoundsRef.current,
+        timelineFrames: secondaryFrames,
       },
       effects.filter((e) => e.active),
       regions
     );
-  }, [canvas, effects, regions]);
+  }, [canvas, effects, regions, activeImages]);
 
   const render = useCallback(() => {
-    if (!canvas || !imageRef.current) return;
+    if (!canvas || activeImages.length === 0) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const img = imageRef.current;
+    const primaryImageDef = activeImages[0];
+    const primaryImage = imagesMapRef.current.get(primaryImageDef.id);
+    if (!primaryImage) return;
     
     // Ensure buffer is ready
     if (!bufferRef.current) {
@@ -87,10 +110,10 @@ export function usePhotoEditor({
     }
     if (!bufferCtxRef.current) return;
 
-    // Update canvas size if needed
-    if (canvas.width !== (img.naturalWidth || img.width)) {
-       canvas.width = img.naturalWidth || img.width;
-       canvas.height = img.naturalHeight || img.height;
+    // Update canvas size if needed based on primary image
+    if (canvas.width !== (primaryImage.naturalWidth || primaryImage.width)) {
+       canvas.width = primaryImage.naturalWidth || primaryImage.width;
+       canvas.height = primaryImage.naturalHeight || primaryImage.height;
     }
 
     renderFrame(tickRef.current);
@@ -103,53 +126,66 @@ export function usePhotoEditor({
   }, [canvas, renderFrame, isAnimating]);
 
   useEffect(() => {
-    if (!imagePath) {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      return;
+    const map = imagesMapRef.current;
+    const currentIds = new Set(activeImages.map(img => img.id));
+
+    // Remove old images
+    for (const [id] of map.entries()) {
+        if (!currentIds.has(id)) {
+            map.delete(id);
+        }
     }
 
-    const img = new Image();
-    if (!imagePath.startsWith("blob:") && !imagePath.startsWith("data:")) {
-      img.crossOrigin = "anonymous";
+    // Load new images
+    for (const imgDef of activeImages) {
+        if (!map.has(imgDef.id)) {
+            const img = new Image();
+            if (!imgDef.path.startsWith("blob:") && !imgDef.path.startsWith("data:")) {
+              img.crossOrigin = "anonymous";
+            }
+
+            img.onload = async () => {
+              // Only do face detection on the primary image for simplicity,
+              // but we could map faces by id if needed.
+              if (imgDef.id === activeImages[0]?.id) {
+                  try {
+                    const faces = await detectFaces(img);
+                    faceBoundsRef.current = faces;
+                  } catch (error) {
+                    console.error("Face detection failed:", error);
+                    faceBoundsRef.current = [];
+                  }
+              }
+              render();
+            };
+
+            img.onerror = () => {
+              console.error("Failed to load image:", imgDef.path);
+            };
+
+            if (imgDef.path.startsWith("data:") || imgDef.path.startsWith("blob:")) {
+              img.src = imgDef.path;
+            } else if (imgDef.path.startsWith("http://") || imgDef.path.startsWith("https://")) {
+              img.src = imgDef.path;
+            } else {
+              img.src = `file://${imgDef.path}`;
+            }
+
+            map.set(imgDef.id, img);
+        }
     }
 
-    img.onload = async () => {
-      imageRef.current = img;
-      
-      try {
-        const faces = await detectFaces(img);
-        faceBoundsRef.current = faces;
-      } catch (error) {
-        console.error("Face detection failed:", error);
-        faceBoundsRef.current = [];
-      }
-      
-      render();
-    };
-
-    img.onerror = () => {
-      console.error("Failed to load image:", imagePath);
-    };
-
-    if (imagePath.startsWith("data:") || imagePath.startsWith("blob:")) {
-      img.src = imagePath;
-    } else if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
-      img.src = imagePath;
-    } else {
-      img.src = `file://${imagePath}`;
+    if (activeImages.length === 0) {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     }
 
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
+      // Don't cancel here if just adding an image, let it run
     };
-  }, [imagePath, render]);
+  }, [activeImages, render]);
 
   useEffect(() => {
-    if (imageRef.current && canvas) {
+    if (imagesMapRef.current.size > 0 && canvas) {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }

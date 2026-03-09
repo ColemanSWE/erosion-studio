@@ -7,7 +7,8 @@ import type {
   EffectParamTrack,
   Keyframe,
 } from "../lib/effects/types";
-import type { MediaItem } from "../lib/project";
+import type { MediaItem, Resolution } from "../lib/project";
+import { DEFAULT_RESOLUTION } from "../lib/project";
 import { getEffectDefinition } from "../lib/effects/effect-registry";
 
 function getDefaultParams(type: EffectType): Record<string, unknown> {
@@ -21,6 +22,7 @@ interface ProjectState {
   selectedMediaId?: string;
   effects: Effect[];
   regions: Region[];
+  resolution: Resolution;
   currentTime: number;
   duration: number;
   isPlaying: boolean;
@@ -31,6 +33,7 @@ interface ProjectState {
   effectParamTracks: EffectParamTrack[];
 
   setProjectName: (name: string) => void;
+  setResolution: (resolution: Resolution) => void;
   addMedia: (item: MediaItem) => void;
   removeMedia: (id: string) => void;
   selectMedia: (id: string) => void;
@@ -71,6 +74,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   selectedMediaId: undefined,
   effects: [],
   regions: [],
+  resolution: DEFAULT_RESOLUTION,
   currentTime: 0,
   duration: 10,
   isPlaying: false,
@@ -78,6 +82,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   effectParamTracks: [],
 
   setProjectName: (name) => set({ projectName: name }),
+  setResolution: (resolution) => set({ resolution }),
 
   addMedia: (item) =>
     set((state) => ({
