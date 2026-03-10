@@ -4,6 +4,9 @@ import type { TimelineClip } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
 import styles from "./Timeline.module.scss";
 
+export const MEDIA_ROW_H = 40;
+export const MIN_TRACK_ROWS = 2;
+
 interface MediaTrackProps {
   clips: TimelineClip[];
   media: MediaItem[];
@@ -30,21 +33,43 @@ export function MediaTrack({
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
+  // Always show at least MIN_TRACK_ROWS rows, grow as needed
+  const numTracks = Math.max(
+    MIN_TRACK_ROWS,
+    ...clips.map((c) => c.trackIndex + 1)
+  );
+  const totalHeight = numTracks * MEDIA_ROW_H;
+
   const getMediaName = (mediaId: string) =>
     media.find((m) => m.id === mediaId)?.name ?? "Unknown";
 
   const getMediaDuration = (mediaId: string) => {
     const m = media.find((m) => m.id === mediaId);
     if (!m) return 5;
-    // Use actual stored duration if available, fallback to type-based defaults
     if (m.duration && m.duration > 0 && isFinite(m.duration)) return m.duration;
     return m.type === "image" ? 5 : 10;
   };
 
+  // Convert a Y position relative to the track container into a track index
+  const yToTrackIndex = useCallback(
+    (clientY: number): number => {
+      const el = dropRef.current;
+      if (!el) return 0;
+      const rect = el.getBoundingClientRect();
+      const relY = clientY - rect.top;
+      const idx = Math.floor(relY / MEDIA_ROW_H);
+      return Math.max(0, Math.min(numTracks - 1, idx));
+    },
+    [numTracks]
+  );
+
   // ─── Drop from MediaBrowser ───────────────────────────────────────────────
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    if (e.dataTransfer.types.includes("application/media-item")) {
+    if (e.dataTransfer.types.includes("application/timeline-clip")) {
+      e.dataTransfer.dropEffect = "move";
+      setIsDragOver(true);
+    } else if (e.dataTransfer.types.includes("application/media-item")) {
       e.dataTransfer.dropEffect = "copy";
       setIsDragOver(true);
     }
@@ -57,28 +82,53 @@ export function MediaTrack({
       e.preventDefault();
       setIsDragOver(false);
 
+      // New media item from browser
       const json = e.dataTransfer.getData("application/media-item");
-      if (!json) return;
+      if (json) {
+        const item: MediaItem = JSON.parse(json);
+        const el = dropRef.current;
+        if (!el) return;
 
-      const item: MediaItem = JSON.parse(json);
-      const dropRef2 = dropRef.current;
-      if (!dropRef2) return;
+        const rect = el.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const startTime = Math.max(0, x / zoom);
+        const clipDuration = getMediaDuration(item.id);
+        const endTime = Math.min(duration, startTime + clipDuration);
+        const trackIndex = yToTrackIndex(e.clientY);
 
-      const rect = dropRef2.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const startTime = Math.max(0, x / zoom);
-      const clipDuration = getMediaDuration(item.id);
-      const endTime = Math.min(duration, startTime + clipDuration);
+        onAddClip({
+          id: `clip-${Date.now()}-${clipIdCounter++}`,
+          mediaId: item.id,
+          startTime,
+          endTime,
+          trackIndex,
+        });
+        return;
+      }
 
-      onAddClip({
-        id: `clip-${Date.now()}-${clipIdCounter++}`,
-        mediaId: item.id,
-        startTime,
-        endTime,
-        trackIndex: 0,
-      });
+      // Existing clip being repositioned
+      const clipId = e.dataTransfer.getData("application/timeline-clip");
+      if (clipId) {
+        const clip = clips.find((c) => c.id === clipId);
+        if (!clip) return;
+
+        const el = dropRef.current;
+        if (!el) return;
+
+        const offsetXStr = e.dataTransfer.getData("application/timeline-clip-offset");
+        const offsetX = offsetXStr ? parseFloat(offsetXStr) : 0;
+
+        const rect = el.getBoundingClientRect();
+        const x = e.clientX - rect.left - offsetX;
+        const newStart = Math.max(0, x / zoom);
+        const clipLen = clip.endTime - clip.startTime;
+        const newEnd = Math.min(duration, newStart + clipLen);
+        const trackIndex = yToTrackIndex(e.clientY);
+
+        onUpdateClip(clipId, { startTime: newStart, endTime: newEnd, trackIndex });
+      }
     },
-    [zoom, duration, onAddClip, getMediaDuration],
+    [zoom, duration, onAddClip, onUpdateClip, getMediaDuration, yToTrackIndex, clips]
   );
 
   // ─── Drag clip to reposition ──────────────────────────────────────────────
@@ -86,12 +136,12 @@ export function MediaTrack({
     (e: React.DragEvent, clipId: string) => {
       e.dataTransfer.setData("application/timeline-clip", clipId);
       e.dataTransfer.effectAllowed = "move";
-      
-      const dropRefEl = dropRef.current;
-      if (dropRefEl) {
-        const rect = dropRefEl.getBoundingClientRect();
+
+      const el = dropRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
         const mouseXInTrack = e.clientX - rect.left;
-        const clip = clips.find(c => c.id === clipId);
+        const clip = clips.find((c) => c.id === clipId);
         if (clip) {
           const clipStartXInTrack = clip.startTime * zoom;
           const offsetX = mouseXInTrack - clipStartXInTrack;
@@ -99,32 +149,7 @@ export function MediaTrack({
         }
       }
     },
-    [clips, zoom],
-  );
-
-  const handleClipDrop = useCallback(
-    (e: React.DragEvent) => {
-      const clipId = e.dataTransfer.getData("application/timeline-clip");
-      if (!clipId) return;
-
-      const dropRefEl = dropRef.current;
-      if (!dropRefEl) return;
-
-      const clip = clips.find((c) => c.id === clipId);
-      if (!clip) return;
-
-      const offsetXStr = e.dataTransfer.getData("application/timeline-clip-offset");
-      const offsetX = offsetXStr ? parseFloat(offsetXStr) : 0;
-
-      const rect = dropRefEl.getBoundingClientRect();
-      const x = e.clientX - rect.left - offsetX;
-      const newStart = Math.max(0, x / zoom);
-      const clipLen = clip.endTime - clip.startTime;
-      const newEnd = Math.min(duration, newStart + clipLen);
-
-      onUpdateClip(clipId, { startTime: newStart, endTime: newEnd });
-    },
-    [clips, zoom, duration, onUpdateClip],
+    [clips, zoom]
   );
 
   // ─── Resize handles ───────────────────────────────────────────────────────
@@ -175,35 +200,63 @@ export function MediaTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [clips, zoom, duration, onUpdateClip],
+    [clips, zoom, duration, onUpdateClip]
   );
 
   const maxClipEnd = clips.reduce((max, c) => Math.max(max, c.endTime), duration);
   const totalWidth = Math.max(maxClipEnd * zoom + 120, 400);
 
+  // Distinct hue per track to make it easy to tell tracks apart
+  const trackHues = [210, 160, 40, 300, 20];
+  const getTrackColor = (trackIndex: number) =>
+    `hsl(${trackHues[trackIndex % trackHues.length]}, 70%, 45%)`;
+
   return (
     <div
       ref={dropRef}
       className={`${styles.dropZone} ${isDragOver ? styles.dragOver : ""}`}
-      style={{ width: totalWidth, minHeight: 40, position: "relative" }}
+      style={{ width: totalWidth, height: totalHeight, position: "relative" }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
-      onDrop={(e) => {
-        handleDrop(e);
-        handleClipDrop(e);
-      }}
+      onDrop={handleDrop}
       onMouseDown={() => setSelectedClipId(null)}
     >
+      {/* Track row lane backgrounds + labels */}
+      {Array.from({ length: numTracks }, (_, idx) => (
+        <div
+          key={`lane-${idx}`}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: idx * MEDIA_ROW_H,
+            width: "100%",
+            height: MEDIA_ROW_H,
+            borderBottom: "1px solid rgba(255,255,255,0.05)",
+            background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)",
+            pointerEvents: "none",
+          }}
+        />
+      ))}
+
+      {/* Clips */}
       {clips.map((clip) => {
         const left = clip.startTime * zoom;
         const width = Math.max(4, (clip.endTime - clip.startTime) * zoom);
+        const top = clip.trackIndex * MEDIA_ROW_H;
         const isSelected = selectedClipId === clip.id;
+        const color = getTrackColor(clip.trackIndex);
 
         return (
           <div
             key={clip.id}
             className={`${styles.clip} ${isSelected ? styles.selected : ""}`}
-            style={{ left, width }}
+            style={{
+              left,
+              width,
+              top,
+              height: MEDIA_ROW_H - 4,
+              background: color,
+            }}
             draggable
             tabIndex={0}
             onDragStart={(e) => handleClipDragStart(e, clip.id)}
@@ -218,15 +271,18 @@ export function MediaTrack({
               }
             }}
             onDoubleClick={() => onRemoveClip(clip.id)}
-            title={`${getMediaName(clip.mediaId)} — double-click or press Delete to remove`}
+            title={`${getMediaName(clip.mediaId)} (Track ${clip.trackIndex + 1}) — double-click or Delete to remove`}
           >
             <div
               className={`${styles.clipHandle} ${styles.left}`}
               onMouseDown={(e) => startResize(e, clip.id, "left")}
             />
-            <span className={styles.clipName}>{getMediaName(clip.mediaId)}</span>
-            
-            <button 
+            <span className={styles.clipName}>
+              <span style={{ opacity: 0.6, fontSize: 9 }}>T{clip.trackIndex + 1} </span>
+              {getMediaName(clip.mediaId)}
+            </span>
+
+            <button
               className={styles.removeClipBtn}
               onClick={(e) => {
                 e.stopPropagation();
@@ -258,7 +314,7 @@ export function MediaTrack({
         >
           <Film size={14} style={{ color: "#444", marginRight: 6 }} />
           <span style={{ fontFamily: "monospace", fontSize: 10, color: "#444" }}>
-            Drag media here
+            Drag media here — use multiple rows to overlap clips (for transitions)
           </span>
         </div>
       )}

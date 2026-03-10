@@ -12,10 +12,12 @@ import type {
   TimelineClip,
   EffectParamTrack,
   Keyframe,
+  Overlay,
 } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
 import { TimelineRuler } from "./TimelineRuler";
-import { MediaTrack } from "./MediaTrack";
+import { MediaTrack, MEDIA_ROW_H, MIN_TRACK_ROWS } from "./MediaTrack";
+import { OverlayTrack } from "./OverlayTrack";
 import { EffectTrack } from "./EffectTrack";
 import { formatTime } from "../../lib/timeline";
 import styles from "./Timeline.module.scss";
@@ -24,6 +26,8 @@ interface TimelineProps {
   media: MediaItem[];
   effects: Effect[];
   clips: TimelineClip[];
+  overlays: Overlay[];
+  selectedOverlayId: string | null;
   effectParamTracks: EffectParamTrack[];
   currentTime: number;
   duration: number;
@@ -32,6 +36,11 @@ interface TimelineProps {
   onAddClip: (clip: TimelineClip) => void;
   onRemoveClip: (id: string) => void;
   onUpdateClip: (id: string, updates: Partial<TimelineClip>) => void;
+
+  onAddOverlay: (overlay: Overlay) => void;
+  onUpdateOverlay: (id: string, updates: Partial<Overlay>) => void;
+  onRemoveOverlay: (id: string) => void;
+  onSelectOverlay: (id: string | null) => void;
 
   onUpdateEffect: (id: string, updates: Partial<Effect>) => void;
   onRemoveEffect: (id: string) => void;
@@ -56,6 +65,8 @@ export function Timeline({
   media,
   effects,
   clips,
+  overlays,
+  selectedOverlayId,
   effectParamTracks,
   currentTime,
   duration,
@@ -63,6 +74,10 @@ export function Timeline({
   onAddClip,
   onRemoveClip,
   onUpdateClip,
+  onAddOverlay,
+  onRemoveOverlay,
+  onUpdateOverlay,
+  onSelectOverlay,
   onUpdateEffect,
   onRemoveEffect,
   onAddEffectParamTrack,
@@ -137,6 +152,12 @@ export function Timeline({
   const RULER_H = 28;
   const ROW_H = 40;
 
+  const numMediaTracks = Math.max(MIN_TRACK_ROWS, ...clips.map((c) => c.trackIndex + 1));
+  const MEDIA_TRACK_H = numMediaTracks * MEDIA_ROW_H;
+
+  const numOverlayTracks = Math.max(MIN_TRACK_ROWS, ...overlays.map((o) => o.trackIndex + 1));
+  const OVERLAY_TRACK_H = numOverlayTracks * MEDIA_ROW_H;
+
   // ─── Label rows —— must mirror track rows exactly ─────────────────────────
   const renderLabels = () => {
     const labels: React.ReactNode[] = [];
@@ -144,11 +165,17 @@ export function Timeline({
     // Header spacer (mirrors ruler)
     labels.push(<div key="ruler-spacer" className={styles.labelsHeader} />);
 
-    // Media track label
+    // Media track label — height matches dynamic multi-row height
     labels.push(
-      <div key="media-label" className={styles.trackLabel} style={{ height: ROW_H }}>
+      <div key="media-label" className={styles.trackLabel} style={{ height: MEDIA_TRACK_H }}>
         <Clock size={12} className={styles.trackIcon} />
         <span className={styles.trackLabelText}>Media</span>
+      </div>,
+    );
+
+    labels.push(
+      <div key="overlay-label" className={styles.trackLabel} style={{ height: OVERLAY_TRACK_H }}>
+        <span className={styles.trackLabelText}>Overlays</span>
       </div>,
     );
 
@@ -289,8 +316,8 @@ export function Timeline({
             }}
           />
 
-          {/* Media track row */}
-          <div className={styles.trackRow} style={{ width: totalWidth, height: ROW_H }}>
+          {/* Media track row — height is dynamic */}
+          <div className={styles.trackRow} style={{ width: totalWidth, height: MEDIA_TRACK_H }}>
             <MediaTrack
               clips={clips}
               media={media}
@@ -300,6 +327,21 @@ export function Timeline({
               onAddClip={onAddClip}
               onUpdateClip={onUpdateClip}
               onRemoveClip={onRemoveClip}
+            />
+          </div>
+
+          {/* Overlay track row */}
+          <div className={styles.trackRow} style={{ width: totalWidth, height: OVERLAY_TRACK_H }}>
+            <OverlayTrack
+              overlays={overlays}
+              zoom={zoom}
+              duration={duration}
+              currentTime={currentTime}
+              onAddOverlay={onAddOverlay}
+              onUpdateOverlay={onUpdateOverlay}
+              onRemoveOverlay={onRemoveOverlay}
+              onSelectOverlay={onSelectOverlay}
+              selectedOverlayId={selectedOverlayId}
             />
           </div>
 

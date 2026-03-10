@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import path from "path";
+import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import { setupFFmpegHandlers } from "./ffmpeg";
 
@@ -61,4 +62,22 @@ ipcMain.handle("dialog:openFile", async (_, options) => {
 ipcMain.handle("dialog:saveFile", async (_, options) => {
   if (!mainWindow) return { canceled: true };
   return dialog.showSaveDialog(mainWindow, options);
+});
+
+ipcMain.handle("file:readText", async (_, filePath) => {
+  try {
+    const data = await fs.readFile(filePath, "utf-8");
+    return { success: true, data };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("file:writeText", async (_, filePath, data) => {
+  try {
+    await fs.writeFile(filePath, data, "utf-8");
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 });

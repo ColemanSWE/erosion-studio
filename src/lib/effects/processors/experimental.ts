@@ -538,6 +538,50 @@ registerEffect({
     animated: true,
     speed: 0.5,
   },
+  glsl: {
+    fragment: `
+uniform float u_zoom;
+uniform float u_rotation;
+uniform float u_centerX;
+uniform float u_centerY;
+uniform float u_innerRadius;
+uniform float u_outerRadius;
+uniform bool u_animated;
+uniform float u_speed;
+void main() {
+  float maxDim = max(u_resolution.x, u_resolution.y);
+  vec2 center = vec2(u_centerX, u_centerY);
+  vec2 d = v_texCoord - center;
+  // Correct for non-square images
+  d *= u_resolution / maxDim;
+  float dist = length(d);
+  float r1 = u_innerRadius * 0.5;
+  float r2 = u_outerRadius * 0.5;
+  float rotRad = u_rotation * 3.14159 / 180.0;
+  float logZoom = log(u_zoom);
+  float timeOffset = u_animated ? u_time * u_speed : 0.0;
+  float period = log(r2 / max(r1, 0.001));
+  if (dist < 0.001 || period < 0.001) {
+    fragColor = texture(u_source, v_texCoord);
+    return;
+  }
+  float logDist = log(dist / r1) + timeOffset;
+  float angle = atan(d.y, d.x) + rotRad;
+  float wraps = logDist / period;
+  float fracWrap = fract(wraps);
+  logDist = fracWrap * period;
+  angle += floor(wraps) * rotRad;
+  float newDist = r1 * exp(logDist);
+  // Convert back to UV space
+  vec2 srcD = vec2(cos(angle), sin(angle)) * newDist * maxDim / u_resolution;
+  vec2 srcUV = center + srcD;
+  fragColor = sampleClamped(srcUV);
+}`,
+    uniforms: {
+      zoom: "float", rotation: "float", centerX: "float", centerY: "float",
+      innerRadius: "float", outerRadius: "float", animated: "bool", speed: "float",
+    },
+  },
   paramsConfig: [
     { key: "zoom", label: "Zoom", type: "slider", min: 1.2, max: 5, step: 0.1 },
     { key: "rotation", label: "Rotation", type: "slider", min: -180, max: 180, step: 5 },

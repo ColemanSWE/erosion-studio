@@ -374,25 +374,26 @@ registerEffect({
 
     if (blobs.length === 0) return;
 
-    // --- Inner Effect Processing ---
-    let innerEffectData: Uint8ClampedArray | null = null;
-    if (innerEffect && innerEffect !== "none") {
-      const effectDef = getEffectDefinition(innerEffect as EffectType);
-      if (effectDef && effectDef.processor) {
-        // Create a copy of the original data to process
-        innerEffectData = new Uint8ClampedArray(data);
-        const innerParams = effectDef?.defaultParams || {};
-        // Process the full frame with the inner effect
-        effectDef.processor(innerEffectData, { width, height, time, timelineFrames, faceBounds, handBounds, poseBounds }, innerParams);
-      }
-    }
+// Global cache for blob-track temp canvas
+let blobTrackCanvas: HTMLCanvasElement | null = null;
+let blobTrackCtx: CanvasRenderingContext2D | null = null;
 
-    // Step 4: Render overlays using a temp canvas
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const ctx = tempCanvas.getContext("2d");
-    if (!ctx) return;
+function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  if (!blobTrackCanvas || blobTrackCanvas.width !== width || blobTrackCanvas.height !== height) {
+    blobTrackCanvas = document.createElement("canvas");
+    blobTrackCanvas.width = width;
+    blobTrackCanvas.height = height;
+    blobTrackCtx = blobTrackCanvas.getContext("2d", { willReadFrequently: true });
+  }
+  if (!blobTrackCtx) {
+    throw new Error("Failed to get 2D context for blob-track canvas");
+  }
+  return { canvas: blobTrackCanvas, ctx: blobTrackCtx };
+}
+
+    // Step 4: Render overlays using a cached canvas
+    const { canvas: tempCanvas, ctx } = getOrCreateBlobCanvas(width, height);
+    ctx.clearRect(0, 0, width, height);
 
     const imgData = ctx.createImageData(width, height);
     imgData.data.set(data);
@@ -467,27 +468,49 @@ registerEffect({
       blobCenters.push({ cx, cy });
 
       // --- Inner Effect Compositing ---
-      // If we have inner effect data, we draw a masked chunk from it into the canvas
-      if (innerEffectData && innerEffect !== "none") {
-        // Create an ImageData for just this box
-        const safeBx = Math.max(0, Math.floor(bx));
-        const safeBy = Math.max(0, Math.floor(by));
-        const safeBw = Math.min(width - safeBx, Math.ceil(bw));
-        const safeBh = Math.min(height - safeBy, Math.ceil(bh));
+      // Apply the inner effect only to the bounds of the current blob
+      if (innerEffect && innerEffect !== "none") {
+        const effectDef = getEffectDefinition(innerEffect as EffectType);
+        
+        if (effectDef && effectDef.processor) {
+          const safeBx = Math.max(0, Math.floor(bx));
+          const safeBy = Math.max(0, Math.floor(by));
+          const safeBw = Math.min(width - safeBx, Math.ceil(bw));
+          const safeBh = Math.min(height - safeBy, Math.ceil(bh));
 
-        if (safeBw > 0 && safeBh > 0) {
-          const chunkData = ctx.createImageData(safeBw, safeBh);
-          for (let cy = 0; cy < safeBh; cy++) {
-            for (let cx = 0; cx < safeBw; cx++) {
-              const srcIdx = ((safeBy + cy) * width + (safeBx + cx)) * 4;
-              const dstIdx = (cy * safeBw + cx) * 4;
-              chunkData.data[dstIdx] = innerEffectData[srcIdx];
-              chunkData.data[dstIdx + 1] = innerEffectData[srcIdx + 1];
-              chunkData.data[dstIdx + 2] = innerEffectData[srcIdx + 2];
-              chunkData.data[dstIdx + 3] = innerEffectData[srcIdx + 3]; // Alpha from processed
+          if (safeBw > 0 && safeBh > 0) {
+            // Build a mini-buffer containing just the pixels of the bounding box
+            const miniBuffer = new Uint8ClampedArray(safeBw * safeBh * 4);
+            for (let localY = 0; localY < safeBh; localY++) {
+              for (let localX = 0; localX < safeBw; localX++) {
+                const srcIdx = ((safeBy + localY) * width + (safeBx + localX)) * 4;
+                const dstIdx = (localY * safeBw + localX) * 4;
+                miniBuffer[dstIdx] = data[srcIdx];
+                miniBuffer[dstIdx + 1] = data[srcIdx + 1];
+                miniBuffer[dstIdx + 2] = data[srcIdx + 2];
+                miniBuffer[dstIdx + 3] = data[srcIdx + 3];
+              }
             }
+
+            // Run the processor aggressively just on this sub-region
+            effectDef.processor(
+              miniBuffer, 
+              { 
+                width: safeBw, 
+                height: safeBh, 
+                time, 
+                timelineFrames, 
+                faceBounds, 
+                handBounds, 
+                poseBounds 
+              }, 
+              effectDef.defaultParams || {}
+            );
+
+            // Stamp the processed bytes directly into chunkData and draw
+            const chunkData = new ImageData(miniBuffer, safeBw, safeBh);
+            ctx.putImageData(chunkData, safeBx, safeBy);
           }
-          ctx.putImageData(chunkData, safeBx, safeBy);
         }
       }
 

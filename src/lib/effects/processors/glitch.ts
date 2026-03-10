@@ -7,8 +7,48 @@ registerEffect({
   type: "glitch",
   label: "Digital Glitch",
   category: "glitch",
-    defaultParams: { intensity: 50, speed: 10 },
+  defaultParams: { intensity: 50, speed: 10 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_speed;
+void main() {
+  if (u_intensity == 0.0) { fragColor = texture(u_source, v_texCoord); return; }
+  float t = u_time * (u_speed / 10.0);
+  float seed = floor(t / 5.0);
+  int numSlices = int(floor(3.0 + u_intensity / 20.0));
+  vec2 uv = v_texCoord;
+  float py = floor(uv.y * u_resolution.y);
+  int channelShiftApplied = -1;
+  float shiftXApplied = 0.0;
+  for (int s = 0; s < 10; s++) {
+    if (s >= numSlices) break;
+    float sliceY = floor(pseudoRandom(seed + float(s) * 1000.0) * u_resolution.y);
+    float sliceH = floor(2.0 + pseudoRandom(seed + float(s) * 2000.0) * (u_intensity / 3.0));
+    if (py >= sliceY && py < sliceY + sliceH) {
+      shiftXApplied = floor((pseudoRandom(seed + float(s) * 3000.0) - 0.5) * u_intensity * 2.0);
+      channelShiftApplied = int(floor(pseudoRandom(seed + float(s) * 4000.0) * 3.0));
+      break;
+    }
+  }
+  float shiftUV = shiftXApplied / u_resolution.x;
+  vec4 original = texture(u_source, uv);
+  if (channelShiftApplied == 0) {
+    float r = sampleClamped(vec2(uv.x + shiftUV, uv.y)).r;
+    fragColor = vec4(r, original.g, original.b, original.a);
+  } else if (channelShiftApplied == 1) {
+    float g = sampleClamped(vec2(uv.x + shiftUV, uv.y)).g;
+    fragColor = vec4(original.r, g, original.b, original.a);
+  } else if (channelShiftApplied == 2) {
+    float b = sampleClamped(vec2(uv.x + shiftUV, uv.y)).b;
+    fragColor = vec4(original.r, original.g, b, original.a);
+  } else {
+    fragColor = original;
+  }
+}`,
+    uniforms: { intensity: "float", speed: "float" },
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const intensity = (params.intensity as number) || 50;
     const speed = (params.speed as number) || 10;
@@ -561,8 +601,56 @@ registerEffect({
   type: "block-corrupt",
   label: "Block Corrupt",
   category: "glitch",
-    defaultParams: { intensity: 30, blockSize: 16 },
+  defaultParams: { intensity: 30, blockSize: 16 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_blockSize;
+void main() {
+  float seed = floor(u_time / 8.0);
+  float blocksX = ceil(u_resolution.x / u_blockSize);
+  float blocksY = ceil(u_resolution.y / u_blockSize);
+  float bx = floor(v_texCoord.x * u_resolution.x / u_blockSize);
+  float by = floor(v_texCoord.y * u_resolution.y / u_blockSize);
+  float blockId = bx + by * blocksX;
+  float corruptProb = (u_intensity / 100.0) * 0.3;
+  if (pseudoRandom(seed + blockId * 3.7) < corruptProb) {
+    float effect = floor(pseudoRandom(seed + blockId * 2.3) * 4.0);
+    vec2 lx = vec2(mod(v_texCoord.x * u_resolution.x, u_blockSize),
+                   mod(v_texCoord.y * u_resolution.y, u_blockSize));
+    if (effect < 1.0) {
+      float srcBx = floor(pseudoRandom(seed + blockId * 4.1) * blocksX);
+      float srcBy = floor(pseudoRandom(seed + blockId * 5.2) * blocksY);
+      vec2 srcUV = (vec2(srcBx, srcBy) * u_blockSize + lx) / u_resolution;
+      fragColor = sampleClamped(srcUV);
+    } else if (effect < 2.0) {
+      float shiftX = floor((pseudoRandom(seed + blockId * 6.3) - 0.5) * u_blockSize * 2.0);
+      float newX = mod(v_texCoord.x * u_resolution.x + shiftX + u_resolution.x, u_resolution.x);
+      fragColor = texture(u_source, vec2(newX / u_resolution.x, v_texCoord.y));
+    } else if (effect < 3.0) {
+      vec3 avg = vec3(0.0);
+      float cnt = 0.0;
+      for (int dy = 0; dy < 16; dy++) {
+        if (float(dy) >= u_blockSize) break;
+        for (int dx = 0; dx < 16; dx++) {
+          if (float(dx) >= u_blockSize) break;
+          vec2 suv = (vec2(bx, by) * u_blockSize + vec2(float(dx), float(dy))) / u_resolution;
+          avg += texture(u_source, clamp(suv, 0.0, 1.0)).rgb;
+          cnt += 1.0;
+        }
+      }
+      fragColor = vec4(avg / max(cnt, 1.0), 1.0);
+    } else {
+      vec2 firstUV = vec2(bx, by) * u_blockSize / u_resolution;
+      fragColor = sampleClamped(firstUV);
+    }
+  } else {
+    fragColor = texture(u_source, v_texCoord);
+  }
+}`,
+    uniforms: { intensity: "float", blockSize: "float" },
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const intensity = (params.intensity as number) || 30;
     const blockSize = (params.blockSize as number) || 16;
@@ -799,8 +887,22 @@ registerEffect({
   type: "rgb-channel-separation",
   label: "RGB Split",
   category: "glitch",
-    defaultParams: { rOffset: 5, gOffset: 0, bOffset: -5 },
+  defaultParams: { rOffset: 5, gOffset: 0, bOffset: -5 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_rOffset;
+uniform float u_gOffset;
+uniform float u_bOffset;
+void main() {
+  vec2 px = 1.0 / u_resolution;
+  float r = sampleClamped(vec2(v_texCoord.x + u_rOffset * px.x, v_texCoord.y)).r;
+  float g = sampleClamped(vec2(v_texCoord.x + u_gOffset * px.x, v_texCoord.y)).g;
+  float b = sampleClamped(vec2(v_texCoord.x + u_bOffset * px.x, v_texCoord.y)).b;
+  fragColor = vec4(r, g, b, 1.0);
+}`,
+    uniforms: { rOffset: "float", gOffset: "float", bOffset: "float" },
+  },
   processor: (data, { width, height }, params) => {
     const rOffset = (params.rOffset as number) || 5;
     const gOffset = (params.gOffset as number) || 0;
@@ -827,8 +929,34 @@ registerEffect({
   type: "screen-tear",
   label: "Screen Tear",
   category: "glitch",
-    defaultParams: { intensity: 50, count: 3, offset: 20 },
+  defaultParams: { intensity: 50, count: 3, offset: 20 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_count;
+uniform float u_offset;
+void main() {
+  float seed = floor(u_time * 3.0);
+  float numTears = u_count + floor(pseudoRandom(seed) * u_count * (u_intensity / 30.0));
+  float maxOff = u_offset * (u_intensity / 30.0);
+  float py = v_texCoord.y * u_resolution.y;
+  vec2 uv = v_texCoord;
+  for (int t = 0; t < 20; t++) {
+    if (float(t) >= numTears) break;
+    float tearY = floor(pseudoRandom(seed + float(t) * 100.0) * u_resolution.y);
+    float tearH = floor(1.0 + pseudoRandom(seed + float(t) * 200.0) * 40.0 * (u_intensity / 50.0));
+    if (py >= tearY && py < tearY + tearH) {
+      float tearOff = (pseudoRandom(seed + float(t) * 300.0) - 0.5) * maxOff * 4.0;
+      float newX = mod(v_texCoord.x * u_resolution.x + tearOff + u_resolution.x, u_resolution.x);
+      uv = vec2(newX / u_resolution.x, v_texCoord.y);
+      break;
+    }
+  }
+  fragColor = texture(u_source, uv);
+}`,
+    uniforms: { intensity: "float", count: "float", offset: "float" },
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const intensity = (params.intensity as number) || 50;
     const count = (params.count as number) || 3;
@@ -901,8 +1029,32 @@ registerEffect({
   type: "bitcrush",
   label: "Bitcrush",
   category: "glitch",
-    defaultParams: { bits: 4, intensity: 50 },
+  defaultParams: { bits: 4, intensity: 50 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_bits;
+uniform float u_intensity;
+void main() {
+  float seed = floor(u_time * 0.1);
+  float py = floor(v_texCoord.y * u_resolution.y);
+  float corruptChance = u_intensity / 100.0;
+  float rowSeed = pseudoRandom(seed + py * 1.7);
+  float localBits = rowSeed < corruptChance * 0.3
+    ? max(1.0, u_bits - floor(pseudoRandom(seed + py * 3.1) * 3.0))
+    : u_bits;
+  float rowShift = rowSeed < corruptChance * 0.3
+    ? floor(pseudoRandom(seed + py * 2.3) * u_resolution.x * 0.3)
+    : 0.0;
+  float levels = pow(2.0, localBits);
+  float step = 1.0 / (levels - 1.0);
+  float srcX = mod(v_texCoord.x * u_resolution.x + rowShift, u_resolution.x);
+  vec4 c = texture(u_source, vec2(srcX / u_resolution.x, v_texCoord.y));
+  vec3 crushed = floor(c.rgb / step + 0.5) * step;
+  fragColor = vec4(crushed, c.a);
+}`,
+    uniforms: { bits: "float", intensity: "float" },
+  },
   processor: (data, { width, height }, params) => {
     const bits = (params.bits as number) || 4;
     const intensity = (params.intensity as number) || 50;
@@ -952,8 +1104,52 @@ registerEffect({
   type: "fragment-glitch",
   label: "Fragment Glitch",
   category: "glitch",
-    defaultParams: { intensity: 50, fragmentSize: 8 },
+  defaultParams: { intensity: 50, fragmentSize: 8 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_fragmentSize;
+void main() {
+  float seed = floor(u_time * 0.5);
+  float fsize = u_fragmentSize;
+  float bx = floor(v_texCoord.x * u_resolution.x / fsize);
+  float by = floor(v_texCoord.y * u_resolution.y / fsize);
+  float blockId = bx + by * ceil(u_resolution.x / fsize);
+  vec2 lxy = vec2(
+    mod(v_texCoord.x * u_resolution.x, fsize),
+    mod(v_texCoord.y * u_resolution.y, fsize)
+  );
+  float corruptProb = (u_intensity / 100.0) * 0.6;
+  if (pseudoRandom(seed + blockId * 2.9) < corruptProb) {
+    float effect = pseudoRandom(seed + blockId * 5.1);
+    if (effect < 0.3) {
+      float srcBx = floor(pseudoRandom(seed + blockId * 7.3) * ceil(u_resolution.x / fsize));
+      float srcBy = floor(pseudoRandom(seed + blockId * 8.7) * ceil(u_resolution.y / fsize));
+      vec2 srcUV = (vec2(srcBx, srcBy) * fsize + lxy) / u_resolution;
+      fragColor = sampleClamped(srcUV);
+    } else if (effect < 0.5) {
+      int channel = int(floor(pseudoRandom(seed + blockId * 9.1) * 3.0));
+      float val = pseudoRandom(seed + blockId * 11.3) > 0.5 ? 1.0 : 0.0;
+      vec4 c = texture(u_source, v_texCoord);
+      if (channel == 0) c.r = val;
+      else if (channel == 1) c.g = val;
+      else c.b = val;
+      fragColor = c;
+    } else if (effect < 0.85) {
+      float repeatX = pseudoRandom(seed + blockId * 13.7) * u_resolution.x;
+      float repeatY = pseudoRandom(seed + blockId * 17.1) * u_resolution.y;
+      fragColor = texture(u_source, vec2(repeatX, repeatY) / u_resolution);
+    } else {
+      vec4 c = texture(u_source, v_texCoord);
+      fragColor = vec4(1.0 - c.rgb, c.a);
+    }
+  } else {
+    fragColor = texture(u_source, v_texCoord);
+  }
+}`,
+    uniforms: { intensity: "float", fragmentSize: "float" },
+  },
   processor: (data, { width, height }, params) => {
     const intensity = (params.intensity as number) || 50;
     const fragmentSize = (params.fragmentSize as number) || 8;
@@ -1052,8 +1248,53 @@ registerEffect({
   type: "data-destroy",
   label: "Data Destroy",
   category: "glitch",
-    defaultParams: { intensity: 50, corruption: 30 },
+  defaultParams: { intensity: 50, corruption: 30 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_corruption;
+void main() {
+  float seed = floor(u_time * 0.2);
+  float pixIdx = floor(v_texCoord.x * u_resolution.x) + floor(v_texCoord.y * u_resolution.y) * u_resolution.x;
+  float byteCorruptChance = u_corruption / 1000.0;
+  float rowKillChance = u_intensity / 500.0;
+  float py = floor(v_texCoord.y * u_resolution.y);
+  vec4 c = texture(u_source, v_texCoord);
+  // Row kill
+  if (pseudoRandom(seed + py * 3.1) < rowKillChance) {
+    float killType = pseudoRandom(seed + py * 5.7);
+    if (killType < 0.3) {
+      float srcRow = floor(pseudoRandom(seed + py * 7.3) * u_resolution.y);
+      c = texture(u_source, vec2(v_texCoord.x, srcRow / u_resolution.y));
+    } else if (killType < 0.5) {
+      c.rgb = vec3(pseudoRandom(seed + py * 9.1), pseudoRandom(seed + py * 11.3), pseudoRandom(seed + py * 13.7));
+    } else if (killType < 0.7) {
+      c.rgb = 1.0 - c.rgb;
+    } else {
+      float shiftX = pseudoRandom(seed + py * 15.1) * u_resolution.x;
+      c = texture(u_source, vec2(mod(v_texCoord.x * u_resolution.x + shiftX, u_resolution.x) / u_resolution.x, v_texCoord.y));
+    }
+  }
+  // Per-pixel corruption
+  if (pseudoRandom(seed + pixIdx * 1.3 + 0.1) < byteCorruptChance) {
+    float ct = pseudoRandom(seed + pixIdx * 2.7);
+    int channel = int(floor(pseudoRandom(seed + pixIdx * 4.1) * 3.0));
+    float corrupt = pseudoRandom(seed + pixIdx * 6.3) > 0.5 ? 1.0 : 0.0;
+    if (ct < 0.5) {
+      if (channel == 0) c.r = 1.0 - c.r;
+      else if (channel == 1) c.g = 1.0 - c.g;
+      else c.b = 1.0 - c.b;
+    } else {
+      if (channel == 0) c.r = corrupt;
+      else if (channel == 1) c.g = corrupt;
+      else c.b = corrupt;
+    }
+  }
+  fragColor = c;
+}`,
+    uniforms: { intensity: "float", corruption: "float" },
+  },
   processor: (data, { width, height }, params) => {
     const intensity = (params.intensity as number) || 50;
     const corruption = (params.corruption as number) || 30;
@@ -1157,8 +1398,51 @@ registerEffect({
   type: "chaos",
   label: "Chaos",
   category: "glitch",
-    defaultParams: { intensity: 50, layers: 3 },
+  defaultParams: { intensity: 50, layers: 3 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_layers;
+void main() {
+  float seed = floor(u_time * 2.0);
+  vec2 uv = v_texCoord;
+  float py = uv.y * u_resolution.y;
+  float px = uv.x * u_resolution.x;
+  int numLayers = int(u_layers);
+  for (int layer = 0; layer < 4; layer++) {
+    if (layer >= numLayers) break;
+    float lseed = seed + float(layer) * 100.0;
+    float effect = floor(pseudoRandom(lseed) * 5.0);
+    float li = u_intensity * (0.5 + pseudoRandom(lseed + 1.0) * 0.5);
+    if (effect < 1.0) {
+      // Slice shift
+      float numSlices = floor(5.0 + pseudoRandom(lseed + 2.0) * 20.0);
+      for (int s = 0; s < 20; s++) {
+        if (float(s) >= numSlices) break;
+        float sy = pseudoRandom(lseed + float(s) * 200.0) * u_resolution.y;
+        float sh = 1.0 + pseudoRandom(lseed + float(s) * 300.0) * 10.0;
+        if (py >= sy && py < sy + sh) {
+          float off = (pseudoRandom(lseed + float(s) * 400.0) - 0.5) * li * 2.0;
+          uv.x = mod(px + off + u_resolution.x, u_resolution.x) / u_resolution.x;
+          break;
+        }
+      }
+    } else if (effect < 2.0) {
+      // RGB separation
+      float rgbOff = floor(li / 5.0) / u_resolution.x;
+      uv.x = clamp(uv.x + (pseudoRandom(lseed + 10.0) - 0.5) * rgbOff * 4.0, 0.0, 1.0);
+    } else if (effect < 3.0) {
+      // Wave distortion
+      float amp = li / 2.0;
+      uv.x = clamp(uv.x + sin(py * 0.1 + u_time) * amp / u_resolution.x, 0.0, 1.0);
+    }
+  }
+  vec4 c = texture(u_source, uv);
+  fragColor = c;
+}`,
+    uniforms: { intensity: "float", layers: "float" },
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const intensity = (params.intensity as number) || 50;
     const layers = (params.layers as number) || 3;
@@ -1345,12 +1629,40 @@ registerEffect({
   type: "jpeg-artifacts",
   label: "JPEG Artifacts",
   category: "glitch",
-    defaultParams: {
-        quality: 30,
-        blockiness: 50,
-        colorBanding: 50,
-      },
+  defaultParams: { quality: 30, blockiness: 50, colorBanding: 50 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_quality;
+uniform float u_blockiness;
+uniform float u_colorBanding;
+void main() {
+  float seed = floor(u_time * 0.3);
+  float compressionFactor = (1.0 - u_quality / 100.0) * 0.8;
+  float chromaStep = 1.0 / pow(2.0, max(1.0, 4.0 - u_quality / 25.0));
+  float bx = floor(v_texCoord.x * u_resolution.x / 8.0);
+  float by = floor(v_texCoord.y * u_resolution.y / 8.0);
+  // Approximate block avg using center of block
+  vec2 centerUV = (vec2(bx, by) * 8.0 + 4.0) / u_resolution;
+  vec3 avg = sampleClamped(centerUV).rgb;
+  vec3 quantized = floor(avg / chromaStep + 0.5) * chromaStep;
+  vec4 c = texture(u_source, v_texCoord);
+  vec3 result = mix(c.rgb, quantized, compressionFactor);
+  // Block edges
+  if (u_blockiness > 30.0) {
+    vec2 lxy = vec2(mod(v_texCoord.x * u_resolution.x, 8.0), mod(v_texCoord.y * u_resolution.y, 8.0));
+    float edgeIntensity = (u_blockiness / 100.0) * 40.0 / 255.0;
+    if (lxy.x < 1.0 || lxy.y < 1.0) result = max(result - edgeIntensity, 0.0);
+  }
+  // Color banding noise
+  if (u_colorBanding > 30.0 && compressionFactor > 0.3) {
+    float n = (pseudoRandom(seed + bx * 7.1 + by * 13.3) - 0.5) * (u_colorBanding / 100.0) * 20.0 / 255.0;
+    result = clamp(result + n, 0.0, 1.0);
+  }
+  fragColor = vec4(result, c.a);
+}`,
+    uniforms: { quality: "float", blockiness: "float", colorBanding: "float" },
+  },
   processor: (data, { width, height }, params) => {
     const quality = Math.max(
       1,
@@ -1454,13 +1766,73 @@ registerEffect({
   type: "codec-damage",
   label: "Codec Damage",
   category: "glitch",
-    defaultParams: {
-        intensity: 50,
-        blockSize: 16,
-        colorBleed: 50,
-        temporal: true,
-      },
+  defaultParams: { intensity: 50, blockSize: 16, colorBleed: 50, temporal: true },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_blockSize;
+uniform float u_colorBleed;
+uniform bool u_temporal;
+void main() {
+  float seed = u_temporal ? floor(u_time / 10.0) : 0.0;
+  float blocksX = ceil(u_resolution.x / u_blockSize);
+  float blocksY = ceil(u_resolution.y / u_blockSize);
+  float bx = floor(v_texCoord.x * u_resolution.x / u_blockSize);
+  float by = floor(v_texCoord.y * u_resolution.y / u_blockSize);
+  float blockId = bx + by * blocksX;
+  float corruptProb = (u_intensity / 100.0) * 0.5;
+  vec2 lxy = vec2(mod(v_texCoord.x * u_resolution.x, u_blockSize), mod(v_texCoord.y * u_resolution.y, u_blockSize));
+  vec4 c;
+  if (pseudoRandom(seed + blockId * 3.7) < corruptProb) {
+    float ct = floor(pseudoRandom(seed + blockId * 2.1) * 3.0);
+    if (ct < 1.0) {
+      float sbx = floor(pseudoRandom(seed + blockId * 4.3) * blocksX);
+      float sby = floor(pseudoRandom(seed + blockId * 5.7) * blocksY);
+      vec2 srcUV = (vec2(sbx, sby) * u_blockSize + lxy) / u_resolution;
+      c = sampleClamped(srcUV);
+    } else if (ct < 2.0) {
+      // Average block color
+      vec3 avg = vec3(0.0);
+      float cnt = 0.0;
+      for (int dy = 0; dy < 16; dy++) {
+        if (float(dy) >= u_blockSize) break;
+        for (int dx = 0; dx < 16; dx++) {
+          if (float(dx) >= u_blockSize) break;
+          vec2 suv = (vec2(bx, by) * u_blockSize + vec2(float(dx), float(dy))) / u_resolution;
+          avg += texture(u_source, clamp(suv, 0.0, 1.0)).rgb;
+          cnt += 1.0;
+        }
+      }
+      c = vec4(avg / max(cnt, 1.0), 1.0);
+    } else {
+      float shiftX = (pseudoRandom(seed + blockId * 6.9) - 0.5) * u_blockSize * 0.5;
+      float shiftY = (pseudoRandom(seed + blockId * 8.1) - 0.5) * u_blockSize * 0.5;
+      vec2 srcUV = mod(v_texCoord * u_resolution + vec2(shiftX, shiftY), u_resolution) / u_resolution;
+      c = texture(u_source, srcUV);
+    }
+  } else {
+    c = texture(u_source, v_texCoord);
+  }
+  // Color bleed
+  if (u_colorBleed > 20.0) {
+    float bleed = u_colorBleed / 100.0;
+    float cbs = u_blockSize * 2.0;
+    float cbx = floor(v_texCoord.x * u_resolution.x / cbs);
+    float cby = floor(v_texCoord.y * u_resolution.y / cbs);
+    float luma = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+    vec3 chroma = c.rgb - luma;
+    // Approximate block average chroma using center sample
+    vec2 centerUV = (vec2(cbx, cby) * cbs + cbs * 0.5) / u_resolution;
+    vec3 center = sampleClamped(centerUV).rgb;
+    float centerLuma = dot(center, vec3(0.299, 0.587, 0.114));
+    vec3 centerChroma = center - centerLuma;
+    c.rgb = clamp(vec3(luma) + mix(chroma, centerChroma, bleed), 0.0, 1.0);
+  }
+  fragColor = c;
+}`,
+    uniforms: { intensity: "float", blockSize: "float", colorBleed: "float", temporal: "bool" },
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const intensity = (params.intensity as number) || 50;
     const blockSize = (params.blockSize as number) || 16;
@@ -1697,11 +2069,25 @@ registerEffect({
   type: "rgb-vertical-xor",
   label: "RGB Vertical XOR",
   category: "glitch",
-    defaultParams: {
-        speed: 2,
-        amplitude: 1.0,
-      },
+  defaultParams: { speed: 2, amplitude: 1.0 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_speed;
+uniform float u_amplitude;
+void main() {
+  float t = u_time * u_speed * 0.1;
+  float y = v_texCoord.y * u_resolution.y;
+  float offR = sin(y * 0.1 + t) * 10.0 * u_amplitude / u_resolution.x;
+  float offG = sin(y * 0.1 + t + 2.094) * 10.0 * u_amplitude / u_resolution.x;
+  float offB = sin(y * 0.1 + t + 4.189) * 10.0 * u_amplitude / u_resolution.x;
+  float r = sampleClamped(vec2(v_texCoord.x + offR, v_texCoord.y)).r;
+  float g = sampleClamped(vec2(v_texCoord.x + offG, v_texCoord.y)).g;
+  float b = sampleClamped(vec2(v_texCoord.x + offB, v_texCoord.y)).b;
+  fragColor = vec4(r, g, b, 1.0);
+}`,
+    uniforms: { speed: "float", amplitude: "float" },
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const speed = (params.speed as number) || 2;
     const amplitude = (params.amplitude as number) || 1.0;
@@ -1941,12 +2327,39 @@ registerEffect({
   type: "square-swap",
   label: "Square Swap",
   category: "glitch",
-    defaultParams: {
-        gridSize: 4,
-        swapPattern: "random",
-        animated: true,
-      },
+  defaultParams: { gridSize: 4, swapPattern: "random", animated: true },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_gridSize;
+uniform int u_swapPattern;
+uniform bool u_animated;
+void main() {
+  float seed = u_animated ? floor(u_time / 10.0) : 0.0;
+  float g = u_gridSize;
+  float gx = floor(v_texCoord.x * g);
+  float gy = floor(v_texCoord.y * g);
+  float tgx, tgy;
+  if (u_swapPattern == 0) { // random
+    tgx = floor(pseudoRandom(seed + gy * g + gx) * g);
+    tgy = floor(pseudoRandom(seed + 1000.0 + gy * g + gx) * g);
+  } else if (u_swapPattern == 1) { // flip
+    tgx = g - 1.0 - gx;
+    tgy = g - 1.0 - gy;
+  } else { // rotate
+    tgx = gy;
+    tgy = g - 1.0 - gx;
+  }
+  vec2 lxy = vec2(mod(v_texCoord.x * g, 1.0), mod(v_texCoord.y * g, 1.0));
+  vec2 srcUV = (vec2(tgx, tgy) + lxy) / g;
+  fragColor = sampleClamped(srcUV);
+}`,
+    uniforms: { gridSize: "float", swapPattern: "int", animated: "bool" },
+    uniformMapper: (p) => ({
+      ...p,
+      swapPattern: ["random", "flip", "rotate"].indexOf((p.swapPattern as string) || "random"),
+    }),
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const gridSize = (params.gridSize as number) || 4;
     const swapPattern = (params.swapPattern as string) || "random";
@@ -2002,16 +2415,19 @@ registerEffect({
 });
 
 interface DatamoshTransitionState {
-  moshBuffer: Uint8ClampedArray | null;
+  iFrame: Uint8ClampedArray | null;   // frozen primary I-frame
+  moshBuffer: Uint8ClampedArray | null; // accumulates smear over time
   prevSecondary: Uint8ClampedArray | null;
   mvXBuffer: Float32Array | null;
   mvYBuffer: Float32Array | null;
   width: number;
   height: number;
   inTransition: boolean;
+  frameCount: number; // how many frames we've been in transition
 }
 
 const datamoshTransitState: DatamoshTransitionState = {
+  iFrame: null,
   moshBuffer: null,
   prevSecondary: null,
   mvXBuffer: null,
@@ -2019,6 +2435,7 @@ const datamoshTransitState: DatamoshTransitionState = {
   width: 0,
   height: 0,
   inTransition: false,
+  frameCount: 0,
 };
 
 registerEffect({
@@ -2026,8 +2443,10 @@ registerEffect({
   label: "Datamosh Transition",
   category: "glitch",
   defaultParams: {
-    intensity: 50,
+    intensity: 70,
     blockSize: 16,
+    decay: 60,
+    bleed: 40,
   },
   paramsConfig: [
     {
@@ -2046,14 +2465,31 @@ registerEffect({
       max: 64,
       step: 8,
     },
+    {
+      key: "decay",
+      label: "I-frame Decay",
+      type: "slider",
+      min: 0,
+      max: 100,
+      step: 1,
+    },
+    {
+      key: "bleed",
+      label: "New Clip Bleed-in",
+      type: "slider",
+      min: 0,
+      max: 100,
+      step: 1,
+    },
   ],
   processor: (data, { width, height, timelineFrames }, params) => {
-    const intensity = (params.intensity as number) ?? 50;
+    const intensity = (params.intensity as number) ?? 70;
     const blockSize = (params.blockSize as number) || 16;
+    const decay = (params.decay as number) ?? 60;
+    const bleed = (params.bleed as number) ?? 40;
 
     if (intensity === 0) return;
 
-    const strength = intensity / 50;
     const blocksX = Math.ceil(width / blockSize);
     const blocksY = Math.ceil(height / blockSize);
     const totalBlocks = blocksX * blocksY;
@@ -2063,6 +2499,7 @@ registerEffect({
       datamoshTransitState.height !== height;
 
     if (needsInit) {
+      datamoshTransitState.iFrame = new Uint8ClampedArray(data);
       datamoshTransitState.moshBuffer = new Uint8ClampedArray(data);
       datamoshTransitState.prevSecondary = null;
       datamoshTransitState.width = width;
@@ -2070,44 +2507,46 @@ registerEffect({
       datamoshTransitState.mvXBuffer = new Float32Array(totalBlocks);
       datamoshTransitState.mvYBuffer = new Float32Array(totalBlocks);
       datamoshTransitState.inTransition = false;
+      datamoshTransitState.frameCount = 0;
     }
 
     const secondarySource =
       timelineFrames && timelineFrames.length > 0 ? timelineFrames[0] : null;
 
     if (!secondarySource) {
-      // Not in a transition. Update mosh buffer with current primary clip so it's ready to freeze.
-      if (datamoshTransitState.moshBuffer) {
-        datamoshTransitState.moshBuffer.set(data);
-      }
+      // Not in a transition — keep updating I-frame and moshBuffer with live primary
+      datamoshTransitState.iFrame!.set(data);
+      datamoshTransitState.moshBuffer!.set(data);
       datamoshTransitState.inTransition = false;
       datamoshTransitState.prevSecondary = null;
+      datamoshTransitState.frameCount = 0;
       return;
     }
 
     // --- We are IN a transition ---
     const secData = secondarySource.data;
-
-    // Fast fail if secondary dimensions differ (rare but possible in some pipeline states)
     if (secData.length !== data.length) return;
 
     if (!datamoshTransitState.inTransition || !datamoshTransitState.prevSecondary) {
-      // First frame of transition! Freeze the I-frame (already in moshBuffer).
+      // First frame of transition — freeze the I-frame
       datamoshTransitState.prevSecondary = new Uint8ClampedArray(secData);
       datamoshTransitState.inTransition = true;
+      datamoshTransitState.frameCount = 0;
       if (datamoshTransitState.mvXBuffer) datamoshTransitState.mvXBuffer.fill(0);
       if (datamoshTransitState.mvYBuffer) datamoshTransitState.mvYBuffer.fill(0);
-      // Let the first frame be unmoshed but frozen.
-      data.set(datamoshTransitState.moshBuffer!);
+      // Output: frozen I-frame untouched on frame 0
+      data.set(datamoshTransitState.iFrame!);
       return;
     }
+
+    datamoshTransitState.frameCount++;
 
     const moshBuffer = datamoshTransitState.moshBuffer!;
     const prevSecondary = datamoshTransitState.prevSecondary!;
     const mvX = datamoshTransitState.mvXBuffer!;
     const mvY = datamoshTransitState.mvYBuffer!;
 
-    // 1. Calculate Motion Vectors from the SECONDARY clip
+    // ── Step 1: Compute motion vectors from secondary clip (new scene moving) ──
     for (let by = 0; by < blocksY; by++) {
       for (let bx = 0; bx < blocksX; bx++) {
         const bi = by * blocksX + bx;
@@ -2116,77 +2555,45 @@ registerEffect({
         const endX = Math.min(startX + blockSize, width);
         const endY = Math.min(startY + blockSize, height);
 
-        let bestDx = 0,
-          bestDy = 0,
-          bestScore = Infinity;
-        const search = 16;
+        let bestDx = 0, bestDy = 0, bestScore = Infinity;
+        const search = Math.round(intensity / 100 * 24) + 4; // ±4..28px search
 
-        for (let dy = -search; dy <= search; dy += 8) {
-          for (let dx = -search; dx <= search; dx += 8) {
-            let score = 0;
-            let samples = 0;
-            for (let py = startY; py < endY; py += 8) {
-              for (let px = startX; px < endX; px += 8) {
+        for (let dy = -search; dy <= search; dy += 4) {
+          for (let dx = -search; dx <= search; dx += 4) {
+            let score = 0, samples = 0;
+            for (let py = startY; py < endY; py += 4) {
+              for (let px = startX; px < endX; px += 4) {
                 const sx = px + dx;
                 const sy = py + dy;
                 if (sx < 0 || sx >= width || sy < 0 || sy >= height) continue;
-
                 const ci = (py * width + px) * 4;
                 const si = (sy * width + sx) * 4;
-
                 const lumC = secData[ci] + secData[ci + 1] + secData[ci + 2];
-                const lumP =
-                  prevSecondary[si] + prevSecondary[si + 1] + prevSecondary[si + 2];
-
+                const lumP = prevSecondary[si] + prevSecondary[si + 1] + prevSecondary[si + 2];
                 score += Math.abs(lumC - lumP);
                 samples++;
               }
             }
             if (samples > 0) score /= samples;
-            if (score < bestScore) {
-              bestScore = score;
-              bestDx = dx;
-              bestDy = dy;
-            }
+            if (score < bestScore) { bestScore = score; bestDx = dx; bestDy = dy; }
           }
         }
 
-        // Smooth momentum for motion vectors
-        mvX[bi] = mvX[bi] * 0.5 + bestDx * 0.5;
-        mvY[bi] = mvY[bi] * 0.5 + bestDy * 0.5;
+        // Accumulate motion vectors — let them compound over time (key to true datamosh)
+        const momentum = 0.7;
+        mvX[bi] = mvX[bi] * momentum + bestDx * (1 - momentum);
+        mvY[bi] = mvY[bi] * momentum + bestDy * (1 - momentum);
       }
     }
 
-    // 2. Apply motion vectors to the MOSH BUFFER (the frozen primary clip)
+    // ── Step 2: Apply accumulated motion vectors to moshBuffer (IN-PLACE) ────
+    // This is the heart: we read from moshBuffer and WRITE BACK to it,
+    // so errors compound — the smear builds up over many frames.
     const tempBuffer = new Uint8ClampedArray(moshBuffer);
+    const mvScale = (intensity / 50); // 0..2
 
-    // Apply fluid smoothing to the vectors
-    const smoothMVX = new Float32Array(totalBlocks);
-    const smoothMVY = new Float32Array(totalBlocks);
-
-    for (let by = 0; by < blocksY; by++) {
-      for (let bx = 0; bx < blocksX; bx++) {
-        const bi = by * blocksX + bx;
-        let sumX = 0,
-          sumY = 0,
-          count = 0;
-
-        for (let ky = -1; ky <= 1; ky++) {
-          for (let kx = -1; kx <= 1; kx++) {
-            const ny = by + ky;
-            const nx = bx + kx;
-            if (ny >= 0 && ny < blocksY && nx >= 0 && nx < blocksX) {
-              const ni = ny * blocksX + nx;
-              sumX += mvX[ni];
-              sumY += mvY[ni];
-              count++;
-            }
-          }
-        }
-        smoothMVX[bi] = sumX / count;
-        smoothMVY[bi] = sumY / count;
-      }
-    }
+    const decayAlpha = decay / 100;      // how much old mosh bleeds through
+    const bleedAlpha = bleed / 500;       // how fast new clip bleeds in (slow)
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -2194,8 +2601,8 @@ registerEffect({
         const by = Math.min(blocksY - 1, Math.floor(y / blockSize));
         const bi = by * blocksX + bx;
 
-        const dx = smoothMVX[bi] * strength;
-        const dy = smoothMVY[bi] * strength;
+        const dx = mvX[bi] * mvScale;
+        const dy = mvY[bi] * mvScale;
 
         const srcX = x + dx;
         const srcY = y + dy;
@@ -2205,17 +2612,31 @@ registerEffect({
         const b = bilinearSample(tempBuffer, width, height, srcX, srcY, 2);
 
         const di = (y * width + x) * 4;
-        moshBuffer[di] = r;
-        moshBuffer[di + 1] = g;
-        moshBuffer[di + 2] = b;
+
+        // Decay: blend slightly toward I-frame to prevent total collapse, controlled by param
+        const ir = datamoshTransitState.iFrame![di];
+        const ig = datamoshTransitState.iFrame![di + 1];
+        const ib = datamoshTransitState.iFrame![di + 2];
+
+        // New clip bleed-in from secondary
+        const sr = secData[di];
+        const sg = secData[di + 1];
+        const sb = secData[di + 2];
+
+        const iDecay = decayAlpha * 0.05; // tiny pull back toward i-frame
+        const sBleed = bleedAlpha;          // slow bleed of new scene
+
+        moshBuffer[di]     = Math.round(r * (1 - iDecay - sBleed) + ir * iDecay + sr * sBleed);
+        moshBuffer[di + 1] = Math.round(g * (1 - iDecay - sBleed) + ig * iDecay + sg * sBleed);
+        moshBuffer[di + 2] = Math.round(b * (1 - iDecay - sBleed) + ib * iDecay + sb * sBleed);
         moshBuffer[di + 3] = 255;
       }
     }
 
-    // Output is the warped I-frame
+    // ── Step 3: Output is the accumulated mosh buffer ──────────────────────
     data.set(moshBuffer);
 
-    // Update prev secondary frame for next iteration
+    // Update previous secondary frame for next iteration's motion estimation
     datamoshTransitState.prevSecondary!.set(secData);
   },
 });

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
-import { renderWithEffects } from "../lib/effects/effects-renderer";
-import type { Effect, Region } from "../lib/effects/types";
+import { renderWithEffects, type GLPipeline } from "../lib/effects/effects-renderer";
+import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
 
 interface ActiveVideo {
@@ -16,6 +16,7 @@ interface UseVideoPlayerOptions {
   isPlaying: boolean;
   currentTime: number;
   regions?: Region[];
+  overlays?: Overlay[];
   onTimeUpdate?: (time: number) => void;
   onDurationChange?: (duration: number) => void;
 }
@@ -45,6 +46,7 @@ export function useVideoPlayer({
   isPlaying,
   currentTime,
   regions = [],
+  overlays = [],
   onTimeUpdate,
   onDurationChange,
 }: UseVideoPlayerOptions) {
@@ -53,14 +55,23 @@ export function useVideoPlayer({
   const tickRef = useRef(0);
   const faceBoundsRef = useRef<FaceBounds[]>([]);
 
-  // Buffer for effects
   const bufferRef = useRef<HTMLCanvasElement | null>(null);
   const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const glPipelineRef = useRef<GLPipeline | null>(null);
 
   useEffect(() => {
     const buffer = document.createElement("canvas");
     bufferRef.current = buffer;
     bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
+
+    import("../lib/effects/gl/pipeline").then(({ GLPipeline }) => {
+      glPipelineRef.current = GLPipeline.tryCreate();
+    });
+
+    return () => {
+      glPipelineRef.current?.dispose();
+      glPipelineRef.current = null;
+    };
   }, []);
 
   // Stable refs so the video-loading effect doesn't re-run when these change
@@ -130,9 +141,15 @@ export function useVideoPlayer({
         tick: tickRef.current,
         faceBounds: faceBoundsRef.current,
         timelineFrames: secondaryFrames,
+        glPipeline: glPipelineRef.current ?? undefined,
+        overlays,
+        getOverlaySource: (mediaId) => {
+          return videosMapRef.current.get(mediaId) || null;
+        }
       },
       effects.filter((e) => e.active),
-      regions
+      regions,
+      overlays
     );
 
     if (onTimeUpdate) {
@@ -144,7 +161,7 @@ export function useVideoPlayer({
     if (isPlayingRef.current && !primaryVideo.paused) {
       animationFrameRef.current = requestAnimationFrame(render);
     }
-  }, [canvas, effects, onTimeUpdate, regions, activeVideos]);
+  }, [canvas, effects, onTimeUpdate, regions, overlays, activeVideos]);
 
   // Keep renderRef updated
   useEffect(() => {

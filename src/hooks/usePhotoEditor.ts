@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { renderWithEffects } from "../lib/effects/effects-renderer";
-import type { Effect, Region } from "../lib/effects/types";
+import { renderWithEffects, type GLPipeline } from "../lib/effects/effects-renderer";
+import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 
@@ -14,6 +14,7 @@ interface UsePhotoEditorOptions {
   effects: Effect[];
   activeImages: ActiveImage[];
   regions?: Region[];
+  overlays?: Overlay[];
 }
 
 export function usePhotoEditor({
@@ -21,21 +22,32 @@ export function usePhotoEditor({
   effects,
   activeImages,
   regions = [],
+  overlays = [],
 }: UsePhotoEditorOptions) {
   const imagesMapRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
   const faceBoundsRef = useRef<FaceBounds[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
-  
-  // Buffer canvas for effects processing
+
   const bufferRef = useRef<HTMLCanvasElement | null>(null);
   const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const glPipelineRef = useRef<GLPipeline | null>(null);
 
   useEffect(() => {
     const buffer = document.createElement("canvas");
     bufferRef.current = buffer;
     bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
+
+    // Lazy GL pipeline — falls back gracefully if WebGL2 is unavailable
+    import("../lib/effects/gl/pipeline").then(({ GLPipeline }) => {
+      glPipelineRef.current = GLPipeline.tryCreate();
+    });
+
+    return () => {
+      glPipelineRef.current?.dispose();
+      glPipelineRef.current = null;
+    };
   }, []);
 
   // Check if any effects need animation
@@ -86,11 +98,17 @@ export function usePhotoEditor({
         tick,
         faceBounds: faceBoundsRef.current,
         timelineFrames: secondaryFrames,
+        glPipeline: glPipelineRef.current ?? undefined,
+        overlays,
+        getOverlaySource: (mediaId) => {
+          return imagesMapRef.current.get(mediaId) || null;
+        }
       },
       effects.filter((e) => e.active),
-      regions
+      regions,
+      overlays
     );
-  }, [canvas, effects, regions, activeImages]);
+  }, [canvas, effects, regions, overlays, activeImages]);
 
   const render = useCallback(() => {
     if (!canvas || activeImages.length === 0) return;

@@ -15,10 +15,7 @@ import { useCameraCapture } from "../hooks/useCameraCapture";
 import { useExport } from "../hooks/useExport";
 import { useHistory } from "../hooks/useHistory";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import {
-  saveProject,
-  type Project,
-} from "../lib/project";
+import type { Project } from "../lib/project";
 import type { Region } from "../lib/effects/types";
 import styles from "./App.module.scss";
 import previewStyles from "./Preview/Preview.module.scss";
@@ -35,6 +32,7 @@ function App() {
     selectedMediaId,
     effects,
     regions,
+    overlays,
     resolution,
     currentTime,
     duration,
@@ -50,6 +48,9 @@ function App() {
     reorderEffect,
     addRegion,
     removeRegion,
+    addOverlay,
+    removeOverlay,
+    updateOverlay,
     setCurrentTime,
     setResolution,
     play,
@@ -64,6 +65,8 @@ function App() {
     addKeyframe,
     updateKeyframe,
     removeKeyframe,
+    saveProject,
+    loadProject,
   } = useProjectStore();
 
   const {
@@ -71,8 +74,10 @@ function App() {
     showEffectsPanel,
     showTimeline,
     activeRegionId,
+    activeOverlayId,
     isDrawingRegion,
     setActiveRegionId,
+    setActiveOverlayId,
     setIsDrawingRegion,
   } = useUIStore();
 
@@ -83,6 +88,7 @@ function App() {
     media,
     effects,
     regions,
+    overlays,
     resolution,
     duration,
     currentTime,
@@ -259,29 +265,26 @@ function App() {
 
     const result = await window.electron.openFile({
       properties: ["openFile"],
-      filters:
-        type === "image"
-          ? [
-              {
-                name: "Images",
-                extensions: ["jpg", "jpeg", "png", "gif", "webp"],
-              },
-            ]
-          : type === "video"
-          ? [{ name: "Videos", extensions: ["mp4", "mov", "webm"] }]
-          : [
-              {
-                name: "Images",
-                extensions: ["jpg", "jpeg", "png", "gif", "webp"],
-              },
-              { name: "Videos", extensions: ["mp4", "mov", "webm"] },
-            ],
+      filters: [
+        {
+          name: "All Supported Media",
+          extensions: ["mp4", "mov", "webm", "avi", "mkv", "m4v", "jpg", "jpeg", "png", "gif", "webp"],
+        },
+        {
+          name: "Videos",
+          extensions: ["mp4", "mov", "webm", "avi", "mkv", "m4v"],
+        },
+        {
+          name: "Images",
+          extensions: ["jpg", "jpeg", "png", "gif", "webp"],
+        },
+      ],
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
       const fileName = filePath.split("/").pop() || "Unknown";
-      const isVideo = /\.(mp4|mov|webm|avi|mkv)$/i.test(fileName);
+      const isVideo = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(fileName);
 
       let videoDuration: number | undefined;
       if (isVideo && window.electron?.ffmpeg) {
@@ -317,7 +320,7 @@ function App() {
 
   const handleDropFiles = useCallback(async (files: FileList) => {
     for (const file of Array.from(files)) {
-      const isVideo = /\.(mp4|mov|webm|avi|mkv)$/i.test(file.name);
+      const isVideo = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(file.name);
       const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
       if (!isVideo && !isImage) continue;
 
@@ -362,6 +365,11 @@ function App() {
       let result;
       const fmt = settings.format;
 
+      const exportDuration =
+        clips.length > 0
+          ? Math.max(...clips.map((c) => c.endTime))
+          : selectedMedia?.duration ?? duration;
+
       if (fmt === "png" || fmt === "jpeg") {
         // Still image export
         result = await exportImageFile(canvas, fmt === "jpeg" ? "jpeg" : "png");
@@ -371,7 +379,7 @@ function App() {
         setCurrentTime(0);
         await new Promise((r) => setTimeout(r, 300));
         play();
-        result = await exportRealtime(canvas, duration, settings.fps);
+        result = await exportRealtime(canvas, exportDuration, settings.fps);
         pause();
       } else {
         // Offline frame-by-frame export (MP4, GIF, or WebM-offline)
@@ -385,7 +393,7 @@ function App() {
           });
         };
 
-        result = await exportOffline(canvas, duration, settings, seek);
+        result = await exportOffline(canvas, exportDuration, settings, seek);
       }
 
       setShowExportDialog(false);
@@ -412,13 +420,8 @@ function App() {
   }, [redo]);
 
   const handleSave = useCallback(async () => {
-    const result = await saveProject(projectSnapshot);
-    if (result.success) {
-      alert(`Project saved to: ${result.filePath}`);
-    } else {
-      alert(`Save failed: ${result.error}`);
-    }
-  }, [projectSnapshot]);
+    await saveProject();
+  }, [saveProject]);
 
   const handlePlayPause = useCallback(() => {
     if (isPlaying) {
@@ -453,6 +456,24 @@ function App() {
     setIsDrawingRegion(true);
   }, [setIsDrawingRegion]);
 
+  const handleAddTextOverlay = useCallback(() => {
+    addOverlay({
+      id: `overlay-${Date.now()}`,
+      name: "Text Overlay",
+      type: "text",
+      text: "New Text",
+      x: 0.1,
+      y: 0.1,
+      width: 0.3,
+      height: 0.1,
+      startTime: 0,
+      endTime: duration,
+      trackIndex: 1,
+      color: "#ffffff",
+      isEffectZone: false,
+    });
+  }, [addOverlay, duration]);
+
   useKeyboardShortcuts({
     undo: handleUndo,
     redo: handleRedo,
@@ -469,7 +490,10 @@ function App() {
         projectName={projectName}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        onSave={handleSave}
+        onOpen={loadProject}
         onExport={handleExport}
+        onAddText={handleAddTextOverlay}
         canUndo={canUndo}
         canRedo={canRedo}
         resolution={resolution}
@@ -494,10 +518,14 @@ function App() {
           height={resolution.height}
           onCanvasReady={handleCanvasReady}
           regions={regions}
+          overlays={overlays}
           activeRegionId={activeRegionId}
+          activeOverlayId={activeOverlayId}
           isDrawingRegion={isDrawingRegion}
           onRegionDrawn={handleRegionDrawn}
           onRegionSelect={setActiveRegionId}
+          onOverlaySelect={setActiveOverlayId}
+          onOverlayUpdate={(id, updates) => updateOverlay(id, updates)}
           captureHud={
             isCamera ? (
               <div className={previewStyles.captureHud}>
@@ -544,7 +572,9 @@ function App() {
           <EffectsPanel
             effects={effects}
             regions={regions}
+            overlays={overlays}
             activeRegionId={activeRegionId}
+            activeOverlayId={activeOverlayId}
             onAddEffect={addEffect}
             onUpdateEffect={updateEffect}
             onRemoveEffect={removeEffect}
@@ -552,6 +582,7 @@ function App() {
             onRemoveRegion={handleRemoveRegion}
             onSelectRegion={setActiveRegionId}
             onStartDrawingRegion={handleStartDrawingRegion}
+            onUpdateOverlay={(id, updates) => updateOverlay(id, updates)}
           />
         )}
       </div>
@@ -561,6 +592,8 @@ function App() {
           media={media}
           effects={effects}
           clips={clips}
+          overlays={overlays}
+          selectedOverlayId={activeOverlayId}
           effectParamTracks={effectParamTracks}
           currentTime={currentTime}
           duration={duration}
@@ -568,6 +601,10 @@ function App() {
           onAddClip={addClip}
           onRemoveClip={removeClip}
           onUpdateClip={updateClip}
+          onAddOverlay={addOverlay}
+          onUpdateOverlay={(id, updates) => updateOverlay(id, updates)}
+          onRemoveOverlay={removeOverlay}
+          onSelectOverlay={setActiveOverlayId}
           onUpdateEffect={updateEffect}
           onRemoveEffect={removeEffect}
           onAddEffectParamTrack={addEffectParamTrack}

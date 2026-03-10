@@ -10,20 +10,23 @@ import {
 } from "lucide-react";
 import EffectParams from "./EffectParams";
 import styles from "./EffectsPanel.module.scss";
-import type { Effect, EffectType, Region } from "../../lib/effects/types";
+import type { Effect, EffectType, Region, Overlay } from "../../lib/effects/types";
 import { isStyleEffect, getAllEffects } from "../../lib/effects/effect-registry";
 
 interface EffectsPanelProps {
   effects: Effect[];
   regions: Region[];
+  overlays: Overlay[];
   activeRegionId: string | null;
-  onAddEffect: (type: EffectType, regionId?: string) => void;
+  activeOverlayId: string | null;
+  onAddEffect: (type: EffectType, regionId?: string, overlayId?: string) => void;
   onUpdateEffect: (id: string, updates: Partial<Effect>) => void;
   onRemoveEffect: (id: string) => void;
   onReorderEffect: (id: string, newIndex: number) => void;
   onRemoveRegion: (id: string) => void;
   onSelectRegion: (id: string | null) => void;
   onStartDrawingRegion: () => void;
+  onUpdateOverlay: (id: string, updates: Partial<Overlay>) => void;
 }
 
 
@@ -31,7 +34,9 @@ interface EffectsPanelProps {
 function EffectsPanel({
   effects,
   regions,
+  overlays,
   activeRegionId,
+  activeOverlayId,
   onAddEffect,
   onUpdateEffect,
   onRemoveEffect,
@@ -39,6 +44,7 @@ function EffectsPanel({
   onRemoveRegion,
   onSelectRegion,
   onStartDrawingRegion,
+  onUpdateOverlay,
 }: EffectsPanelProps) {
   const allDefs = getAllEffects();
   const EFFECT_CATEGORIES = allDefs.reduce((acc, def) => {
@@ -75,13 +81,14 @@ function EffectsPanel({
   };
 
   const handleAddEffect = (type: EffectType) => {
-    onAddEffect(type, activeRegionId || undefined);
+    onAddEffect(type, activeRegionId || undefined, activeOverlayId || undefined);
   };
 
-  const isStyleEffectDisabled = activeRegionId !== null;
+  const isStyleEffectDisabled = activeRegionId !== null || activeOverlayId !== null;
 
-  const globalEffects = effects.filter((e) => !e.regionId);
+  const globalEffects = effects.filter((e) => !e.regionId && !e.overlayId);
   const regionEffectsMap = new Map<string, Effect[]>();
+  const overlayEffectsMap = new Map<string, Effect[]>();
   
   effects.forEach((effect) => {
     if (effect.regionId) {
@@ -89,6 +96,11 @@ function EffectsPanel({
         regionEffectsMap.set(effect.regionId, []);
       }
       regionEffectsMap.get(effect.regionId)!.push(effect);
+    } else if (effect.overlayId) {
+      if (!overlayEffectsMap.has(effect.overlayId)) {
+        overlayEffectsMap.set(effect.overlayId, []);
+      }
+      overlayEffectsMap.get(effect.overlayId)!.push(effect);
     }
   });
 
@@ -234,6 +246,50 @@ function EffectsPanel({
           </span>
         </div>
 
+        {activeOverlayId && (
+          <div className={styles.overlayPropsSection}>
+            <div className={styles.overlayPropsHeader}>
+              <h5>Overlay Properties</h5>
+            </div>
+            {overlays.filter(o => o.id === activeOverlayId).map(overlay => (
+              <div key={overlay.id} className={styles.overlayPropsBody}>
+                {overlay.type === 'text' && (
+                  <>
+                    <div className={styles.paramRow}>
+                      <span className={styles.paramLabel}>Text</span>
+                      <input
+                        type="text"
+                        className={styles.textInput}
+                        value={overlay.text || ""}
+                        onChange={(e) => onUpdateOverlay(overlay.id, { text: e.target.value })}
+                      />
+                    </div>
+                    <div className={styles.paramRow}>
+                      <span className={styles.paramLabel}>Color</span>
+                      <input
+                        type="color"
+                        className={styles.colorInput}
+                        value={overlay.color || "#ffffff"}
+                        onChange={(e) => onUpdateOverlay(overlay.id, { color: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
+                <div className={styles.paramRow}>
+                  <label className={styles.checkboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={!!overlay.isEffectZone}
+                      onChange={(e) => onUpdateOverlay(overlay.id, { isEffectZone: e.target.checked })}
+                    />
+                    Use as Effect Zone
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {effects.length === 0 ? (
           <div className={styles.empty}>
             <p>No effects applied</p>
@@ -242,7 +298,7 @@ function EffectsPanel({
         ) : (
           <div className={styles.effectStack}>
             <div
-              className={`${styles.regionGroup} ${activeRegionId === null ? styles.active : ''}`}
+              className={`${styles.regionGroup} ${activeRegionId === null && activeOverlayId === null ? styles.active : ''}`}
               onClick={() => onSelectRegion(null)}
             >
               <div className={styles.regionHeader}>
@@ -283,6 +339,31 @@ function EffectsPanel({
                     </div>
                   </div>
                   {regionEffects.map((effect, index) => renderEffectCard(effect, index))}
+                </div>
+              );
+            })}
+
+            {overlays.filter(o => o.isEffectZone || activeOverlayId === o.id).map((overlay) => {
+              const overlayEffects = overlayEffectsMap.get(overlay.id) || [];
+              if (overlayEffects.length === 0 && activeOverlayId !== overlay.id) return null;
+              return (
+                <div
+                  key={overlay.id}
+                  className={`${styles.regionGroup} ${activeOverlayId === overlay.id ? styles.active : ''}`}
+                >
+                  <div className={styles.regionHeader}>
+                    <div className={styles.regionHeaderLeft}>
+                      <div
+                        className={styles.colorDot}
+                        style={{ backgroundColor: overlay.color || '#ccc' }}
+                      />
+                      <span>[Zone] {overlay.name}</span>
+                    </div>
+                    <div className={styles.regionHeaderRight}>
+                      <span className={styles.count}>{overlayEffects.length}</span>
+                    </div>
+                  </div>
+                  {overlayEffects.map((effect, index) => renderEffectCard(effect, index))}
                 </div>
               );
             })}

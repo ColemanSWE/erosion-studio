@@ -7,12 +7,13 @@ registerEffect({
   type: "face-eye-censor",
   label: "Eye Censor Bar",
   category: "face",
-    defaultParams: { style: "solid", color: "#000000", thickness: 1.5 },
+  defaultParams: { style: "solid", color: "#000000", thickness: 1.5 },
   paramsConfig: [
     { key: "style", label: "Style", type: "select", options: ["solid", "pixelated", "blurred"] },
     { key: "color", label: "Color", type: "color" },
     { key: "thickness", label: "Thickness", type: "slider", min: 0.5, max: 5.0, step: 0.1 }
   ],
+  // Face effects stay CPU: they require landmark computation + array uniforms for face rects
   processor: (data, { width, height, faceBounds = [] }, params) => {
     const style = (params.style as string) || "solid";
     const color = (params.color as string) || "#000000";

@@ -100,12 +100,31 @@ export interface Region {
   color: string;
 }
 
+export interface Overlay {
+  id: string;
+  name: string;
+  type: "text" | "image" | "video";
+  text?: string;
+  mediaId?: string; // id of the media item for image/video
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  startTime: number;
+  endTime: number;
+  trackIndex: number; // row in timeline
+  color?: string;     // For text
+  fontSize?: number;  // For text
+  isEffectZone?: boolean; // If true, it acts as a mask and isn't drawn directly
+}
+
 export interface Effect {
   id: string;
   type: EffectType;
   active: boolean;
   params: Record<string, unknown>;
   regionId?: string;
+  overlayId?: string; // If set, the effect will use this overlay as an alpha mask
   /** Timeline window – if set, effect only runs when currentTime is in [startTime, endTime] */
   startTime?: number;
   endTime?: number;

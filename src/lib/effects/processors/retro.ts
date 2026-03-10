@@ -7,8 +7,29 @@ registerEffect({
   type: "dither",
   label: "Dither",
   category: "retro",
-    defaultParams: { depth: 4 },
+  defaultParams: { depth: 4 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_depth;
+const float bayer[16] = float[](
+  0.0, 8.0, 2.0, 10.0,
+  12.0, 4.0, 14.0, 6.0,
+  3.0, 11.0, 1.0, 9.0,
+  15.0, 7.0, 13.0, 5.0
+);
+void main() {
+  vec4 c = texture(u_source, v_texCoord);
+  float depth = max(2.0, u_depth);
+  float step = 1.0 / (depth - 1.0);
+  int bx = int(mod(floor(v_texCoord.x * u_resolution.x), 4.0));
+  int by = int(mod(floor(v_texCoord.y * u_resolution.y), 4.0));
+  float bayerVal = bayer[by * 4 + bx];
+  float noise = (bayerVal / 16.0 - 0.5) * step;
+  fragColor = vec4(clamp(floor((c.rgb + noise) / step + 0.5) * step, 0.0, 1.0), c.a);
+}`,
+    uniforms: { depth: "float" },
+  },
   processor: (data, { width, height }, params) => {
     const depth = (params.depth as number) || 4;
     const step = 255 / (depth - 1);
@@ -39,8 +60,20 @@ registerEffect({
   type: "scanlines",
   label: "Scanlines",
   category: "retro",
-    defaultParams: { spacing: 3, opacity: 0.4 },
+  defaultParams: { spacing: 3, opacity: 0.4 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_spacing;
+uniform float u_opacity;
+void main() {
+  vec4 c = texture(u_source, v_texCoord);
+  float y = floor(v_texCoord.y * u_resolution.y);
+  float darken = mod(y, u_spacing) == 0.0 ? 1.0 - u_opacity : 1.0;
+  fragColor = vec4(c.rgb * darken, c.a);
+}`,
+    uniforms: { spacing: "float", opacity: "float" },
+  },
   processor: (data, { width, height }, params) => {
     const spacing = (params.spacing as number) || 3;
     const opacity = (params.opacity as number) || 0.4;
@@ -63,8 +96,42 @@ registerEffect({
   type: "vhs",
   label: "VHS",
   category: "retro",
-    defaultParams: { intensity: 50 },
+  defaultParams: { intensity: 50 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+void main() {
+  float seed = floor(u_time / 3.0);
+  vec2 px = 1.0 / u_resolution;
+  float y = v_texCoord.y;
+  float wobblePhase = sin(u_time * 0.017) * 3.14159;
+  float wobbleFreq = 0.008 + sin(u_time * 0.023) * 0.003;
+  float wobbleAmp = (u_intensity / 30.0) * (0.8 + sin(u_time * 0.031) * 0.4);
+  float trackingOffset = sin(y * u_resolution.y * wobbleFreq + wobblePhase) * wobbleAmp
+    + sin(y * u_resolution.y * wobbleFreq * 2.3 + u_time * 0.07) * (u_intensity / 80.0);
+  float jitterSeed = floor(y * u_resolution.y / 10.0);
+  float jitter = pseudoRandom(seed + y * u_resolution.y) < 0.02
+    ? (pseudoRandom(seed + y * u_resolution.y * 2.0) - 0.5) * u_intensity * px.x
+    : 0.0;
+  float totalOffset = (trackingOffset + jitter) * px.x;
+  int chromaOffset = int(u_intensity / 20.0);
+  float chromaUV = float(chromaOffset) * px.x;
+  float rX = clamp(v_texCoord.x + totalOffset + chromaUV, 0.0, 1.0);
+  float gX = clamp(v_texCoord.x + totalOffset, 0.0, 1.0);
+  float bX = clamp(v_texCoord.x + totalOffset - chromaUV, 0.0, 1.0);
+  float r = texture(u_source, vec2(rX, y)).r;
+  float g = texture(u_source, vec2(gX, y)).g;
+  float b = texture(u_source, vec2(bX, y)).b;
+  float noiseIntensity = u_intensity / 200.0;
+  float pixIdx = floor(v_texCoord.x * u_resolution.x) + floor(y * u_resolution.y) * u_resolution.x;
+  float addNoise = pseudoRandom(seed + pixIdx) < noiseIntensity
+    ? (pseudoRandom(seed + pixIdx + 1.0) - 0.5) * 100.0 / 255.0
+    : 0.0;
+  fragColor = vec4(clamp(vec3(r, g, b) + addNoise, 0.0, 1.0), 1.0);
+}`,
+    uniforms: { intensity: "float" },
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const intensity = (params.intensity as number) || 50;
     if (intensity === 0) return;
@@ -136,8 +203,27 @@ registerEffect({
   type: "crt",
   label: "CRT",
   category: "retro",
-    defaultParams: { curvature: 0.2, scanlines: 0.3 },
+  defaultParams: { curvature: 0.2, scanlines: 0.3 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_curvature;
+uniform float u_scanlines;
+void main() {
+  vec2 d = v_texCoord - 0.5;
+  float dist = length(d);
+  float curve = 1.0 + u_curvature * dist * dist;
+  vec2 srcUV = 0.5 + d * curve;
+  if (srcUV.x < 0.0 || srcUV.x > 1.0 || srcUV.y < 0.0 || srcUV.y > 1.0) {
+    fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    return;
+  }
+  vec4 c = texture(u_source, srcUV);
+  float scanline = mod(floor(v_texCoord.y * u_resolution.y), 3.0) == 0.0 ? 1.0 - u_scanlines : 1.0;
+  fragColor = vec4(c.rgb * scanline, c.a);
+}`,
+    uniforms: { curvature: "float", scanlines: "float" },
+  },
   processor: (data, { width, height }, params) => {
     const curvature = (params.curvature as number) || 0.2;
     const scanlineIntensity = (params.scanlines as number) || 0.3;
@@ -179,8 +265,38 @@ registerEffect({
   type: "scan-sweep",
   label: "Scan Sweep",
   category: "retro",
-    defaultParams: { speed: 2, count: 3, thickness: 2, direction: "vertical" },
+  defaultParams: { speed: 2, count: 3, thickness: 2, direction: "vertical" },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_speed;
+uniform float u_count;
+uniform float u_thickness;
+uniform int u_direction;
+void main() {
+  vec4 c = texture(u_source, v_texCoord);
+  float dim = u_direction == 0 ? u_resolution.x : u_resolution.y;
+  float coord = u_direction == 0 ? v_texCoord.x * dim : v_texCoord.y * dim;
+  float addBright = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (float(i) >= u_count) break;
+    float offset = (float(i) / u_count) * dim;
+    float pos = mod(u_time * u_speed * 100.0 + offset, dim);
+    for (int t = 0; t < 8; t++) {
+      if (float(t) >= u_thickness) break;
+      float scanPos = mod(pos + float(t), dim);
+      float falloff = 1.0 - (float(t) / u_thickness) * 0.5;
+      if (abs(coord - scanPos) < 0.5) addBright += 100.0 / 255.0 * falloff;
+    }
+  }
+  fragColor = vec4(clamp(c.rgb + addBright, 0.0, 1.0), c.a);
+}`,
+    uniforms: { speed: "float", count: "float", thickness: "float", direction: "int" },
+    uniformMapper: (p) => ({
+      ...p,
+      direction: (p.direction as string) === "vertical" ? 0 : 1,
+    }),
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const speed = (params.speed as number) || 2;
     const count = (params.count as number) || 3;
@@ -277,12 +393,30 @@ registerEffect({
   type: "strobe-flash",
   label: "Strobe Flash",
   category: "retro",
-    defaultParams: {
-        frequency: 8,
-        intensity: 1.0,
-        pattern: "pulse",
-      },
+  defaultParams: { frequency: 8, intensity: 1.0, pattern: "pulse" },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_frequency;
+uniform float u_intensity;
+uniform int u_pattern;
+void main() {
+  float t = u_time * 0.1;
+  float strobe;
+  if (u_pattern == 1)      strobe = mod(t * u_frequency, 1.0);
+  else if (u_pattern == 2) strobe = mod(floor(t * u_frequency), 2.0);
+  else if (u_pattern == 3) { float ph = mod(t * u_frequency, 2.0); strobe = ph < 1.0 ? ph : 2.0 - ph; }
+  else                     strobe = sin(t * u_frequency) > 0.0 ? 1.0 : 0.0;
+  float mult = 1.0 + strobe * u_intensity;
+  vec4 c = texture(u_source, v_texCoord);
+  fragColor = vec4(clamp(c.rgb * mult, 0.0, 1.0), c.a);
+}`,
+    uniforms: { frequency: "float", intensity: "float", pattern: "int" },
+    uniformMapper: (p) => ({
+      ...p,
+      pattern: ["pulse", "saw", "square", "triangle"].indexOf((p.pattern as string) || "pulse"),
+    }),
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const frequency = (params.frequency as number) || 8;
     const intensity = (params.intensity as number) || 1.0;
@@ -317,13 +451,24 @@ registerEffect({
   type: "rgb-strobe",
   label: "RGB Strobe",
   category: "retro",
-    defaultParams: {
-        rFreq: 8,
-        gFreq: 6,
-        bFreq: 10,
-        intensity: 0.8,
-      },
+  defaultParams: { rFreq: 8, gFreq: 6, bFreq: 10, intensity: 0.8 },
   paramsConfig: [],
+  glsl: {
+    fragment: `
+uniform float u_rFreq;
+uniform float u_gFreq;
+uniform float u_bFreq;
+uniform float u_intensity;
+void main() {
+  float t = u_time * 0.1;
+  float rMult = 1.0 + (sin(t * u_rFreq) > 0.0 ? 1.0 : 0.0) * u_intensity;
+  float gMult = 1.0 + (sin(t * u_gFreq) > 0.0 ? 1.0 : 0.0) * u_intensity;
+  float bMult = 1.0 + (sin(t * u_bFreq) > 0.0 ? 1.0 : 0.0) * u_intensity;
+  vec4 c = texture(u_source, v_texCoord);
+  fragColor = vec4(clamp(c.r * rMult, 0.0, 1.0), clamp(c.g * gMult, 0.0, 1.0), clamp(c.b * bMult, 0.0, 1.0), c.a);
+}`,
+    uniforms: { rFreq: "float", gFreq: "float", bFreq: "float", intensity: "float" },
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const rFreq = (params.rFreq as number) || 8;
     const gFreq = (params.gFreq as number) || 6;

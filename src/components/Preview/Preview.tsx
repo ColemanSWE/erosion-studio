@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import styles from "./Preview.module.scss";
-import type { Region } from "../../lib/effects/types";
+import type { Region, Overlay } from "../../lib/effects/types";
 
 interface PreviewProps {
   width?: number;
@@ -11,6 +11,10 @@ interface PreviewProps {
   isDrawingRegion?: boolean;
   onRegionDrawn?: (region: Omit<Region, 'id' | 'name' | 'color'>) => void;
   onRegionSelect?: (id: string | null) => void;
+  overlays?: Overlay[];
+  activeOverlayId?: string | null;
+  onOverlaySelect?: (id: string | null) => void;
+  onOverlayUpdate?: (id: string, updates: Partial<Overlay>) => void;
   captureHud?: React.ReactNode;
 }
 
@@ -69,6 +73,10 @@ function Preview({
   isDrawingRegion = false,
   onRegionDrawn,
   onRegionSelect,
+  overlays = [],
+  activeOverlayId = null,
+  onOverlaySelect,
+  onOverlayUpdate,
   captureHud,
 }: PreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -76,6 +84,15 @@ function Preview({
   const [drawingRect, setDrawingRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
   const [canvasBounds, setCanvasBounds] = useState<CanvasBounds | null>(null);
+
+  const [dragState, setDragState] = useState<{
+    id: string;
+    type: "move" | "resize";
+    handle?: "nw" | "ne" | "sw" | "se";
+    startX: number;
+    startY: number;
+    initialOverlay: Overlay;
+  } | null>(null);
 
   useEffect(() => {
     if (canvasRef.current && onCanvasReady) {
@@ -97,7 +114,19 @@ function Preview({
     const observer = new ResizeObserver(updateCanvasBounds);
     observer.observe(container);
 
-    return () => observer.disconnect();
+    // Also watch for changes to canvas.width / canvas.height attributes,
+    // which the media hooks set when media loads (overriding the initial resolution).
+    const canvas = canvasRef.current;
+    let attrObserver: MutationObserver | null = null;
+    if (canvas) {
+      attrObserver = new MutationObserver(updateCanvasBounds);
+      attrObserver.observe(canvas, { attributes: true, attributeFilter: ["width", "height"] });
+    }
+
+    return () => {
+      observer.disconnect();
+      attrObserver?.disconnect();
+    };
   }, [updateCanvasBounds]);
 
   useEffect(() => {
@@ -142,6 +171,15 @@ function Preview({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    // If we click on the canvas background directly (not on an overlay), we deselect overlays
+    if ((e.target as HTMLElement).className === styles.overlay) {
+      onOverlaySelect?.(null);
+      // Wait, let's keep region drawing priority
+      if (!isDrawingRegion) {
+        onRegionSelect?.(null);
+      }
+    }
+
     if (!isDrawingRegion) return;
     
     const normalized = mouseToNormalized(e.clientX, e.clientY);
@@ -152,20 +190,59 @@ function Preview({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    const normalized = mouseToNormalized(e.clientX, e.clientY);
+    if (!normalized) return;
+
+    if (dragState) {
+      e.stopPropagation();
+      const dx = normalized.x - dragState.startX;
+      const dy = normalized.y - dragState.startY;
+      
+      const { initialOverlay, type, handle } = dragState;
+      let { x, y, width, height } = initialOverlay;
+
+      if (type === "move") {
+        x = Math.max(0, Math.min(1 - width, x + dx));
+        y = Math.max(0, Math.min(1 - height, y + dy));
+      } else if (type === "resize" && handle) {
+        if (handle.includes("e")) width = Math.max(0.01, Math.min(1 - x, width + dx));
+        if (handle.includes("s")) height = Math.max(0.01, Math.min(1 - y, height + dy));
+        if (handle.includes("w")) {
+          const newW = width - dx;
+          if (newW >= 0.01 && x + dx >= 0) {
+            width = newW;
+            x += dx;
+          }
+        }
+        if (handle.includes("n")) {
+          const newH = height - dy;
+          if (newH >= 0.01 && y + dy >= 0) {
+            height = newH;
+            y += dy;
+          }
+        }
+      }
+
+      onOverlayUpdate?.(dragState.id, { x, y, width, height });
+      return;
+    }
+
     if (!isDrawingRegion || !startPoint) return;
     
-    const normalized = mouseToNormalized(e.clientX, e.clientY);
-    if (normalized) {
-      const x = Math.min(startPoint.x, normalized.x);
-      const y = Math.min(startPoint.y, normalized.y);
-      const w = Math.abs(normalized.x - startPoint.x);
-      const h = Math.abs(normalized.y - startPoint.y);
+    const x = Math.min(startPoint.x, normalized.x);
+    const y = Math.min(startPoint.y, normalized.y);
+    const w = Math.abs(normalized.x - startPoint.x);
+    const h = Math.abs(normalized.y - startPoint.y);
       
-      setDrawingRect({ x, y, width: w, height: h });
-    }
+    setDrawingRect({ x, y, width: w, height: h });
   };
 
   const handleMouseUp = () => {
+    if (dragState) {
+      setDragState(null);
+      return;
+    }
+
     if (!isDrawingRegion || !startPoint || !drawingRect) return;
     
     if (drawingRect.width > 0.02 && drawingRect.height > 0.02) {
@@ -187,6 +264,23 @@ function Preview({
     e.stopPropagation();
     if (onRegionSelect) {
       onRegionSelect(regionId);
+    }
+  };
+
+  const handleOverlayMouseDown = (overlay: Overlay, e: React.MouseEvent, type: "move" | "resize" = "move", handle?: "nw" | "ne" | "sw" | "se") => {
+    e.stopPropagation();
+    onOverlaySelect?.(overlay.id);
+    
+    const normalized = mouseToNormalized(e.clientX, e.clientY);
+    if (normalized) {
+      setDragState({
+        id: overlay.id,
+        type,
+        handle,
+        startX: normalized.x,
+        startY: normalized.y,
+        initialOverlay: { ...overlay },
+      });
     }
   };
 
@@ -227,6 +321,35 @@ function Preview({
               <div className={styles.regionLabel} style={{ color: region.color }}>
                 {region.name}
               </div>
+            </div>
+          ))}
+          {overlays.map((overlay) => (
+            <div
+              key={overlay.id}
+              className={`${styles.region} ${activeOverlayId === overlay.id ? styles.active : ''} ${overlay.isEffectZone ? styles.effectZone : ''}`}
+              style={{
+                left: `${overlay.x * 100}%`,
+                top: `${overlay.y * 100}%`,
+                width: `${overlay.width * 100}%`,
+                height: `${overlay.height * 100}%`,
+                borderColor: overlay.isEffectZone ? '#00ffcc' : '#ffffff',
+                borderStyle: overlay.isEffectZone ? 'dashed' : 'solid',
+                cursor: dragState ? (dragState.type === 'move' ? 'grabbing' : 'crosshair') : 'grab',
+              }}
+              onMouseDown={(e) => handleOverlayMouseDown(overlay, e, "move")}
+            >
+              <div className={styles.regionLabel} style={{ color: overlay.isEffectZone ? '#00ffcc' : '#ffffff' }}>
+                {overlay.type === 'text' ? 'T' : (overlay.type === 'image' ? 'Img' : 'Vid')}
+              </div>
+              
+              {activeOverlayId === overlay.id && (
+                <>
+                  <div className={`${styles.resizeHandle} ${styles.nw}`} onMouseDown={(e) => handleOverlayMouseDown(overlay, e, "resize", "nw")} />
+                  <div className={`${styles.resizeHandle} ${styles.ne}`} onMouseDown={(e) => handleOverlayMouseDown(overlay, e, "resize", "ne")} />
+                  <div className={`${styles.resizeHandle} ${styles.sw}`} onMouseDown={(e) => handleOverlayMouseDown(overlay, e, "resize", "sw")} />
+                  <div className={`${styles.resizeHandle} ${styles.se}`} onMouseDown={(e) => handleOverlayMouseDown(overlay, e, "resize", "se")} />
+                </>
+              )}
             </div>
           ))}
           {drawingRect && (

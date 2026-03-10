@@ -1,6 +1,9 @@
 import { Effect, EffectType, EffectParamConfig } from "./types";
 
 import { FaceBounds, HandBounds, PoseBounds } from "./face-detector";
+import type { GLSLEffect } from "./gl/shaders";
+
+export type { GLSLEffect };
 
 export interface ProcessConfig {
   width: number;
@@ -33,6 +36,8 @@ export interface EffectDefinition {
   defaultParams: Record<string, unknown>;
   paramsConfig: EffectParamConfig[];
   processor: EffectProcessor;
+  /** Optional GPU path. When present, the GL pipeline uses this shader instead of the CPU processor. */
+  glsl?: GLSLEffect;
 }
 
 const registry = new Map<EffectType, EffectDefinition>();
