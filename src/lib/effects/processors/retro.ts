@@ -1,7 +1,7 @@
 import { registerEffect, ProcessConfig } from "../effect-registry";
 import { EffectType, EffectParamConfig } from "../types";
 import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, setPosterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
 
 registerEffect({
   type: "dither",
@@ -370,7 +370,7 @@ registerEffect({
     const cacheKey = `${width}x${height}`;
 
     if (!posterizeTimeCache.has(cacheKey)) {
-      posterizeTimeCache.set(cacheKey, {
+      setPosterizeTimeCache(cacheKey, {
         lastUpdateTime: 0,
         cachedFrame: null,
       });

@@ -96,7 +96,22 @@ export function bilinearSample(
   );
 }
 
+const MAX_CACHE_ENTRIES = 3;
+
+function evictMapEntries<K, V>(map: Map<K, V>, maxEntries: number): void {
+  while (map.size >= maxEntries) {
+    const firstKey = map.keys().next().value;
+    if (firstKey === undefined) break;
+    map.delete(firstKey);
+  }
+}
+
 export const meltState = new Map<string, Uint8ClampedArray>();
+
+export function setMeltState(key: string, value: Uint8ClampedArray): void {
+  evictMapEntries(meltState, MAX_CACHE_ENTRIES);
+  meltState.set(key, value);
+}
 export const perlinNoise = (() => {
   const permutation = new Array(256)
     .fill(0)
@@ -134,6 +149,14 @@ export const posterizeTimeCache = new Map<
   string,
   { lastUpdateTime: number; cachedFrame: Uint8ClampedArray | null }
 >();
+
+export function setPosterizeTimeCache(
+  key: string,
+  value: { lastUpdateTime: number; cachedFrame: Uint8ClampedArray | null }
+): void {
+  evictMapEntries(posterizeTimeCache, MAX_CACHE_ENTRIES);
+  posterizeTimeCache.set(key, value);
+}
 
 export function pseudoRandom(seed: number): number {
   const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;

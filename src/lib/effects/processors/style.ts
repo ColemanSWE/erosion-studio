@@ -3,6 +3,31 @@ import { EffectType, EffectParamConfig } from "../types";
 import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
 import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
 
+let blobTrackMiniBuffer: Uint8ClampedArray | null = null;
+const BLOB_DETECT_INTERVAL = 3;
+
+interface BlobInfo {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  area: number;
+}
+
+let blobTrackCache: {
+  blobs: BlobInfo[];
+  frameKey: number;
+  width: number;
+  height: number;
+} | null = null;
+
+function getBlobTrackMiniBuffer(size: number): Uint8ClampedArray {
+  if (!blobTrackMiniBuffer || blobTrackMiniBuffer.length < size) {
+    blobTrackMiniBuffer = new Uint8ClampedArray(size);
+  }
+  return blobTrackMiniBuffer;
+}
+
 // ─── Register style effects that are rendered by effects-renderer.ts ────────
 // These effects don't have pixel processors — they are handled by the renderer
 // via styleEffectToRenderMode(). We register them so they appear in the panel.
@@ -281,8 +306,19 @@ registerEffect({
       return x - Math.floor(x);
     };
 
-    // Step 1: Build grayscale + threshold binary mask
     const totalPixels = width * height;
+    const frameKey = Math.floor(time);
+    const canUseCache =
+      blobTrackCache &&
+      blobTrackCache.width === width &&
+      blobTrackCache.height === height &&
+      (frameKey - blobTrackCache.frameKey) < BLOB_DETECT_INTERVAL;
+
+    let blobs: BlobInfo[];
+
+    if (canUseCache) {
+      blobs = blobTrackCache!.blobs;
+    } else {
     const binary = new Uint8Array(totalPixels);
     for (let i = 0; i < totalPixels; i++) {
       const idx = i * 4;
@@ -338,11 +374,6 @@ registerEffect({
       }
     }
 
-    // Second pass: resolve labels and compute bounding boxes
-    interface BlobInfo {
-      minX: number; minY: number; maxX: number; maxY: number;
-      area: number;
-    }
     const blobMap = new Map<number, BlobInfo>();
 
     for (let y = 0; y < height; y++) {
@@ -365,11 +396,19 @@ registerEffect({
       }
     }
 
-    // Step 3: Filter and sort blobs
-    let blobs = Array.from(blobMap.values()).filter(b => b.area >= minBlobSize && b.area <= maxBlobSize);
-    blobs.sort((a, b) => b.area - a.area);
-    if (blobs.length > maxBlobs) {
-      blobs = blobs.slice(0, maxBlobs);
+    let detectedBlobs = Array.from(blobMap.values()).filter(b => b.area >= minBlobSize && b.area <= maxBlobSize);
+    detectedBlobs.sort((a, b) => b.area - a.area);
+    if (detectedBlobs.length > maxBlobs) {
+      detectedBlobs = detectedBlobs.slice(0, maxBlobs);
+    }
+
+    blobTrackCache = {
+      blobs: detectedBlobs,
+      frameKey,
+      width,
+      height,
+    };
+    blobs = detectedBlobs;
     }
 
     if (blobs.length === 0) return;
@@ -479,8 +518,8 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
           const safeBh = Math.min(height - safeBy, Math.ceil(bh));
 
           if (safeBw > 0 && safeBh > 0) {
-            // Build a mini-buffer containing just the pixels of the bounding box
-            const miniBuffer = new Uint8ClampedArray(safeBw * safeBh * 4);
+            const miniSize = safeBw * safeBh * 4;
+            const miniBuffer = getBlobTrackMiniBuffer(miniSize);
             for (let localY = 0; localY < safeBh; localY++) {
               for (let localX = 0; localX < safeBw; localX++) {
                 const srcIdx = ((safeBy + localY) * width + (safeBx + localX)) * 4;
@@ -507,8 +546,11 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
               effectDef.defaultParams || {}
             );
 
-            // Stamp the processed bytes directly into chunkData and draw
-            const chunkData = new ImageData(miniBuffer, safeBw, safeBh);
+            const chunkData = new ImageData(
+              new Uint8ClampedArray(miniBuffer.subarray(0, miniSize)),
+              safeBw,
+              safeBh,
+            );
             ctx.putImageData(chunkData, safeBx, safeBy);
           }
         }

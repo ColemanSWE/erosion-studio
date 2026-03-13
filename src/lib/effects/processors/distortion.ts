@@ -1,7 +1,7 @@
 import { registerEffect, ProcessConfig } from "../effect-registry";
 import { EffectType, EffectParamConfig } from "../types";
 import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, setMeltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
 
 registerEffect({
   type: "chromatic-aberration",
@@ -463,7 +463,7 @@ registerEffect({
 
     if (!meltBuffer || meltBuffer.length !== data.length) {
       meltBuffer = new Uint8ClampedArray(data);
-      meltState.set(key, meltBuffer);
+      setMeltState(key, meltBuffer);
     }
 
     const source = new Uint8ClampedArray(data);

@@ -47,8 +47,14 @@ export function usePhotoEditor({
     });
 
     return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+      }
       glPipelineRef.current?.dispose();
       glPipelineRef.current = null;
+      bufferRef.current = null;
+      bufferCtxRef.current = null;
     };
   }, []);
 
@@ -64,7 +70,7 @@ export function usePhotoEditor({
     setIsAnimating(needsAnimation);
   }, [effects]);
 
-  const renderFrame = useCallback((tick: number) => {
+  const renderFrame = useCallback(async (tick: number) => {
     if (!canvas || activeImages.length === 0 || !bufferRef.current || !bufferCtxRef.current) return;
 
     const ctx = canvas.getContext("2d");
@@ -87,7 +93,7 @@ export function usePhotoEditor({
         }
     }
 
-    renderWithEffects(
+    await renderWithEffects(
       {
         ctx,
         buffer: bufferRef.current,
@@ -112,7 +118,7 @@ export function usePhotoEditor({
     );
   }, [canvas, effects, regions, overlays, activeImages]);
 
-  const render = useCallback(() => {
+  const render = useCallback(async () => {
     if (!canvas || activeImages.length === 0) return;
 
     const ctx = canvas.getContext("2d");
@@ -136,7 +142,7 @@ export function usePhotoEditor({
        canvas.height = primaryImage.naturalHeight || primaryImage.height;
     }
 
-    renderFrame(tickRef.current);
+    await renderFrame(tickRef.current);
 
     tickRef.current++;
     
@@ -260,12 +266,12 @@ export function usePhotoEditor({
         if (!ctx) throw new Error("Canvas context not available");
         
         // Generate a shared palette from the first frame
-        renderFrame(0);
+        await renderFrame(0);
         const firstFrameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const sharedPalette = quantize(firstFrameData.data, 256);
         
         for (let i = 0; i < numFrames; i++) {
-          renderFrame(i);
+          await renderFrame(i);
           
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const index = applyPalette(imageData.data, sharedPalette);

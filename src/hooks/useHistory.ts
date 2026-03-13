@@ -1,5 +1,7 @@
 import { useState, useCallback } from "react";
 
+const MAX_HISTORY = 50;
+
 interface HistoryState<T> {
   past: T[];
   present: T;
@@ -14,11 +16,17 @@ export function useHistory<T>(initialState: T) {
   });
 
   const setState = useCallback((newState: T) => {
-    setHistory((current) => ({
-      past: [...current.past, current.present],
-      present: newState,
-      future: [],
-    }));
+    setHistory((current) => {
+      const newPast = [...current.past, current.present];
+      if (newPast.length > MAX_HISTORY) {
+        newPast.shift();
+      }
+      return {
+        past: newPast,
+        present: newState,
+        future: [],
+      };
+    });
   }, []);
 
   const undo = useCallback(() => {

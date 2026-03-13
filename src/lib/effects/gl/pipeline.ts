@@ -9,7 +9,6 @@ import {
   bindUniforms,
   type UniformType,
 } from "./shaders";
-
 export type { UniformType };
 export type { GLSLEffect } from "./shaders";
 
@@ -56,6 +55,8 @@ export class GLPipeline {
   private programCache = new Map<string, WebGLProgram>();
   private width = 0;
   private height = 0;
+  private cpuBufFull: Uint8ClampedArray | null = null;
+  private cpuBufRegion: Uint8ClampedArray | null = null;
 
   constructor(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
     this.gl = gl;
@@ -149,12 +150,14 @@ export class GLPipeline {
 
   private readCurrentPixels(): Uint8ClampedArray {
     const gl = this.gl;
-    const buf = new Uint8ClampedArray(this.width * this.height * 4);
+    const size = this.width * this.height * 4;
+    if (!this.cpuBufFull || this.cpuBufFull.length !== size) {
+      this.cpuBufFull = new Uint8ClampedArray(size);
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[this.current].fbo);
-    gl.readPixels(0, 0, this.width, this.height, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    gl.readPixels(0, 0, this.width, this.height, gl.RGBA, gl.UNSIGNED_BYTE, this.cpuBufFull);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    // coordinated flip handled by u_flipY during write; no manual flip needed
-    return buf;
+    return this.cpuBufFull;
   }
 
   private uploadPixels(buf: Uint8ClampedArray): void {
@@ -166,11 +169,14 @@ export class GLPipeline {
 
   private readRegionPixels([rx, ry, rw, rh]: [number, number, number, number]): Uint8ClampedArray {
     const gl = this.gl;
-    const buf = new Uint8ClampedArray(rw * rh * 4);
+    const size = rw * rh * 4;
+    if (!this.cpuBufRegion || this.cpuBufRegion.length < size) {
+      this.cpuBufRegion = new Uint8ClampedArray(size);
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[this.current].fbo);
-    gl.readPixels(rx, ry, rw, rh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    gl.readPixels(rx, ry, rw, rh, gl.RGBA, gl.UNSIGNED_BYTE, this.cpuBufRegion);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    return buf;
+    return this.cpuBufRegion;
   }
 
   private uploadRegionPixels(buf: Uint8ClampedArray, [rx, ry, rw, rh]: [number, number, number, number]): void {

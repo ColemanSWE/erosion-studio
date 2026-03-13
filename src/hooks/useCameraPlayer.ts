@@ -21,12 +21,12 @@ export function useCameraPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
-  const [faceBounds, setFaceBounds] = useState<FaceBounds[]>([]);
-  
   // Buffer for effects
   const bufferRef = useRef<HTMLCanvasElement | null>(null);
   const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const glPipelineRef = useRef<GLPipeline | null>(null);
+
+  const faceBoundsRef = useRef<FaceBounds[]>([]);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
 
@@ -71,8 +71,7 @@ export function useCameraPlayer({
     // Detect faces every 10 frames to reduce overhead
     if (tickRef.current % 10 === 0) {
       try {
-        const faces = await detectFaces(video);
-        setFaceBounds(faces);
+        faceBoundsRef.current = await detectFaces(video);
       } catch (error) {
         console.error("Face detection failed:", error);
       }
@@ -83,7 +82,7 @@ export function useCameraPlayer({
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
 
-    renderWithEffects(
+    await renderWithEffects(
       {
         ctx,
         buffer: bufferRef.current,
@@ -94,7 +93,8 @@ export function useCameraPlayer({
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         tick: tickRef.current,
-        faceBounds,
+        faceBounds: faceBoundsRef.current,
+        isFlipped: true,
         glPipeline: glPipelineRef.current ?? undefined,
         overlays,
       },
@@ -110,7 +110,7 @@ export function useCameraPlayer({
     if (isActive) {
       animationFrameRef.current = requestAnimationFrame(render);
     }
-  }, [canvas, effects, isActive, faceBounds, regions, overlays]);
+  }, [canvas, effects, isActive, regions, overlays]);
 
   useEffect(() => {
     let activeStream: MediaStream | null = null;

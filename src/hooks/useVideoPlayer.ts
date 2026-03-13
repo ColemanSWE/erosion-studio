@@ -56,6 +56,8 @@ export function useVideoPlayer({
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
   const faceBoundsRef = useRef<FaceBounds[]>([]);
+  const lastFrameTimeRef = useRef(0);
+  const skipEffectsRef = useRef(false);
 
   const bufferRef = useRef<HTMLCanvasElement | null>(null);
   const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -71,8 +73,14 @@ export function useVideoPlayer({
     });
 
     return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+      }
       glPipelineRef.current?.dispose();
       glPipelineRef.current = null;
+      bufferRef.current = null;
+      bufferCtxRef.current = null;
     };
   }, []);
 
@@ -120,7 +128,16 @@ export function useVideoPlayer({
       canvas.height = primaryVideo.videoHeight || 1080;
     }
 
-    // Detect faces every 10 frames to reduce overhead
+    const frameStart = performance.now();
+    const FRAME_BUDGET_MS = 33;
+    const skipEffects = skipEffectsRef.current;
+
+    if (skipEffects) {
+      skipEffectsRef.current = false;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(primaryVideo, 0, 0, canvas.width, canvas.height);
+    } else {
     if (tickRef.current % 10 === 0) {
       try {
         const faces = await detectFaces(primaryVideo);
@@ -130,7 +147,7 @@ export function useVideoPlayer({
       }
     }
 
-    renderWithEffects(
+    await renderWithEffects(
       {
         ctx,
         buffer: bufferRef.current,
@@ -153,6 +170,12 @@ export function useVideoPlayer({
       regions,
       overlays
     );
+    }
+
+    lastFrameTimeRef.current = performance.now() - frameStart;
+    if (lastFrameTimeRef.current > FRAME_BUDGET_MS * 2) {
+      skipEffectsRef.current = true;
+    }
 
     if (onTimeUpdate) {
       onTimeUpdate(primaryVideo.currentTime);

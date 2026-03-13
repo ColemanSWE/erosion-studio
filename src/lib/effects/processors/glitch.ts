@@ -3,6 +3,20 @@ import { EffectType, EffectParamConfig } from "../types";
 import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
 import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
 
+let pixelSortBuffer: Uint8ClampedArray | null = null;
+
+function getPixelSortBuffer(size: number): Uint8ClampedArray {
+  if (!pixelSortBuffer || pixelSortBuffer.length !== size) {
+    pixelSortBuffer = new Uint8ClampedArray(size);
+  }
+  return pixelSortBuffer;
+}
+
+// Preallocated scratch space reused across every processLine call
+const _psBuckets: number[][] = Array.from({ length: 766 }, () => []);
+const _psUsedKeys: number[] = [];
+const _psSegmentOffsets: number[] = [];
+
 registerEffect({
   type: "glitch",
   label: "Digital Glitch",
@@ -760,103 +774,85 @@ void main() {
   },
 });
 
+const PS_DIRECTION_STEPS: Record<string, { dx: number; dy: number }> = {
+  horizontal:      { dx:  1, dy:  0 },
+  vertical:        { dx:  0, dy:  1 },
+  "diagonal-down": { dx:  1, dy:  1 },
+  "diagonal-up":   { dx:  1, dy: -1 },
+};
+
 registerEffect({
   type: "pixel-sort",
   label: "Pixel Sort",
   category: "glitch",
-    defaultParams: { threshold: 50, direction: "horizontal" },
-  paramsConfig: [],
+  defaultParams: { threshold: 80, direction: "horizontal" },
+  paramsConfig: [
+    { key: "threshold", label: "Threshold", type: "slider", min: 0, max: 255, step: 1 },
+    {
+      key: "direction",
+      label: "Direction",
+      type: "select",
+      options: ["horizontal", "vertical", "diagonal-down", "diagonal-up"],
+    },
+  ],
   processor: (data, { width, height }, params) => {
-    const threshold = (params.threshold as number) || 50;
-    const angle = (params.angle as number) || 0;
+    const threshold = (params.threshold as number) ?? 80;
+    const dirKey = (params.direction as string) || "horizontal";
+    const { dx, dy } = PS_DIRECTION_STEPS[dirKey] ?? PS_DIRECTION_STEPS.horizontal;
 
-    const src = new Uint8ClampedArray(data);
-    const angleNorm = ((angle % 360) + 360) % 360;
-    const angleRad = (angleNorm * Math.PI) / 180;
+    const src = getPixelSortBuffer(data.length);
+    src.set(data);
 
-    const gcd = (a: number, b: number): number => {
-      let x = Math.abs(a);
-      let y = Math.abs(b);
-      while (y !== 0) {
-        const t = x % y;
-        x = y;
-        y = t;
-      }
-      return x;
-    };
-
-    const quantizeStep = (): { dx: number; dy: number } => {
-      const scale = 8;
-      let dx = Math.round(Math.cos(angleRad) * scale);
-      let dy = Math.round(Math.sin(angleRad) * scale);
-      if (dx === 0 && dy === 0) dx = 1;
-      const g = gcd(dx, dy) || 1;
-      dx = dx / g;
-      dy = dy / g;
-      return { dx, dy };
-    };
-
-    const { dx, dy } = quantizeStep();
-
-    const flushSegment = (
-      segmentOffsets: number[],
-      buckets: number[][],
-      usedKeys: number[]
-    ) => {
-      if (segmentOffsets.length <= 1) {
-        segmentOffsets.length = 0;
+    const flushSegment = () => {
+      if (_psSegmentOffsets.length <= 1) {
+        for (let k = 0; k < _psUsedKeys.length; k++) _psBuckets[_psUsedKeys[k]].length = 0;
+        _psUsedKeys.length = 0;
+        _psSegmentOffsets.length = 0;
         return;
       }
-
-      usedKeys.sort((a, b) => a - b);
-
+      _psUsedKeys.sort((a, b) => a - b);
       let out = 0;
-      for (let k = 0; k < usedKeys.length; k++) {
-        const key = usedKeys[k];
-        const arr = buckets[key];
+      for (let k = 0; k < _psUsedKeys.length; k++) {
+        const key = _psUsedKeys[k];
+        const arr = _psBuckets[key];
         for (let j = 0; j < arr.length; j += 3) {
-          const o = segmentOffsets[out++];
+          const o = _psSegmentOffsets[out++];
           data[o] = arr[j];
           data[o + 1] = arr[j + 1];
           data[o + 2] = arr[j + 2];
         }
         arr.length = 0;
       }
-
-      usedKeys.length = 0;
-      segmentOffsets.length = 0;
+      _psUsedKeys.length = 0;
+      _psSegmentOffsets.length = 0;
     };
 
     const processLine = (sx: number, sy: number) => {
-      const buckets: number[][] = new Array(766);
-      for (let i = 0; i < 766; i++) buckets[i] = [];
-      const usedKeys: number[] = [];
-      const segmentOffsets: number[] = [];
+      // Reset any leftover state from a previous line
+      for (let k = 0; k < _psUsedKeys.length; k++) _psBuckets[_psUsedKeys[k]].length = 0;
+      _psUsedKeys.length = 0;
+      _psSegmentOffsets.length = 0;
 
       let x = sx;
       let y = sy;
-
       while (x >= 0 && x < width && y >= 0 && y < height) {
         const o = (y * width + x) * 4;
         const r = src[o];
-        const g = src[o + 1];
+        const gv = src[o + 1];
         const b = src[o + 2];
-        const bri = (r + g + b) / 3;
-
+        const bri = (r + gv + b) / 3;
         if (bri > threshold) {
-          segmentOffsets.push(o);
-          const key = (r + g + b) | 0;
-          if (buckets[key].length === 0) usedKeys.push(key);
-          buckets[key].push(r, g, b);
+          _psSegmentOffsets.push(o);
+          const key = (r + gv + b) | 0;
+          if (_psBuckets[key].length === 0) _psUsedKeys.push(key);
+          _psBuckets[key].push(r, gv, b);
         } else {
-          flushSegment(segmentOffsets, buckets, usedKeys);
+          flushSegment();
         }
-
         x += dx;
         y += dy;
       }
-
-      flushSegment(segmentOffsets, buckets, usedKeys);
+      flushSegment();
     };
 
     if (dy === 0) {
@@ -864,13 +860,11 @@ registerEffect({
       for (let y = 0; y < height; y++) processLine(startX, y);
       return;
     }
-
     if (dx === 0) {
       const startY = dy > 0 ? 0 : height - 1;
       for (let x = 0; x < width; x++) processLine(x, startY);
       return;
     }
-
     if (dy > 0) {
       for (let x = 0; x < width; x++) processLine(x, 0);
       const sideX = dx > 0 ? 0 : width - 1;

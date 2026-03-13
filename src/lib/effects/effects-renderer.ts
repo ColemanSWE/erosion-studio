@@ -5,6 +5,7 @@ import { emojiMap } from "./emoji-map";
 import { PALETTES, PaletteKey } from "./palettes";
 import { renderMesh } from "./mesh-renderer";
 import { GLPipeline, type GLRegion } from "./gl/pipeline";
+import { processEffectsInWorker } from "./worker-pool";
 
 import "./processors";
 
@@ -97,6 +98,20 @@ function getOrCreateStyleCanvas(width: number, height: number): { canvas: HTMLCa
   return { canvas: styleRenderCanvas, ctx: styleRenderCtx };
 }
 
+let regionEffectsTempCanvas: HTMLCanvasElement | null = null;
+let regionEffectsTempCtx: CanvasRenderingContext2D | null = null;
+
+function getOrCreateRegionEffectsCanvas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  if (!regionEffectsTempCanvas) {
+    regionEffectsTempCanvas = document.createElement("canvas");
+    regionEffectsTempCtx = regionEffectsTempCanvas.getContext("2d", { willReadFrequently: true });
+  }
+  if (!regionEffectsTempCtx) {
+    throw new Error("Failed to get 2D context for region effects temp canvas");
+  }
+  return { canvas: regionEffectsTempCanvas, ctx: regionEffectsTempCtx };
+}
+
 function applyRegionEffects(
   bufferCtx: CanvasRenderingContext2D,
   regionEffects: Effect[],
@@ -111,12 +126,9 @@ function applyRegionEffects(
   scale: number,
   context: RenderContext,
   tick: number,
+  overlayEffectsOnly = false,
 ): void {
   if (regionEffects.length === 0) return;
-
-  const tempCanvas = document.createElement("canvas");
-  const tempCtx = tempCanvas.getContext("2d");
-  if (!tempCtx) return;
 
   const regionGroups = new Map<string, Effect[]>();
   const overlayGroups = new Map<string, Effect[]>();
@@ -131,7 +143,7 @@ function applyRegionEffects(
     }
   }
 
-  // Handle standard regions
+  if (!overlayEffectsOnly) {
   for (const [regionId, regionEffectList] of regionGroups) {
     const region = regions?.find((r) => r.id === regionId);
     if (!region) continue;
@@ -177,8 +189,8 @@ function applyRegionEffects(
     });
     bufferCtx.putImageData(regionData, rx, ry);
   }
+  }
 
-  // Handle overlays (alpha masking)
   for (const [overlayId, overlayEffectList] of overlayGroups) {
     const overlay = overlays?.find((o) => o.id === overlayId);
     if (!overlay) continue;
@@ -225,16 +237,14 @@ function applyRegionEffects(
       poseBounds: context.poseBounds,
     });
 
-    // Draw the effected region to temp canvas
+    const { canvas: tempCanvas, ctx: tempCtx } = getOrCreateRegionEffectsCanvas();
     tempCanvas.width = rw;
     tempCanvas.height = rh;
     tempCtx.putImageData(effectedData, 0, 0);
 
-    // Apply overlay as a mask
     tempCtx.globalCompositeOperation = "destination-in";
     drawOverlay(tempCtx, overlay, context, sourceWidth, sourceHeight, 0, 0, rw, rh, true);
-    
-    // Draw the masked result back to the main buffer
+
     bufferCtx.drawImage(tempCanvas, rx, ry);
   }
 }
@@ -329,12 +339,12 @@ function buildGLRegions(
   return result;
 }
 
-export function renderWithEffects(
+export async function renderWithEffects(
   context: RenderContext,
   effects: Effect[],
   regions?: Region[],
   overlays: Overlay[] = [],
-): void {
+): Promise<void> {
   const {
     ctx,
     buffer,
@@ -405,7 +415,6 @@ export function renderWithEffects(
       return;
     }
 
-    // CPU fallback path
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
@@ -415,12 +424,78 @@ export function renderWithEffects(
 
     if (globalEffects.length > 0) {
       const imageData = bufferCtx.getImageData(0, 0, sourceWidth, sourceHeight);
-      applyEffects(imageData.data, globalEffects, processConfig);
-      bufferCtx.putImageData(imageData, 0, 0);
+      const useWorker =
+        regionEffects.length === 0 && !context.timelineFrames?.length;
+      try {
+        if (useWorker) {
+          const buffer = new Uint8ClampedArray(imageData.data);
+          const processed = await processEffectsInWorker(
+            buffer,
+            globalEffects,
+            processConfig,
+          );
+          bufferCtx.putImageData(
+            new ImageData(new Uint8ClampedArray(processed), sourceWidth, sourceHeight),
+            0,
+            0,
+          );
+        } else {
+          applyEffects(imageData.data, globalEffects, processConfig);
+          bufferCtx.putImageData(imageData, 0, 0);
+        }
+      } catch {
+        applyEffects(imageData.data, globalEffects, processConfig);
+        bufferCtx.putImageData(imageData, 0, 0);
+      }
     }
 
     if (regionEffects.length > 0) {
-      applyRegionEffects(bufferCtx, regionEffects, regions, overlays, sourceWidth, sourceHeight, drawX, drawY, canvasWidth, canvasHeight, scale, context, tick);
+      const glRegions = context.glPipeline && buildGLRegions(
+        regionEffects.filter((e) => e.regionId),
+        regions,
+        sourceWidth,
+        sourceHeight,
+        drawX,
+        drawY,
+        canvasWidth,
+        canvasHeight,
+        scale,
+        context.isFlipped,
+      );
+      if (glRegions && glRegions.length > 0) {
+        context.glPipeline!.renderEffects(
+          buffer,
+          sourceWidth,
+          sourceHeight,
+          [],
+          processConfig,
+          bufferCtx,
+          0,
+          0,
+          sourceWidth,
+          sourceHeight,
+          sourceWidth,
+          sourceHeight,
+          glRegions,
+        );
+      }
+      const usedGLForRegions = !!(glRegions && glRegions.length > 0);
+      applyRegionEffects(
+        bufferCtx,
+        regionEffects,
+        regions,
+        overlays,
+        sourceWidth,
+        sourceHeight,
+        drawX,
+        drawY,
+        canvasWidth,
+        canvasHeight,
+        scale,
+        context,
+        tick,
+        usedGLForRegions,
+      );
     }
 
     ctx.drawImage(buffer, drawX, drawY, drawWidth, drawHeight);

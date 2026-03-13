@@ -101,12 +101,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })),
 
   removeMedia: (id) =>
-    set((state) => ({
-      media: state.media.filter((m) => m.id !== id),
-      selectedMediaId:
-        state.selectedMediaId === id ? undefined : state.selectedMediaId,
-      clips: state.clips.filter((c) => c.mediaId !== id),
-    })),
+    set((state) => {
+      const item = state.media.find((m) => m.id === id);
+      if (item?.path.startsWith("blob:")) {
+        URL.revokeObjectURL(item.path);
+      }
+      return {
+        media: state.media.filter((m) => m.id !== id),
+        selectedMediaId:
+          state.selectedMediaId === id ? undefined : state.selectedMediaId,
+        clips: state.clips.filter((c) => c.mediaId !== id),
+      };
+    }),
 
   selectMedia: (id) => set({ selectedMediaId: id }),
 
@@ -334,6 +340,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     try {
       const projectData = JSON.parse(res.data);
+      const currentState = get();
+      for (const m of currentState.media) {
+        if (m.path.startsWith("blob:")) {
+          URL.revokeObjectURL(m.path);
+        }
+      }
 
       set({
         projectName: projectData.projectName || "Untitled Project",
