@@ -134,9 +134,6 @@ export function useVideoPlayer({
 
     if (skipEffects) {
       skipEffectsRef.current = false;
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(primaryVideo, 0, 0, canvas.width, canvas.height);
     } else {
     if (tickRef.current % 10 === 0) {
       try {
@@ -173,7 +170,7 @@ export function useVideoPlayer({
     }
 
     lastFrameTimeRef.current = performance.now() - frameStart;
-    if (lastFrameTimeRef.current > FRAME_BUDGET_MS * 2) {
+    if (lastFrameTimeRef.current > FRAME_BUDGET_MS * 5) {
       skipEffectsRef.current = true;
     }
 

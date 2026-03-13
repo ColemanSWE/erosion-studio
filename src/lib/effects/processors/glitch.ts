@@ -12,11 +12,6 @@ function getPixelSortBuffer(size: number): Uint8ClampedArray {
   return pixelSortBuffer;
 }
 
-// Preallocated scratch space reused across every processLine call
-const _psBuckets: number[][] = Array.from({ length: 766 }, () => []);
-const _psUsedKeys: number[] = [];
-const _psSegmentOffsets: number[] = [];
-
 registerEffect({
   type: "glitch",
   label: "Digital Glitch",
@@ -781,71 +776,99 @@ const PS_DIRECTION_STEPS: Record<string, { dx: number; dy: number }> = {
   "diagonal-up":   { dx:  1, dy: -1 },
 };
 
+const PS_SORT_PASSES_MAX = 2048;
+
+// Flat TypedArray buffers for zero-allocation counting sort
+const PS_MAX_DIMENSION = 16384; // Safe margin handling up to 8K resolution diagonals
+const _psOffsets = new Uint32Array(PS_MAX_DIMENSION);
+const _psPixels = new Uint32Array(PS_MAX_DIMENSION);
+const _psKeys = new Uint16Array(PS_MAX_DIMENSION);
+const _psCounts = new Uint16Array(766);
+const _psStarts = new Uint16Array(766);
+const _psSorted = new Uint32Array(PS_MAX_DIMENSION);
+
 registerEffect({
   type: "pixel-sort",
   label: "Pixel Sort",
   category: "glitch",
   defaultParams: { threshold: 80, direction: "horizontal" },
   paramsConfig: [
-    { key: "threshold", label: "Threshold", type: "slider", min: 0, max: 255, step: 1 },
+    { key: "threshold", label: "Threshold", type: "slider", min: 0, max: 255, step: 1, default: 80 },
     {
       key: "direction",
       label: "Direction",
       type: "select",
       options: ["horizontal", "vertical", "diagonal-down", "diagonal-up"],
+      default: "horizontal",
     },
   ],
   processor: (data, { width, height }, params) => {
-    const threshold = (params.threshold as number) ?? 80;
-    const dirKey = (params.direction as string) || "horizontal";
+    const threshold = Number(params.threshold ?? 80);
+    const dirKey = String(params.direction || "horizontal");
     const { dx, dy } = PS_DIRECTION_STEPS[dirKey] ?? PS_DIRECTION_STEPS.horizontal;
 
-    const src = getPixelSortBuffer(data.length);
-    src.set(data);
+    let segLen = 0;
 
     const flushSegment = () => {
-      if (_psSegmentOffsets.length <= 1) {
-        for (let k = 0; k < _psUsedKeys.length; k++) _psBuckets[_psUsedKeys[k]].length = 0;
-        _psUsedKeys.length = 0;
-        _psSegmentOffsets.length = 0;
+      if (segLen <= 1) {
+        segLen = 0;
         return;
       }
-      _psUsedKeys.sort((a, b) => a - b);
-      let out = 0;
-      for (let k = 0; k < _psUsedKeys.length; k++) {
-        const key = _psUsedKeys[k];
-        const arr = _psBuckets[key];
-        for (let j = 0; j < arr.length; j += 3) {
-          const o = _psSegmentOffsets[out++];
-          data[o] = arr[j];
-          data[o + 1] = arr[j + 1];
-          data[o + 2] = arr[j + 2];
-        }
-        arr.length = 0;
+      
+      // 1. Reset counts
+      _psCounts.fill(0, 0, 766);
+      
+      // 2. Tally keys
+      for (let i = 0; i < segLen; i++) {
+        _psCounts[_psKeys[i]]++;
       }
-      _psUsedKeys.length = 0;
-      _psSegmentOffsets.length = 0;
+      
+      // 3. Prefix sums for start indices
+      let currentStart = 0;
+      for (let k = 0; k < 766; k++) {
+        _psStarts[k] = currentStart;
+        currentStart += _psCounts[k];
+      }
+      
+      // 4. Sort pixels by placing them into the correct spots
+      for (let i = 0; i < segLen; i++) {
+        const key = _psKeys[i];
+        const pos = _psStarts[key]++;
+        _psSorted[pos] = _psPixels[i];
+      }
+      
+      // 5. Write back to data buffer
+      // End index must be 'segLen'
+      // Iterate via out++ where out is our segment iterator
+      for (let i = 0; i < segLen; i++) {
+        const o = _psOffsets[i];
+        const rgb = _psSorted[i];
+        
+        // Extract RGB
+        data[o] = (rgb >> 16) & 0xFF;     // R
+        data[o + 1] = (rgb >> 8) & 0xFF;  // G
+        data[o + 2] = rgb & 0xFF;         // B
+      }
+
+      segLen = 0;
     };
 
     const processLine = (sx: number, sy: number) => {
-      // Reset any leftover state from a previous line
-      for (let k = 0; k < _psUsedKeys.length; k++) _psBuckets[_psUsedKeys[k]].length = 0;
-      _psUsedKeys.length = 0;
-      _psSegmentOffsets.length = 0;
-
+      segLen = 0;
       let x = sx;
       let y = sy;
       while (x >= 0 && x < width && y >= 0 && y < height) {
         const o = (y * width + x) * 4;
-        const r = src[o];
-        const gv = src[o + 1];
-        const b = src[o + 2];
+        const r = data[o];
+        const gv = data[o + 1];
+        const b = data[o + 2];
         const bri = (r + gv + b) / 3;
+        
         if (bri > threshold) {
-          _psSegmentOffsets.push(o);
-          const key = (r + gv + b) | 0;
-          if (_psBuckets[key].length === 0) _psUsedKeys.push(key);
-          _psBuckets[key].push(r, gv, b);
+          _psOffsets[segLen] = o;
+          _psPixels[segLen] = (r << 16) | (gv << 8) | b;
+          _psKeys[segLen] = r + gv + b;
+          segLen++;
         } else {
           flushSegment();
         }
@@ -855,6 +878,7 @@ registerEffect({
       flushSegment();
     };
 
+    // Edge Traversal logic
     if (dy === 0) {
       const startX = dx > 0 ? 0 : width - 1;
       for (let y = 0; y < height; y++) processLine(startX, y);
@@ -868,6 +892,7 @@ registerEffect({
     if (dy > 0) {
       for (let x = 0; x < width; x++) processLine(x, 0);
       const sideX = dx > 0 ? 0 : width - 1;
+      // Start y=1 to avoid double-processing the corner
       for (let y = 1; y < height; y++) processLine(sideX, y);
     } else {
       for (let x = 0; x < width; x++) processLine(x, height - 1);
@@ -2632,5 +2657,645 @@ registerEffect({
 
     // Update previous secondary frame for next iteration's motion estimation
     datamoshTransitState.prevSecondary!.set(secData);
+  },
+});
+
+registerEffect({
+  type: "buffer-corrupt",
+  label: "Buffer Corrupt",
+  category: "glitch",
+  defaultParams: { strideOffset: 30, channelSplit: 40, wrapMode: "repeat" },
+  paramsConfig: [
+    { key: "strideOffset", label: "Stride Offset", type: "slider", min: -100, max: 100, step: 1 },
+    { key: "channelSplit", label: "Channel Split", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "wrapMode", label: "Wrap Mode", type: "select", options: ["repeat", "mirror", "clamp"] },
+  ],
+  glsl: {
+    fragment: `
+uniform float u_strideOffset;
+uniform float u_channelSplit;
+uniform float u_wrapMode;
+
+float stridedRead(float flatIdx, float stride) {
+  float row = floor(flatIdx / stride);
+  float col = mod(flatIdx, stride);
+  return col / u_resolution.x * 1.0 + row / u_resolution.y * 1.0;
+}
+
+vec2 corruptedUV(vec2 uv, float strideDelta) {
+  float px = uv.x * u_resolution.x;
+  float py = uv.y * u_resolution.y;
+  float flatIdx = py * u_resolution.x + px;
+  float corruptedWidth = u_resolution.x + strideDelta;
+  if (corruptedWidth <= 0.0) corruptedWidth = 1.0;
+  float newRow = floor(flatIdx / corruptedWidth);
+  float newCol = mod(flatIdx, corruptedWidth);
+  vec2 newUV = vec2(newCol / u_resolution.x, newRow / u_resolution.y);
+  if (u_wrapMode < 0.5) {
+    newUV = fract(newUV);
+  } else if (u_wrapMode < 1.5) {
+    vec2 wrapped = fract(newUV * 0.5) * 2.0;
+    newUV = vec2(wrapped.x > 1.0 ? 2.0 - wrapped.x : wrapped.x,
+                 wrapped.y > 1.0 ? 2.0 - wrapped.y : wrapped.y);
+  } else {
+    newUV = clamp(newUV, 0.0, 1.0);
+  }
+  return newUV;
+}
+
+void main() {
+  if (u_strideOffset == 0.0 && u_channelSplit == 0.0) {
+    fragColor = texture(u_source, v_texCoord);
+    return;
+  }
+  float splitAmount = u_channelSplit * 0.5;
+  vec2 uvR = corruptedUV(v_texCoord, u_strideOffset + splitAmount);
+  vec2 uvG = corruptedUV(v_texCoord, u_strideOffset);
+  vec2 uvB = corruptedUV(v_texCoord, u_strideOffset - splitAmount);
+  float r = texture(u_source, uvR).r;
+  float g = texture(u_source, uvG).g;
+  float b = texture(u_source, uvB).b;
+  fragColor = vec4(r, g, b, 1.0);
+}`,
+    uniforms: { strideOffset: "float", channelSplit: "float", wrapMode: "float" },
+    uniformMapper: (params) => ({
+      strideOffset: params.strideOffset,
+      channelSplit: params.channelSplit,
+      wrapMode: params.wrapMode === "repeat" ? 0 : params.wrapMode === "mirror" ? 1 : 2,
+    }),
+  },
+  processor: (data, { width, height }, params) => {
+    const strideOffset = (params.strideOffset as number) || 30;
+    const channelSplit = (params.channelSplit as number) || 40;
+    const wrapMode = (params.wrapMode as string) || "repeat";
+    if (strideOffset === 0 && channelSplit === 0) return;
+
+    const source = new Uint8ClampedArray(data);
+
+    const wrapCoord = (col: number, row: number, w: number, h: number): [number, number] => {
+      let c = col, r = row;
+      if (wrapMode === "repeat") {
+        c = ((c % w) + w) % w;
+        r = ((r % h) + h) % h;
+      } else if (wrapMode === "mirror") {
+        const mc = ((c % (w * 2)) + w * 2) % (w * 2);
+        const mr = ((r % (h * 2)) + h * 2) % (h * 2);
+        c = mc >= w ? w * 2 - 1 - mc : mc;
+        r = mr >= h ? h * 2 - 1 - mr : mr;
+      } else {
+        c = clamp(c, 0, w - 1);
+        r = clamp(r, 0, h - 1);
+      }
+      return [c, r];
+    };
+
+    const splitAmount = channelSplit * 0.5;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const flatIdx = y * width + x;
+        const dstIdx = flatIdx * 4;
+
+        const readChannel = (stride: number, ch: number) => {
+          const corruptedWidth = width + stride;
+          if (corruptedWidth <= 0) return source[dstIdx + ch];
+          const newRow = Math.floor(flatIdx / corruptedWidth);
+          const newCol = Math.floor(flatIdx % corruptedWidth);
+          const [wc, wr] = wrapCoord(newCol, newRow, width, height);
+          return source[(wr * width + wc) * 4 + ch];
+        };
+
+        data[dstIdx]     = readChannel(strideOffset + splitAmount, 0);
+        data[dstIdx + 1] = readChannel(strideOffset, 1);
+        data[dstIdx + 2] = readChannel(strideOffset - splitAmount, 2);
+      }
+    }
+  },
+});
+
+registerEffect({
+  type: "neon-crush",
+  label: "Neon Crush",
+  category: "glitch",
+  defaultParams: { bits: 1, saturationBoost: 80, ditherAmount: 20 },
+  paramsConfig: [
+    { key: "bits", label: "Bits Per Channel", type: "slider", min: 1, max: 4, step: 1 },
+    { key: "saturationBoost", label: "Saturation Boost", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "ditherAmount", label: "Dither", type: "slider", min: 0, max: 100, step: 1 },
+  ],
+  glsl: {
+    fragment: `
+uniform float u_bits;
+uniform float u_saturationBoost;
+uniform float u_ditherAmount;
+
+const float BAYER[16] = float[16](
+   0.0/16.0,  8.0/16.0,  2.0/16.0, 10.0/16.0,
+  12.0/16.0,  4.0/16.0, 14.0/16.0,  6.0/16.0,
+   3.0/16.0, 11.0/16.0,  1.0/16.0,  9.0/16.0,
+  15.0/16.0,  7.0/16.0, 13.0/16.0,  5.0/16.0
+);
+
+void main() {
+  vec4 col = texture(u_source, v_texCoord);
+  vec3 hsl = rgbToHsl(col.rgb);
+  float boostedSat = clamp(hsl.y + u_saturationBoost / 100.0, 0.0, 1.0);
+  col.rgb = hslToRgb(hsl.x, boostedSat, hsl.z);
+
+  int bx = int(mod(gl_FragCoord.x, 4.0));
+  int by = int(mod(gl_FragCoord.y, 4.0));
+  float dither = BAYER[by * 4 + bx] * (u_ditherAmount / 100.0);
+
+  float levels = pow(2.0, u_bits) - 1.0;
+  col.r = floor((col.r + dither / levels) * levels + 0.5) / levels;
+  col.g = floor((col.g + dither / levels) * levels + 0.5) / levels;
+  col.b = floor((col.b + dither / levels) * levels + 0.5) / levels;
+
+  fragColor = vec4(clamp(col.rgb, 0.0, 1.0), col.a);
+}`,
+    uniforms: { bits: "float", saturationBoost: "float", ditherAmount: "float" },
+  },
+  processor: (data, { width, height }, params) => {
+    const bits = Math.round((params.bits as number) || 1);
+    const saturationBoost = (params.saturationBoost as number) || 80;
+    const ditherAmount = (params.ditherAmount as number) || 20;
+
+    const BAYER = [
+       0/16,  8/16,  2/16, 10/16,
+      12/16,  4/16, 14/16,  6/16,
+       3/16, 11/16,  1/16,  9/16,
+      15/16,  7/16, 13/16,  5/16,
+    ];
+
+    const levels = Math.pow(2, bits) - 1;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        const r = data[idx] / 255;
+        const g = data[idx + 1] / 255;
+        const b = data[idx + 2] / 255;
+
+        const [h, s, l] = rgbToHsl(r, g, b);
+        const boostedSat = Math.min(1, s + saturationBoost / 100);
+        const [br, bg, bb] = hslToRgb(h, boostedSat, l);
+
+        const dither = BAYER[(y % 4) * 4 + (x % 4)] * (ditherAmount / 100);
+
+        data[idx]     = clamp(Math.round((br + dither / levels) * levels + 0.5) / levels * 255, 0, 255);
+        data[idx + 1] = clamp(Math.round((bg + dither / levels) * levels + 0.5) / levels * 255, 0, 255);
+        data[idx + 2] = clamp(Math.round((bb + dither / levels) * levels + 0.5) / levels * 255, 0, 255);
+      }
+    }
+  },
+});
+
+registerEffect({
+  type: "line-massacre",
+  label: "Line Massacre",
+  category: "glitch",
+  defaultParams: { intensity: 60, colorFill: 30, speed: 5 },
+  paramsConfig: [
+    { key: "intensity", label: "Intensity", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "colorFill", label: "Color Fill", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "speed", label: "Speed", type: "slider", min: 1, max: 20, step: 1 },
+  ],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_colorFill;
+uniform float u_speed;
+
+vec3 neonPalette(float idx) {
+  int i = int(mod(idx * 6.0, 6.0));
+  if (i == 0) return vec3(1.0, 0.0, 0.0);
+  if (i == 1) return vec3(0.0, 1.0, 0.0);
+  if (i == 2) return vec3(0.0, 0.0, 1.0);
+  if (i == 3) return vec3(0.0, 1.0, 1.0);
+  if (i == 4) return vec3(1.0, 0.0, 1.0);
+  return vec3(1.0, 1.0, 0.0);
+}
+
+void main() {
+  if (u_intensity == 0.0) { fragColor = texture(u_source, v_texCoord); return; }
+  float seed = floor(u_time * u_speed);
+  float py = v_texCoord.y;
+  float rowHash = pseudoRandom(seed + floor(py * u_resolution.y) * 7.3);
+  float affectThresh = u_intensity / 100.0 * 0.7;
+
+  if (rowHash < affectThresh) {
+    float fillHash = pseudoRandom(seed + floor(py * u_resolution.y) * 13.1);
+    if (fillHash < u_colorFill / 100.0) {
+      fragColor = vec4(neonPalette(pseudoRandom(seed + floor(py * u_resolution.y) * 31.7)), 1.0);
+      return;
+    }
+    float dispR = (pseudoRandom(seed + floor(py * u_resolution.y) * 17.3) - 0.5) * u_intensity * 2.0;
+    float dispG = (pseudoRandom(seed + floor(py * u_resolution.y) * 19.7) - 0.5) * u_intensity * 2.0;
+    float dispB = (pseudoRandom(seed + floor(py * u_resolution.y) * 23.1) - 0.5) * u_intensity * 2.0;
+    vec2 uvR = vec2(fract(v_texCoord.x + dispR / u_resolution.x), py);
+    vec2 uvG = vec2(fract(v_texCoord.x + dispG / u_resolution.x), py);
+    vec2 uvB = vec2(fract(v_texCoord.x + dispB / u_resolution.x), py);
+    float r = texture(u_source, uvR).r;
+    float g = texture(u_source, uvG).g;
+    float b = texture(u_source, uvB).b;
+    fragColor = vec4(r, g, b, 1.0);
+  } else {
+    fragColor = texture(u_source, v_texCoord);
+  }
+}`,
+    uniforms: { intensity: "float", colorFill: "float", speed: "float" },
+  },
+  processor: (data, { width, height, time = 0 }, params) => {
+    const intensity = (params.intensity as number) || 60;
+    const colorFill = (params.colorFill as number) || 30;
+    const speed = (params.speed as number) || 5;
+    if (intensity === 0) return;
+
+    const source = new Uint8ClampedArray(data);
+    const seed = Math.floor(time * speed);
+    const affectThresh = (intensity / 100) * 0.7;
+
+    const neonColors = [
+      [255, 0, 0], [0, 255, 0], [0, 0, 255],
+      [0, 255, 255], [255, 0, 255], [255, 255, 0],
+    ];
+
+    for (let y = 0; y < height; y++) {
+      const rowHash = pseudoRandom(seed + y * 7.3);
+      if (rowHash >= affectThresh) continue;
+
+      const fillHash = pseudoRandom(seed + y * 13.1);
+      if (fillHash < colorFill / 100) {
+        const colorIdx = Math.floor(pseudoRandom(seed + y * 31.7) * 6);
+        const [nr, ng, nb] = neonColors[colorIdx];
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4;
+          data[idx] = nr; data[idx + 1] = ng; data[idx + 2] = nb;
+        }
+        continue;
+      }
+
+      const dispR = Math.floor((pseudoRandom(seed + y * 17.3) - 0.5) * intensity * 2);
+      const dispG = Math.floor((pseudoRandom(seed + y * 19.7) - 0.5) * intensity * 2);
+      const dispB = Math.floor((pseudoRandom(seed + y * 23.1) - 0.5) * intensity * 2);
+
+      for (let x = 0; x < width; x++) {
+        const dst = (y * width + x) * 4;
+        const xR = ((x + dispR) % width + width) % width;
+        const xG = ((x + dispG) % width + width) % width;
+        const xB = ((x + dispB) % width + width) % width;
+        data[dst]     = source[(y * width + xR) * 4];
+        data[dst + 1] = source[(y * width + xG) * 4 + 1];
+        data[dst + 2] = source[(y * width + xB) * 4 + 2];
+      }
+    }
+  },
+});
+
+registerEffect({
+  type: "vsync-destroy",
+  label: "VSync Destroy",
+  category: "glitch",
+  defaultParams: { barCount: 12, barWidth: 20, opacity: 80, speed: 4 },
+  paramsConfig: [
+    { key: "barCount", label: "Bar Count", type: "slider", min: 1, max: 50, step: 1 },
+    { key: "barWidth", label: "Bar Width", type: "slider", min: 1, max: 100, step: 1 },
+    { key: "opacity", label: "Opacity", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "speed", label: "Speed", type: "slider", min: 1, max: 20, step: 1 },
+  ],
+  glsl: {
+    fragment: `
+uniform float u_barCount;
+uniform float u_barWidth;
+uniform float u_opacity;
+uniform float u_speed;
+
+vec3 neonBar(float seed) {
+  int i = int(mod(seed * 6.0, 6.0));
+  if (i == 0) return vec3(1.0, 0.0, 0.0);
+  if (i == 1) return vec3(0.0, 1.0, 0.0);
+  if (i == 2) return vec3(0.0, 0.0, 1.0);
+  if (i == 3) return vec3(0.0, 1.0, 1.0);
+  if (i == 4) return vec3(1.0, 0.0, 1.0);
+  return vec3(1.0, 1.0, 0.0);
+}
+
+void main() {
+  vec4 original = texture(u_source, v_texCoord);
+  float seed = floor(u_time * u_speed * 0.5);
+  float px = v_texCoord.x * u_resolution.x;
+
+  for (int i = 0; i < 50; i++) {
+    if (float(i) >= u_barCount) break;
+    float barX = pseudoRandom(seed + float(i) * 37.1) * u_resolution.x;
+    float barW = u_barWidth * (0.5 + pseudoRandom(seed + float(i) * 53.7) * 1.5);
+    if (px >= barX && px < barX + barW) {
+      vec3 neon = neonBar(pseudoRandom(seed + float(i) * 79.3));
+      float alpha = u_opacity / 100.0;
+      fragColor = vec4(mix(original.rgb, neon, alpha), 1.0);
+      return;
+    }
+  }
+  fragColor = original;
+}`,
+    uniforms: { barCount: "float", barWidth: "float", opacity: "float", speed: "float" },
+  },
+  processor: (data, { width, height, time = 0 }, params) => {
+    const barCount = Math.round((params.barCount as number) || 12);
+    const barWidth = (params.barWidth as number) || 20;
+    const opacity = (params.opacity as number) / 100 || 0.8;
+    const speed = (params.speed as number) || 4;
+
+    const neonColors = [
+      [255, 0, 0], [0, 255, 0], [0, 0, 255],
+      [0, 255, 255], [255, 0, 255], [255, 255, 0],
+    ];
+
+    const seed = Math.floor(time * speed * 0.5);
+
+    const barRegions: Array<{ x: number; w: number; color: number[] }> = [];
+    for (let i = 0; i < barCount; i++) {
+      const bx = Math.floor(pseudoRandom(seed + i * 37.1) * width);
+      const bw = Math.floor(barWidth * (0.5 + pseudoRandom(seed + i * 53.7) * 1.5));
+      const colorIdx = Math.floor(pseudoRandom(seed + i * 79.3) * 6);
+      barRegions.push({ x: bx, w: bw, color: neonColors[colorIdx] });
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        for (const bar of barRegions) {
+          if (x >= bar.x && x < bar.x + bar.w) {
+            data[idx]     = Math.round(data[idx]     * (1 - opacity) + bar.color[0] * opacity);
+            data[idx + 1] = Math.round(data[idx + 1] * (1 - opacity) + bar.color[1] * opacity);
+            data[idx + 2] = Math.round(data[idx + 2] * (1 - opacity) + bar.color[2] * opacity);
+            break;
+          }
+        }
+      }
+    }
+  },
+});
+
+registerEffect({
+  type: "nerve-damage",
+  label: "Nerve Damage",
+  category: "glitch",
+  defaultParams: {
+    destruction: 75,
+    strideCorruption: 60,
+    colorCrush: 80,
+    lineDisplacement: 70,
+    syncBars: 60,
+    gridDensity: 16,
+    speed: 6,
+  },
+  paramsConfig: [
+    { key: "destruction", label: "Destruction", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "strideCorruption", label: "Stride Corruption", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "colorCrush", label: "Color Crush", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "lineDisplacement", label: "Line Displacement", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "syncBars", label: "Sync Bars", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "gridDensity", label: "Grid Density", type: "slider", min: 0, max: 50, step: 1 },
+    { key: "speed", label: "Speed", type: "slider", min: 1, max: 20, step: 1 },
+  ],
+  glsl: {
+    fragment: `
+uniform float u_destruction;
+uniform float u_strideCorruption;
+uniform float u_colorCrush;
+uniform float u_lineDisplacement;
+uniform float u_syncBars;
+uniform float u_gridDensity;
+uniform float u_speed;
+
+const float BAYER[16] = float[16](
+   0.0/16.0,  8.0/16.0,  2.0/16.0, 10.0/16.0,
+  12.0/16.0,  4.0/16.0, 14.0/16.0,  6.0/16.0,
+   3.0/16.0, 11.0/16.0,  1.0/16.0,  9.0/16.0,
+  15.0/16.0,  7.0/16.0, 13.0/16.0,  5.0/16.0
+);
+
+vec3 neonPick(float h) {
+  int i = int(mod(floor(h * 6.0), 6.0));
+  if (i == 0) return vec3(1.0, 0.0, 0.0);
+  if (i == 1) return vec3(0.0, 1.0, 0.0);
+  if (i == 2) return vec3(0.0, 0.0, 1.0);
+  if (i == 3) return vec3(0.0, 1.0, 1.0);
+  if (i == 4) return vec3(1.0, 0.0, 1.0);
+  return vec3(1.0, 1.0, 0.0);
+}
+
+void main() {
+  float D = u_destruction / 100.0;
+  float seed = floor(u_time * u_speed);
+  vec2 uv = v_texCoord;
+  float px = uv.x * u_resolution.x;
+  float py = uv.y * u_resolution.y;
+
+  // ── 1. Stride corruption ───────────────────────────────────────────────────
+  float stridePower = u_strideCorruption * D;
+  if (stridePower > 0.0) {
+    float flatIdx = py * u_resolution.x + px;
+    float strideR = u_resolution.x + stridePower * 0.8;
+    float strideB = u_resolution.x - stridePower * 0.6;
+    uv.x = mod(mod(flatIdx, strideR) / u_resolution.x, 1.0);
+  }
+
+  // ── 2. Line massacre ───────────────────────────────────────────────────────
+  float linePower = u_lineDisplacement * D;
+  if (linePower > 0.0) {
+    float rowHash = pseudoRandom(seed + py * 7.3);
+    if (rowHash < linePower / 100.0 * 0.7) {
+      float fillHash = pseudoRandom(seed + py * 13.1);
+      if (fillHash < 0.25) {
+        fragColor = vec4(neonPick(pseudoRandom(seed + py * 31.7)), 1.0);
+        return;
+      }
+      float dispR = (pseudoRandom(seed + py * 17.3) - 0.5) * linePower * 2.0;
+      float dispG = (pseudoRandom(seed + py * 19.7) - 0.5) * linePower * 2.0;
+      float dispB = (pseudoRandom(seed + py * 23.1) - 0.5) * linePower * 2.0;
+      float r = texture(u_source, vec2(fract(uv.x + dispR / u_resolution.x), uv.y)).r;
+      float g = texture(u_source, vec2(fract(uv.x + dispG / u_resolution.x), uv.y)).g;
+      float b = texture(u_source, vec2(fract(uv.x + dispB / u_resolution.x), uv.y)).b;
+      // ── 3. Neon crush on displaced rows ─────────────────────────────────────
+      vec3 col = vec3(r, g, b);
+      if (u_colorCrush > 0.0) {
+        int bx = int(mod(gl_FragCoord.x, 4.0));
+        int by2 = int(mod(gl_FragCoord.y, 4.0));
+        float dither = BAYER[by2 * 4 + bx] * (u_colorCrush / 200.0);
+        col.r = floor((col.r + dither) * 2.0 + 0.5) / 2.0;
+        col.g = floor((col.g + dither) * 2.0 + 0.5) / 2.0;
+        col.b = floor((col.b + dither) * 2.0 + 0.5) / 2.0;
+      }
+      fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+      return;
+    }
+  }
+
+  vec4 col = texture(u_source, uv);
+
+  // ── 3. Neon crush (global) ─────────────────────────────────────────────────
+  float crushPower = u_colorCrush * D;
+  if (crushPower > 0.0) {
+    vec3 hsl = rgbToHsl(col.rgb);
+    hsl.y = clamp(hsl.y + crushPower / 100.0, 0.0, 1.0);
+    col.rgb = hslToRgb(hsl.x, hsl.y, hsl.z);
+    int bx = int(mod(gl_FragCoord.x, 4.0));
+    int by2 = int(mod(gl_FragCoord.y, 4.0));
+    float dither = BAYER[by2 * 4 + bx] * (crushPower / 300.0);
+    float levels = 1.0;
+    col.r = floor((col.r + dither / levels) * levels + 0.5) / levels;
+    col.g = floor((col.g + dither / levels) * levels + 0.5) / levels;
+    col.b = floor((col.b + dither / levels) * levels + 0.5) / levels;
+  }
+
+  // ── 4. VSync bars ─────────────────────────────────────────────────────────
+  float barPower = u_syncBars * D;
+  if (barPower > 0.0) {
+    float barSeed = floor(u_time * u_speed * 0.5);
+    int numBars = int(barPower / 10.0);
+    for (int i = 0; i < 20; i++) {
+      if (i >= numBars) break;
+      float barX = pseudoRandom(barSeed + float(i) * 37.1) * u_resolution.x;
+      float barW = 10.0 + pseudoRandom(barSeed + float(i) * 53.7) * barPower * 0.4;
+      if (px >= barX && px < barX + barW) {
+        vec3 neon = neonPick(pseudoRandom(barSeed + float(i) * 79.3));
+        col.rgb = mix(col.rgb, neon, barPower / 100.0);
+        break;
+      }
+    }
+  }
+
+  // ── 5. Grid overlay ───────────────────────────────────────────────────────
+  if (u_gridDensity > 0.0) {
+    float gx = mod(px, u_gridDensity);
+    float gy = mod(py, u_gridDensity);
+    if (gx < 1.0 || gy < 1.0) {
+      col.rgb = vec3(0.0);
+    }
+  }
+
+  fragColor = vec4(clamp(col.rgb, 0.0, 1.0), col.a);
+}`,
+    uniforms: {
+      destruction: "float",
+      strideCorruption: "float",
+      colorCrush: "float",
+      lineDisplacement: "float",
+      syncBars: "float",
+      gridDensity: "float",
+      speed: "float",
+    },
+  },
+  processor: (data, { width, height, time = 0 }, params) => {
+    const destruction = (params.destruction as number) / 100 || 0.75;
+    const strideCorruption = (params.strideCorruption as number) || 60;
+    const colorCrushParam = (params.colorCrush as number) || 80;
+    const lineDisplacement = (params.lineDisplacement as number) || 70;
+    const syncBars = (params.syncBars as number) || 60;
+    const gridDensity = (params.gridDensity as number) || 16;
+    const speed = (params.speed as number) || 6;
+
+    const source = new Uint8ClampedArray(data);
+    const seed = Math.floor(time * speed);
+    const barSeed = Math.floor(time * speed * 0.5);
+
+    const BAYER = [
+       0/16,  8/16,  2/16, 10/16,
+      12/16,  4/16, 14/16,  6/16,
+       3/16, 11/16,  1/16,  9/16,
+      15/16,  7/16, 13/16,  5/16,
+    ];
+
+    const neonColors = [
+      [255, 0, 0], [0, 255, 0], [0, 0, 255],
+      [0, 255, 255], [255, 0, 255], [255, 255, 0],
+    ];
+
+    const numBars = Math.floor((syncBars * destruction) / 10);
+    const barRegions: Array<{ x: number; w: number; color: number[] }> = [];
+    for (let i = 0; i < numBars; i++) {
+      barRegions.push({
+        x: Math.floor(pseudoRandom(barSeed + i * 37.1) * width),
+        w: Math.floor(10 + pseudoRandom(barSeed + i * 53.7) * syncBars * destruction * 0.4),
+        color: neonColors[Math.floor(pseudoRandom(barSeed + i * 79.3) * 6)],
+      });
+    }
+
+    const stridePower = strideCorruption * destruction;
+    const linePower = lineDisplacement * destruction;
+    const crushPower = colorCrushParam * destruction;
+
+    for (let y = 0; y < height; y++) {
+      const rowHash = pseudoRandom(seed + y * 7.3);
+      const lineMassacre = rowHash < (linePower / 100) * 0.7;
+
+      for (let x = 0; x < width; x++) {
+        const dst = (y * width + x) * 4;
+
+        let r: number, g: number, b: number;
+
+        if (lineMassacre) {
+          const fillHash = pseudoRandom(seed + y * 13.1);
+          if (fillHash < 0.25) {
+            const nc = neonColors[Math.floor(pseudoRandom(seed + y * 31.7) * 6)];
+            data[dst] = nc[0]; data[dst + 1] = nc[1]; data[dst + 2] = nc[2]; data[dst + 3] = 255;
+            continue;
+          }
+          const dispR = Math.floor((pseudoRandom(seed + y * 17.3) - 0.5) * linePower * 2);
+          const dispG = Math.floor((pseudoRandom(seed + y * 19.7) - 0.5) * linePower * 2);
+          const dispB = Math.floor((pseudoRandom(seed + y * 23.1) - 0.5) * linePower * 2);
+          r = source[(y * width + ((x + dispR + width * 2) % width)) * 4];
+          g = source[(y * width + ((x + dispG + width * 2) % width)) * 4 + 1];
+          b = source[(y * width + ((x + dispB + width * 2) % width)) * 4 + 2];
+        } else if (stridePower > 0) {
+          const flatIdx = y * width + x;
+          const strideR = width + stridePower * 0.8;
+          const newRowR = Math.floor(flatIdx / strideR);
+          const newColR = Math.floor(flatIdx % strideR) % width;
+          const srcR = Math.min(newRowR, height - 1) * width + newColR;
+          r = source[srcR * 4];
+
+          const strideB = Math.max(1, width - stridePower * 0.6);
+          const newRowB = Math.floor(flatIdx / strideB);
+          const newColB = Math.floor(flatIdx % strideB) % width;
+          const srcB = Math.min(newRowB, height - 1) * width + newColB;
+          b = source[srcB * 4 + 2];
+          g = source[dst + 1];
+        } else {
+          r = source[dst]; g = source[dst + 1]; b = source[dst + 2];
+        }
+
+        // Neon crush
+        if (crushPower > 0) {
+          const [h, s, l] = rgbToHsl(r / 255, g / 255, b / 255);
+          const boostedSat = Math.min(1, s + crushPower / 100);
+          const [cr, cg, cb] = hslToRgb(h, boostedSat, l);
+          const dither = BAYER[(y % 4) * 4 + (x % 4)] * (crushPower / 300);
+          r = clamp(Math.round((cr + dither) * 2 + 0.5) / 2 * 255, 0, 255);
+          g = clamp(Math.round((cg + dither) * 2 + 0.5) / 2 * 255, 0, 255);
+          b = clamp(Math.round((cb + dither) * 2 + 0.5) / 2 * 255, 0, 255);
+        }
+
+        // VSync bars
+        for (const bar of barRegions) {
+          if (x >= bar.x && x < bar.x + bar.w) {
+            const alpha = (syncBars * destruction) / 100;
+            r = Math.round(r * (1 - alpha) + bar.color[0] * alpha);
+            g = Math.round(g * (1 - alpha) + bar.color[1] * alpha);
+            b = Math.round(b * (1 - alpha) + bar.color[2] * alpha);
+            break;
+          }
+        }
+
+        // Grid overlay
+        if (gridDensity > 0 && (x % gridDensity < 1 || y % gridDensity < 1)) {
+          r = 0; g = 0; b = 0;
+        }
+
+        data[dst] = r; data[dst + 1] = g; data[dst + 2] = b; data[dst + 3] = 255;
+      }
+    }
   },
 });

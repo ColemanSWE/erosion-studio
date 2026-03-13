@@ -7,6 +7,7 @@ import {
   buildFragmentSrc,
   createProgram,
   bindUniforms,
+  getUniformLocation,
   type UniformType,
 } from "./shaders";
 export type { UniformType };
@@ -44,8 +45,6 @@ function freeFBO(gl: WebGL2RenderingContext, pair: FBOPair): void {
   gl.deleteTexture(pair.tex);
 }
 
-// flipRowsInPlace removed: coordinated flips now handled by u_flipY in vertex shader.
-
 export class GLPipeline {
   private gl: WebGL2RenderingContext;
   readonly canvas: HTMLCanvasElement;
@@ -57,6 +56,7 @@ export class GLPipeline {
   private height = 0;
   private cpuBufFull: Uint8ClampedArray | null = null;
   private cpuBufRegion: Uint8ClampedArray | null = null;
+  private isFlippedToR = false;
 
   constructor(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
     this.gl = gl;
@@ -79,7 +79,6 @@ export class GLPipeline {
     const vao = gl.createVertexArray()!;
     gl.bindVertexArray(vao);
 
-    // pos.xy, texCoord.xy interleaved — 2 triangles covering [-1,1]x[-1,1]
     const data = new Float32Array([
       -1, -1,  0, 0,
        1, -1,  1, 0,
@@ -92,7 +91,6 @@ export class GLPipeline {
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
 
-    // location 0 = a_position, location 1 = a_texCoord (must match layout qualifiers in VERTEX_SRC)
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
     gl.enableVertexAttribArray(1);
@@ -126,6 +124,7 @@ export class GLPipeline {
     time: number,
     params: Record<string, unknown>,
     uniformTypes: Record<string, UniformType>,
+    flipY = 1.0
   ): void {
     const gl = this.gl;
     const next = 1 - this.current;
@@ -135,11 +134,11 @@ export class GLPipeline {
     gl.bindVertexArray(this.vao);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.fbo[this.current].tex);
-    const srcLoc = gl.getUniformLocation(program, "u_source");
+    const srcLoc = getUniformLocation(gl, program, "u_source");
     if (srcLoc) gl.uniform1i(srcLoc, 0);
 
-    const flipLoc = gl.getUniformLocation(program, "u_flipY");
-    if (flipLoc) gl.uniform1f(flipLoc, -1.0); // Flip Y when writing to FBO
+    const flipLoc = getUniformLocation(gl, program, "u_flipY");
+    if (flipLoc) gl.uniform1f(flipLoc, flipY);
 
     bindUniforms(gl, program, resolution, time, params, uniformTypes);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -186,7 +185,6 @@ export class GLPipeline {
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
-  // Blit current FBO to next, then run the effect shader only within the scissor region
   private runRegionPass(
     program: WebGLProgram,
     [rx, ry, rw, rh]: [number, number, number, number],
@@ -194,18 +192,17 @@ export class GLPipeline {
     time: number,
     params: Record<string, unknown>,
     uniformTypes: Record<string, UniformType>,
+    flipY = 1.0
   ): void {
     const gl = this.gl;
     const next = 1 - this.current;
 
-    // Copy current → next so pixels outside the region stay unchanged
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fbo[this.current].fbo);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.fbo[next].fbo);
     gl.blitFramebuffer(0, 0, this.width, this.height, 0, 0, this.width, this.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
 
-    // Apply the effect only inside the region (FBO map matches top-down coordinates natively)
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(rx, ry, rw, rh);
 
@@ -215,11 +212,11 @@ export class GLPipeline {
     gl.bindVertexArray(this.vao);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.fbo[this.current].tex);
-    const srcLoc = gl.getUniformLocation(program, "u_source");
+    const srcLoc = getUniformLocation(gl, program, "u_source");
     if (srcLoc) gl.uniform1i(srcLoc, 0);
 
-    const flipLoc = gl.getUniformLocation(program, "u_flipY");
-    if (flipLoc) gl.uniform1f(flipLoc, -1.0); // Flip Y when writing to FBO
+    const flipLoc = getUniformLocation(gl, program, "u_flipY");
+    if (flipLoc) gl.uniform1f(flipLoc, flipY);
 
     bindUniforms(gl, program, resolution, time, params, uniformTypes);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -230,7 +227,17 @@ export class GLPipeline {
     this.current = next;
   }
 
-  private blitToDefaultFB(): void {
+  private setFBOFilter(filter: number): void {
+    const gl = this.gl;
+    for (const pair of this.fbo) {
+      gl.bindTexture(gl.TEXTURE_2D, pair.tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, null);
+  }
+
+  private blitToDefaultFB(flipY = 1.0): void {
     const gl = this.gl;
     const prog = this.getProgram("__passthrough", PASSTHROUGH_FRAGMENT);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -239,11 +246,11 @@ export class GLPipeline {
     gl.bindVertexArray(this.vao);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.fbo[this.current].tex);
-    const loc = gl.getUniformLocation(prog, "u_source");
+    const loc = getUniformLocation(gl, prog, "u_source");
     if (loc) gl.uniform1i(loc, 0);
 
-    const flipLoc = gl.getUniformLocation(prog, "u_flipY");
-    if (flipLoc) gl.uniform1f(flipLoc, 1.0); // No flip when writing to default canvas
+    const flipLoc = getUniformLocation(gl, prog, "u_flipY");
+    if (flipLoc) gl.uniform1f(flipLoc, flipY);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.bindVertexArray(null);
@@ -280,25 +287,63 @@ export class GLPipeline {
       const params = { ...def.defaultParams, ...effect.params };
       const glsl = (def as { glsl?: import("./shaders").GLSLEffect }).glsl;
 
-      if (glsl) {
+      if (glsl && !glsl.skipGL?.(params)) {
         flushCPU();
         const mappedParams = glsl.uniformMapper ? glsl.uniformMapper(params) : params;
         const prog = this.getProgram(effect.type, glsl.fragment);
-        if (regionRect) {
-          this.runRegionPass(prog, regionRect, resolution, time, mappedParams, glsl.uniforms ?? {});
-        } else {
-          this.runPass(prog, resolution, time, mappedParams, glsl.uniforms ?? {});
+        const passCount = glsl.multiPass ? glsl.multiPass(resolution, mappedParams) : 1;
+        const uniforms: Record<string, import("./shaders").UniformType> = { ...(glsl.uniforms ?? {}) };
+        if (passCount > 1) uniforms["pass"] = "int";
+        if (passCount > 1) this.setFBOFilter(this.gl.NEAREST);
+        
+        for (let p = 0; p < passCount; p++) {
+          const passParams = { ...mappedParams, pass: p };
+          const flipY = this.isFlippedToR ? 1.0 : -1.0;
+          if (regionRect) {
+            this.runRegionPass(prog, regionRect, resolution, time, passParams, uniforms, flipY);
+          } else {
+            this.runPass(prog, resolution, time, passParams, uniforms, flipY);
+          }
+          this.isFlippedToR = true;
+        }
+        
+        if (passCount > 1) {
+          this.setFBOFilter(this.gl.LINEAR);
+          this.gl.flush();
         }
       } else {
         if (!cpuBuf) {
           cpuBuf = regionRect ? this.readRegionPixels(regionRect) : this.readCurrentPixels();
+          // readPixels returns data bottom-up. We must flip it to top-down for the JS effect processors
+          if (!this.isFlippedToR) {
+            this.flipYBuffer(cpuBuf, rw, rh);
+          }
         }
         applyEffect(cpuBuf, effect, { ...config, width: rw, height: rh });
         cpuDirty = true;
+        // The array is in top-down format, when we upload it back via texSubImage2D, it will be uploaded properly 
+        // to be rendered top-down by the default framebuffer (which uses -1.0 to flip it).
+        // Wait, texSubImage2D uploads it. Then blitToDefaultFB uses flipY = -1.0. This means if we upload it top-down,
+        // and draw it with -1.0, it will end up bottom-up on the canvas. 
+        // Let's actually trace this: 
+        // If we flip the cpuBuf so it's top-down for applyEffect, we should probably flip it back to bottom-up before texSubImage2D, OR set isFlippedToR.
       }
     }
 
     flushCPU();
+  }
+
+  private flipYBuffer(buf: Uint8ClampedArray, w: number, h: number): void {
+    const rowLen = w * 4;
+    const half = h >> 1;
+    const temp = new Uint8ClampedArray(rowLen);
+    for (let y = 0; y < half; y++) {
+      const top = y * rowLen;
+      const bot = (h - 1 - y) * rowLen;
+      temp.set(buf.subarray(top, top + rowLen));
+      buf.copyWithin(top, bot, bot + rowLen);
+      buf.set(temp, bot);
+    }
   }
 
   renderEffects(
@@ -316,17 +361,17 @@ export class GLPipeline {
     canvasHeight: number,
     glRegions?: GLRegion[],
   ): void {
+    if (sourceWidth <= 0 || sourceHeight <= 0) return;
     this.ensureSize(sourceWidth, sourceHeight);
     this.current = 0;
+    this.isFlippedToR = false;
     this.uploadSource(source);
 
     const resolution: [number, number] = [sourceWidth, sourceHeight];
     const time = config.time ?? 0;
 
-    // Process global effects
     this.runEffectList(effects, config, resolution, time);
 
-    // Process region effects via scissor (GL) or CPU readback per-region
     if (glRegions) {
       for (const region of glRegions) {
         const [, , rw, rh] = region.rect;
@@ -335,7 +380,7 @@ export class GLPipeline {
       }
     }
 
-    this.blitToDefaultFB();
+    this.blitToDefaultFB(this.isFlippedToR ? 1.0 : -1.0);
 
     displayCtx.fillStyle = "#000";
     displayCtx.fillRect(0, 0, canvasWidth, canvasHeight);

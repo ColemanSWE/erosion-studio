@@ -4,6 +4,8 @@ export interface GLSLEffect {
   fragment: string;
   uniforms?: Record<string, UniformType>;
   uniformMapper?: (params: Record<string, unknown>) => Record<string, unknown>;
+  multiPass?: (resolution: [number, number], params: Record<string, unknown>) => number;
+  skipGL?: (params: Record<string, unknown>) => boolean;
 }
 
 // layout(location) qualifiers are required so the VAO binding by index (0,1) works
@@ -140,6 +142,28 @@ export function createProgram(
   return program;
 }
 
+const uniformLocationCache = new Map<WebGLProgram, Map<string, WebGLUniformLocation | null>>();
+
+export function getUniformLocation(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  name: string
+): WebGLUniformLocation | null {
+  let programCache = uniformLocationCache.get(program);
+  if (!programCache) {
+    programCache = new Map();
+    uniformLocationCache.set(program, programCache);
+  }
+  
+  if (programCache.has(name)) {
+    return programCache.get(name)!;
+  }
+  
+  const loc = gl.getUniformLocation(program, name);
+  programCache.set(name, loc);
+  return loc;
+}
+
 export function bindUniforms(
   gl: WebGL2RenderingContext,
   program: WebGLProgram,
@@ -148,13 +172,13 @@ export function bindUniforms(
   params: Record<string, unknown>,
   uniformTypes: Record<string, UniformType>,
 ): void {
-  const resLoc = gl.getUniformLocation(program, "u_resolution");
+  const resLoc = getUniformLocation(gl, program, "u_resolution");
   if (resLoc) gl.uniform2f(resLoc, resolution[0], resolution[1]);
-  const timeLoc = gl.getUniformLocation(program, "u_time");
+  const timeLoc = getUniformLocation(gl, program, "u_time");
   if (timeLoc) gl.uniform1f(timeLoc, time);
 
   for (const [key, type] of Object.entries(uniformTypes)) {
-    const loc = gl.getUniformLocation(program, `u_${key}`);
+    const loc = getUniformLocation(gl, program, `u_${key}`);
     if (!loc) continue;
     const raw = params[key];
     if (raw === undefined || raw === null) continue;

@@ -88,7 +88,12 @@ export type EffectType =
   | "reaction-diffusion"
   | "droste"
   | "slit-scan"
-  | "datamosh-transition";
+  | "datamosh-transition"
+  | "buffer-corrupt"
+  | "neon-crush"
+  | "line-massacre"
+  | "vsync-destroy"
+  | "nerve-damage";
 
 export interface Region {
   id: string;
