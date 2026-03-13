@@ -29,7 +29,7 @@ interface RenderContext {
   isFlipped?: boolean;
   glPipeline?: GLPipeline;
   overlays?: Overlay[];
-  getOverlaySource?: (mediaId: string, type: "image" | "video") => CanvasImageSource | null;
+  getOverlaySource?: (overlayId: string, type: "image" | "video") => CanvasImageSource | null;
 }
 
 // Style effects that have a dedicated render mode (not pixel processors)
@@ -266,7 +266,7 @@ export function drawOverlay(
     ctx.fillText(overlay.text, x + w / 2, y + h * 0.1, w);
     ctx.restore();
   } else if ((overlay.type === "image" || overlay.type === "video") && overlay.mediaId && context.getOverlaySource) {
-    const source = context.getOverlaySource(overlay.mediaId, overlay.type);
+    const source = context.getOverlaySource(overlay.id, overlay.type);
     if (source) {
       if (!isMaskPass) {
         ctx.drawImage(source, x, y, w, h);

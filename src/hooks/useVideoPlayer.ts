@@ -13,6 +13,7 @@ interface UseVideoPlayerOptions {
   canvas: HTMLCanvasElement | null;
   effects: Effect[];
   activeVideos: ActiveVideo[];
+  overlayVideos?: ActiveVideo[];
   isPlaying: boolean;
   currentTime: number;
   regions?: Region[];
@@ -43,6 +44,7 @@ export function useVideoPlayer({
   canvas,
   effects,
   activeVideos,
+  overlayVideos = [],
   isPlaying,
   currentTime,
   regions = [],
@@ -171,7 +173,8 @@ export function useVideoPlayer({
   // ── Video elements lifecycle ───────────────────────────────────────────────
   useEffect(() => {
     const map = videosMapRef.current;
-    const currentIds = new Set(activeVideos.map((v) => v.id));
+    const allVideos = [...activeVideos, ...overlayVideos];
+    const currentIds = new Set(allVideos.map((v) => v.id));
 
     // Remove old videos
     for (const [id, video] of map.entries()) {
@@ -183,7 +186,7 @@ export function useVideoPlayer({
     }
 
     // Add new videos
-    for (const vDef of activeVideos) {
+    for (const vDef of allVideos) {
       if (!map.has(vDef.id)) {
         const video = document.createElement("video");
         video.preload = "auto";
@@ -222,11 +225,11 @@ export function useVideoPlayer({
       }
     }
 
-    // If no active videos, clean up RAF
-    if (activeVideos.length === 0) {
+    // If no active videos and no overlay videos, clean up RAF
+    if (allVideos.length === 0) {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     }
-  }, [activeVideos]); // Runs when active media array shape changes
+  }, [activeVideos, overlayVideos]); // Runs when active media array shape changes
 
   // ── Play / pause (isPlaying changes) ─────────────────────────────────────
   useEffect(() => {
@@ -247,7 +250,8 @@ export function useVideoPlayer({
   // ── Seek (currentTime changes from outside) ────────────────────────────────
   useEffect(() => {
     let seeked = false;
-    for (const vDef of activeVideos) {
+    const allVideos = [...activeVideos, ...overlayVideos];
+    for (const vDef of allVideos) {
       const video = videosMapRef.current.get(vDef.id);
       if (video && Math.abs(video.currentTime - vDef.localTime) > 0.1) {
         video.currentTime = vDef.localTime;

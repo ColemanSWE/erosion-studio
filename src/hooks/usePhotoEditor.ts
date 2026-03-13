@@ -13,6 +13,7 @@ interface UsePhotoEditorOptions {
   canvas: HTMLCanvasElement | null;
   effects: Effect[];
   activeImages: ActiveImage[];
+  overlayImages?: ActiveImage[];
   regions?: Region[];
   overlays?: Overlay[];
 }
@@ -21,6 +22,7 @@ export function usePhotoEditor({
   canvas,
   effects,
   activeImages,
+  overlayImages = [],
   regions = [],
   overlays = [],
 }: UsePhotoEditorOptions) {
@@ -141,11 +143,13 @@ export function usePhotoEditor({
     if (isAnimating) {
       animationFrameRef.current = requestAnimationFrame(render);
     }
+  // ── Image elements lifecycle ───────────────────────────────────────────────
   }, [canvas, renderFrame, isAnimating]);
 
   useEffect(() => {
     const map = imagesMapRef.current;
-    const currentIds = new Set(activeImages.map(img => img.id));
+    const allImages = [...activeImages, ...overlayImages];
+    const currentIds = new Set(allImages.map((img) => img.id));
 
     // Remove old images
     for (const [id] of map.entries()) {
@@ -155,7 +159,7 @@ export function usePhotoEditor({
     }
 
     // Load new images
-    for (const imgDef of activeImages) {
+    for (const imgDef of allImages) {
         if (!map.has(imgDef.id)) {
             const img = new Image();
             if (!imgDef.path.startsWith("blob:") && !imgDef.path.startsWith("data:")) {
@@ -193,14 +197,14 @@ export function usePhotoEditor({
         }
     }
 
-    if (activeImages.length === 0) {
+    if (allImages.length === 0) {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     }
 
     return () => {
       // Don't cancel here if just adding an image, let it run
     };
-  }, [activeImages, render]);
+  }, [activeImages, overlayImages, render]);
 
   useEffect(() => {
     if (imagesMapRef.current.size > 0 && canvas) {

@@ -185,6 +185,33 @@ function App() {
       localTime: s.clip ? currentTime - s.clip.startTime : currentTime,
     }));
 
+  const activeOverlays = overlays.filter(
+    (o) => currentTime >= o.startTime && currentTime <= o.endTime
+  );
+
+  const overlayVideos = activeOverlays
+    .filter((o) => o.type === "video" && o.mediaId)
+    .map((o) => {
+      const mediaItem = media.find((m) => m.id === o.mediaId);
+      return {
+        id: o.id,
+        path: mediaItem?.path || "",
+        localTime: currentTime - o.startTime,
+      };
+    })
+    .filter((o) => o.path);
+
+  const overlayImages = activeOverlays
+    .filter((o) => o.type === "image" && o.mediaId)
+    .map((o) => {
+      const mediaItem = media.find((m) => m.id === o.mediaId);
+      return {
+        id: o.id,
+        path: mediaItem?.path || "",
+      };
+    })
+    .filter((o) => o.path);
+
   // ─── Rendering Hooks ─────────────────────────────────────────────────────
   // Only the hook corresponding to the active source type will draw.
   
@@ -192,7 +219,9 @@ function App() {
     canvas,
     effects: resolvedEffects,
     activeImages: imageSources,
+    overlayImages,
     regions,
+    overlays,
   });
 
   const handleVideoDurationChange = useCallback((dur: number) => {
@@ -203,9 +232,11 @@ function App() {
     canvas,
     effects: resolvedEffects,
     activeVideos: videoSources,
+    overlayVideos,
     isPlaying,
     currentTime,
     regions,
+    overlays,
     onDurationChange: handleVideoDurationChange,
   });
 
