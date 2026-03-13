@@ -38,12 +38,19 @@ Every effect is registered with `registerEffect()` from `effect-registry.ts`. Th
 
 ```ts
 registerEffect({
-  type: "my-effect",          // must match EffectType union in types.ts
+  type: "my-effect", // must match EffectType union in types.ts
   label: "My Effect",
-  category: "glitch",         // "glitch" | "distortion" | "color" | "retro" | "noise" | "style" | "face" | "standard"
+  category: "glitch", // "glitch" | "distortion" | "color" | "retro" | "noise" | "style" | "face" | "standard"
   defaultParams: { intensity: 50 },
   paramsConfig: [
-    { key: "intensity", label: "Intensity", type: "slider", min: 0, max: 100, step: 1 },
+    {
+      key: "intensity",
+      label: "Intensity",
+      type: "slider",
+      min: 0,
+      max: 100,
+      step: 1,
+    },
   ],
   processor: (data, { width, height, time }, params) => {
     // mutate data in-place
@@ -89,11 +96,11 @@ To add a new `EffectType`, add it to the union in `src/lib/effects/types.ts`.
 
 Effects are split into three buckets each frame:
 
-| Bucket | Condition | Processed by |
-|---|---|---|
-| `globalEffects` | active, no `regionId`, no `overlayId` | Applied to the full frame |
-| `regionEffects` | active, has `regionId` | Applied only inside a user-drawn region |
-| overlay effects | active, has `overlayId` | Applied inside an overlay with alpha masking |
+| Bucket          | Condition                             | Processed by                                 |
+| --------------- | ------------------------------------- | -------------------------------------------- |
+| `globalEffects` | active, no `regionId`, no `overlayId` | Applied to the full frame                    |
+| `regionEffects` | active, has `regionId`                | Applied only inside a user-drawn region      |
+| overlay effects | active, has `overlayId`               | Applied inside an overlay with alpha masking |
 
 ### GL path (fast)
 
@@ -116,7 +123,7 @@ Used when `GLPipeline` is unavailable or overlay masks are present:
 
 ### Worker path
 
-When global effects are running on the CPU path and there are no timeline frames or region effects, the pixel buffer is transferred (zero-copy) to a Web Worker. The worker runs `applyEffects`, then transfers the result back. This keeps the main thread free during the CPU processing.
+When global effects are running on the CPU path and there are no timeline frames, the pixel buffer is transferred (zero-copy) to a Web Worker. The worker runs `applyEffects`, then transfers the result back. This keeps the main thread free during the CPU processing.
 
 ### Style effects
 

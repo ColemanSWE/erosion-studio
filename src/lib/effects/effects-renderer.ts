@@ -424,8 +424,7 @@ export async function renderWithEffects(
 
     if (globalEffects.length > 0) {
       const imageData = bufferCtx.getImageData(0, 0, sourceWidth, sourceHeight);
-      const useWorker =
-        regionEffects.length === 0 && !context.timelineFrames?.length;
+      const useWorker = !context.timelineFrames?.length;
       try {
         if (useWorker) {
           const buffer = new Uint8ClampedArray(imageData.data);
