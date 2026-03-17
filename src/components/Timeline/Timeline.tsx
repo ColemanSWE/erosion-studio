@@ -112,7 +112,9 @@ export function Timeline({
     const px = currentTime * zoom;
     const { scrollLeft: sl, clientWidth } = ta;
     if (px < sl || px > sl + clientWidth - 60) {
-      ta.scrollLeft = px - clientWidth / 2;
+      const newLeft = Math.max(0, px - clientWidth / 2);
+      ta.scrollLeft = newLeft;
+      setScrollLeft(newLeft);
     }
   }, [currentTime, isPlaying, zoom]);
 

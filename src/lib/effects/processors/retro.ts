@@ -493,6 +493,38 @@ void main() {
   },
 });
 
+const vhsCache: {
+  Y: Float32Array | null;
+  I: Float32Array | null;
+  Q: Float32Array | null;
+  row: Float32Array | null;
+  source: Uint8ClampedArray | null;
+  size: number;
+  rowWidth: number;
+} = { Y: null, I: null, Q: null, row: null, source: null, size: 0, rowWidth: 0 };
+
+function getVhsBuffers(width: number, height: number) {
+  const size = width * height;
+  if (vhsCache.size !== size) {
+    vhsCache.Y = new Float32Array(size);
+    vhsCache.I = new Float32Array(size);
+    vhsCache.Q = new Float32Array(size);
+    vhsCache.source = new Uint8ClampedArray(size * 4);
+    vhsCache.size = size;
+  }
+  if (vhsCache.rowWidth !== width) {
+    vhsCache.row = new Float32Array(width);
+    vhsCache.rowWidth = width;
+  }
+  return {
+    Y: vhsCache.Y!,
+    I: vhsCache.I!,
+    Q: vhsCache.Q!,
+    row: vhsCache.row!,
+    source: vhsCache.source!,
+  };
+}
+
 registerEffect({
   type: "vhs-degrade",
   label: "VHS Degrade",
@@ -585,6 +617,8 @@ registerEffect({
     const scanlineBrightness  = (params.scanlineBrightness  as number)  ?? 0.97;
 
     const seed = Math.floor(time * 7);
+    const { Y, I, Q, row, source } = getVhsBuffers(width, height);
+    const pixelCount = width * height;
 
     // ── Digital Layer ─────────────────────────────────────────────────────────
 
@@ -592,6 +626,7 @@ registerEffect({
       const blockSize = 8;
       const quality = clamp(jpegQuality, 1, 100);
       const chromaStep = 256 / Math.pow(2, Math.max(1, 4 - quality / 25));
+      const blend = 1 - quality / 100;
 
       for (let by = 0; by < height; by += blockSize) {
         for (let bx = 0; bx < width; bx += blockSize) {
@@ -606,13 +641,9 @@ registerEffect({
               count++;
             }
           }
-          const avgR = sumR / count;
-          const avgG = sumG / count;
-          const avgB = sumB / count;
-          const qR = Math.round(avgR / chromaStep) * chromaStep;
-          const qG = Math.round(avgG / chromaStep) * chromaStep;
-          const qB = Math.round(avgB / chromaStep) * chromaStep;
-          const blend = 1 - quality / 100;
+          const qR = Math.round(sumR / count / chromaStep) * chromaStep;
+          const qG = Math.round(sumG / count / chromaStep) * chromaStep;
+          const qB = Math.round(sumB / count / chromaStep) * chromaStep;
 
           for (let y = by; y < endY; y++) {
             for (let x = bx; x < endX; x++) {
@@ -626,13 +657,13 @@ registerEffect({
       }
     }
 
-    // Tone crush: remap blacks and whites
     if (toneLow > 0 || toneHigh < 255) {
       const range = toneHigh - toneLow;
+      const scale = 255 / range;
       for (let i = 0; i < data.length; i += 4) {
-        data[i]     = clamp(Math.round((data[i]     - toneLow) / range * 255), 0, 255);
-        data[i + 1] = clamp(Math.round((data[i + 1] - toneLow) / range * 255), 0, 255);
-        data[i + 2] = clamp(Math.round((data[i + 2] - toneLow) / range * 255), 0, 255);
+        data[i]     = clamp((data[i]     - toneLow) * scale, 0, 255);
+        data[i + 1] = clamp((data[i + 1] - toneLow) * scale, 0, 255);
+        data[i + 2] = clamp((data[i + 2] - toneLow) * scale, 0, 255);
       }
     }
 
@@ -640,8 +671,9 @@ registerEffect({
 
     if (applyRinging && sharpenIntensity > 0) {
       const radius = sharpenWidth;
-      const source = new Uint8ClampedArray(data);
       const kernelSize = 2 * radius + 1;
+      const amt = sharpenIntensity / 10;
+      source.set(data);
 
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -652,11 +684,10 @@ registerEffect({
             const si = (y * width + sx) * 4;
             blurR += source[si]; blurG += source[si + 1]; blurB += source[si + 2];
           }
-          blurR /= kernelSize; blurG /= kernelSize; blurB /= kernelSize;
-          const amt = sharpenIntensity / 10;
-          data[i]     = clamp(source[i]     + (source[i]     - blurR) * amt, 0, 255);
-          data[i + 1] = clamp(source[i + 1] + (source[i + 1] - blurG) * amt, 0, 255);
-          data[i + 2] = clamp(source[i + 2] + (source[i + 2] - blurB) * amt, 0, 255);
+          const invKernel = 1 / kernelSize;
+          data[i]     = clamp(source[i]     + (source[i]     - blurR * invKernel) * amt, 0, 255);
+          data[i + 1] = clamp(source[i + 1] + (source[i + 1] - blurG * invKernel) * amt, 0, 255);
+          data[i + 2] = clamp(source[i + 2] + (source[i + 2] - blurB * invKernel) * amt, 0, 255);
         }
       }
     }
@@ -671,32 +702,26 @@ registerEffect({
 
     // ── Analog Layer (YIQ color space) ────────────────────────────────────────
 
-    // Convert to YIQ float planes
-    const Y = new Float32Array(width * height);
-    const I = new Float32Array(width * height);
-    const Q = new Float32Array(width * height);
-
-    for (let j = 0; j < width * height; j++) {
+    const inv255 = 1 / 255;
+    for (let j = 0; j < pixelCount; j++) {
       const idx = j * 4;
-      const r = data[idx] / 255;
-      const g = data[idx + 1] / 255;
-      const b = data[idx + 2] / 255;
+      const r = data[idx]     * inv255;
+      const g = data[idx + 1] * inv255;
+      const b = data[idx + 2] * inv255;
       Y[j] =  0.299 * r + 0.587 * g + 0.114 * b;
       I[j] =  0.596 * r - 0.274 * g - 0.322 * b;
       Q[j] =  0.211 * r - 0.523 * g + 0.311 * b;
     }
 
-    // 1D horizontal box blur (running-sum, O(width) per row)
+    // 1D horizontal box blur (running-sum, O(width) per row, shared row buffer)
     const boxBlur1D = (plane: Float32Array, bw: number) => {
       const radius = Math.max(0, Math.floor(1 / bw) - 1);
       if (radius === 0) return;
       const len = 2 * radius + 1;
       const inv = 1 / len;
-      const row = new Float32Array(width);
 
       for (let y = 0; y < height; y++) {
         const base = y * width;
-        // Build running sum
         let sum = 0;
         for (let x = 0; x < len && x < width; x++) sum += plane[base + x];
 
@@ -704,8 +729,8 @@ registerEffect({
           row[x] = sum * inv;
           const addIdx = x + radius + 1;
           const removeIdx = x - radius;
-          if (addIdx < width) sum += plane[base + addIdx];
-          if (removeIdx >= 0) sum -= plane[base + removeIdx];
+          if (addIdx < width)  sum += plane[base + addIdx];
+          if (removeIdx >= 0)  sum -= plane[base + removeIdx];
         }
         for (let x = 0; x < width; x++) plane[base + x] = row[x];
       }
@@ -715,7 +740,6 @@ registerEffect({
     boxBlur1D(I, chromaIBandwidth);
     boxBlur1D(Q, chromaQBandwidth);
 
-    // Chroma horizontal shift (shift I and Q channels to the right)
     if (chromaShiftX !== 0) {
       const shift = chromaShiftX;
       for (let y = 0; y < height; y++) {
@@ -736,35 +760,32 @@ registerEffect({
       }
     }
 
-    // Noise on luma and chroma
     if (lumaNoise > 0 || chromaNoise > 0) {
-      for (let j = 0; j < width * height; j++) {
-        if (lumaNoise > 0) {
-          Y[j] += (pseudoRandom(seed + j * 3.1) - 0.5) * 2 * lumaNoise;
-        }
+      const lumaAmp  = lumaNoise  * 2;
+      const chromaAmp = chromaNoise * 2;
+      for (let j = 0; j < pixelCount; j++) {
+        if (lumaNoise  > 0) Y[j] += (pseudoRandom(seed + j * 3.1) - 0.5) * lumaAmp;
         if (chromaNoise > 0) {
-          I[j] += (pseudoRandom(seed + j * 5.7) - 0.5) * 2 * chromaNoise;
-          Q[j] += (pseudoRandom(seed + j * 7.3) - 0.5) * 2 * chromaNoise;
+          I[j] += (pseudoRandom(seed + j * 5.7) - 0.5) * chromaAmp;
+          Q[j] += (pseudoRandom(seed + j * 7.3) - 0.5) * chromaAmp;
         }
       }
     }
 
-    // Convert back to RGB
-    for (let j = 0; j < width * height; j++) {
+    for (let j = 0; j < pixelCount; j++) {
       const idx = j * 4;
       const y = Y[j];
       const iv = I[j];
       const q = Q[j];
-      data[idx]     = clamp(Math.round((y + 0.956 * iv + 0.621 * q) * 255), 0, 255);
-      data[idx + 1] = clamp(Math.round((y - 0.272 * iv - 0.647 * q) * 255), 0, 255);
-      data[idx + 2] = clamp(Math.round((y - 1.106 * iv + 1.703 * q) * 255), 0, 255);
+      data[idx]     = clamp((y + 0.956 * iv + 0.621 * q) * 255, 0, 255);
+      data[idx + 1] = clamp((y - 0.272 * iv - 0.647 * q) * 255, 0, 255);
+      data[idx + 2] = clamp((y - 1.106 * iv + 1.703 * q) * 255, 0, 255);
     }
 
     // ── Mechanical Errors ─────────────────────────────────────────────────────
 
-    const source2 = new Uint8ClampedArray(data);
+    source.set(data);
 
-    // Per-scanline jitter
     if (jitterFrequency > 0 && jitterAmplitude > 0) {
       for (let y = 0; y < height; y++) {
         if (pseudoRandom(seed + y * 1.3) < jitterFrequency) {
@@ -774,60 +795,53 @@ registerEffect({
             const src = clamp(x - offset, 0, width - 1);
             const di = (y * width + x) * 4;
             const si = (y * width + src) * 4;
-            data[di]     = source2[si];
-            data[di + 1] = source2[si + 1];
-            data[di + 2] = source2[si + 2];
+            data[di]     = source[si];
+            data[di + 1] = source[si + 1];
+            data[di + 2] = source[si + 2];
           }
         }
       }
     }
 
-    // Head switch distortion at the bottom of the frame
     if (headSwitchHeight > 0 && bottomDistortion > 0) {
       const switchStart = height - headSwitchHeight;
       for (let y = switchStart; y < height; y++) {
         const t = (y - switchStart) / headSwitchHeight;
-        const maxOff = bottomDistortion * t;
-        const offset = Math.round((pseudoRandom(seed + y * 4.1) - 0.5) * maxOff);
-
+        const offset = Math.round((pseudoRandom(seed + y * 4.1) - 0.5) * bottomDistortion * t);
         for (let x = 0; x < width; x++) {
           const src = clamp(x + offset, 0, width - 1);
           const di = (y * width + x) * 4;
           const si = (y * width + src) * 4;
-          data[di]     = source2[si];
-          data[di + 1] = source2[si + 1];
-          data[di + 2] = source2[si + 2];
+          data[di]     = source[si];
+          data[di + 1] = source[si + 1];
+          data[di + 2] = source[si + 2];
         }
       }
     }
 
-    // Bottom static (noise) in the head-switch region
     if (headSwitchHeight > 0 && bottomStaticDensity > 0) {
       const switchStart = height - headSwitchHeight;
       for (let y = switchStart; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          if (pseudoRandom(seed + (y * width + x) * 1.9) < bottomStaticDensity) {
-            const i = (y * width + x) * 4;
-            const v = Math.round(pseudoRandom(seed + (y * width + x) * 3.3) * 255);
+          const j = y * width + x;
+          if (pseudoRandom(seed + j * 1.9) < bottomStaticDensity) {
+            const i = j * 4;
+            const v = pseudoRandom(seed + j * 3.3) * 255;
             data[i] = v; data[i + 1] = v; data[i + 2] = v;
           }
         }
       }
     }
 
-    // Dropout / scratch lines
     if (dropoutCount > 0 && scratchMaxLength > 0) {
       for (let d = 0; d < dropoutCount; d++) {
         const scratchY = Math.floor(pseudoRandom(seed + d * 11.3) * height);
-        const startX = Math.floor(pseudoRandom(seed + d * 13.7) * width);
-        const length = Math.round(pseudoRandom(seed + d * 17.1) * scratchMaxLength);
-        const endX = Math.min(startX + length, width);
-
+        const startX  = Math.floor(pseudoRandom(seed + d * 13.7) * width);
+        const endX    = Math.min(startX + Math.round(pseudoRandom(seed + d * 17.1) * scratchMaxLength), width);
         for (let x = startX; x < endX; x++) {
           const i = (scratchY * width + x) * 4;
-          const base = Math.round(pseudoRandom(seed + x * 1.1 + d) * 255 * scratchIntensity);
-          const orig = data[i] * (1 - scratchIntensity);
-          const v = clamp(orig + base, 0, 255);
+          const base = pseudoRandom(seed + x * 1.1 + d) * 255 * scratchIntensity;
+          const v = clamp(data[i] * (1 - scratchIntensity) + base, 0, 255);
           data[i] = v; data[i + 1] = v; data[i + 2] = v;
         }
       }
@@ -839,9 +853,9 @@ registerEffect({
       for (let y = 0; y < height; y += 2) {
         for (let x = 0; x < width; x++) {
           const i = (y * width + x) * 4;
-          data[i]     = Math.round(data[i]     * scanlineBrightness);
-          data[i + 1] = Math.round(data[i + 1] * scanlineBrightness);
-          data[i + 2] = Math.round(data[i + 2] * scanlineBrightness);
+          data[i]     = data[i]     * scanlineBrightness;
+          data[i + 1] = data[i + 1] * scanlineBrightness;
+          data[i + 2] = data[i + 2] * scanlineBrightness;
         }
       }
     }
