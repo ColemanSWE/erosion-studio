@@ -93,7 +93,8 @@ export type EffectType =
   | "neon-crush"
   | "line-massacre"
   | "vsync-destroy"
-  | "nerve-damage";
+  | "nerve-damage"
+  | "vhs-degrade";
 
 export interface Region {
   id: string;
@@ -168,4 +169,5 @@ export interface EffectParamConfig {
   step?: number;
   default?: unknown;
   options?: string[];
+  group?: string;
 }

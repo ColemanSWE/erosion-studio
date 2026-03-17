@@ -492,3 +492,358 @@ void main() {
     }
   },
 });
+
+registerEffect({
+  type: "vhs-degrade",
+  label: "VHS Degrade",
+  category: "retro",
+  defaultParams: {
+    applyJpegNoise: true,
+    jpegQuality: 65,
+    toneLow: 16,
+    toneHigh: 230,
+    applyRinging: true,
+    sharpenIntensity: 3.0,
+    sharpenWidth: 2,
+    applyColorCast: true,
+    redTint: 0.95,
+    greenTint: 1.05,
+    blueTint: 1.0,
+    lumaBandwidth: 0.40,
+    chromaIBandwidth: 0.03,
+    chromaQBandwidth: 0.03,
+    chromaShiftX: 3,
+    lumaNoise: 0.020,
+    chromaNoise: 0.010,
+    jitterFrequency: 0.05,
+    jitterAmplitude: 0.5,
+    headSwitchHeight: 15,
+    bottomDistortion: 30.0,
+    bottomStaticDensity: 0.40,
+    dropoutCount: 2,
+    scratchMaxLength: 80,
+    scratchIntensity: 0.8,
+    applyScanlines: true,
+    scanlineBrightness: 0.97,
+  },
+  paramsConfig: [
+    { key: "applyJpegNoise",      label: "Apply JPEG Block Noise",    type: "checkbox", group: "Digital Layer" },
+    { key: "jpegQuality",         label: "JPEG Quality",               type: "slider",  min: 1,    max: 100,  step: 1,    group: "Digital Layer" },
+    { key: "toneLow",             label: "Crush Blacks (Tone Low)",    type: "slider",  min: 0,    max: 128,  step: 1,    group: "Digital Layer" },
+    { key: "toneHigh",            label: "Blow Out Whites (Tone High)",type: "slider",  min: 128,  max: 255,  step: 1,    group: "Digital Layer" },
+    { key: "applyRinging",        label: "Apply Thick Ringing",        type: "checkbox",                                  group: "Hardware Layer" },
+    { key: "sharpenIntensity",    label: "Sharpen Intensity",          type: "slider",  min: 0,    max: 10,   step: 0.1,  group: "Hardware Layer" },
+    { key: "sharpenWidth",        label: "Sharpen Width",              type: "slider",  min: 1,    max: 10,   step: 1,    group: "Hardware Layer" },
+    { key: "applyColorCast",      label: "Apply Color Cast",           type: "checkbox",                                  group: "Hardware Layer" },
+    { key: "redTint",             label: "Red Tint Shift",             type: "slider",  min: 0.5,  max: 1.5,  step: 0.01, group: "Hardware Layer" },
+    { key: "greenTint",           label: "Green Tint Shift",           type: "slider",  min: 0.5,  max: 1.5,  step: 0.01, group: "Hardware Layer" },
+    { key: "blueTint",            label: "Blue Tint Shift",            type: "slider",  min: 0.5,  max: 1.5,  step: 0.01, group: "Hardware Layer" },
+    { key: "lumaBandwidth",       label: "Luminance Bandwidth (Blur)", type: "slider",  min: 0.01, max: 1.0,  step: 0.01, group: "Analog Layer" },
+    { key: "chromaIBandwidth",    label: "Chroma I Bandwidth",         type: "slider",  min: 0.01, max: 1.0,  step: 0.01, group: "Analog Layer" },
+    { key: "chromaQBandwidth",    label: "Chroma Q Bandwidth (Bleed)", type: "slider",  min: 0.01, max: 1.0,  step: 0.01, group: "Analog Layer" },
+    { key: "chromaShiftX",        label: "Chroma Shift X",             type: "slider",  min: -20,  max: 20,   step: 1,    group: "Analog Layer" },
+    { key: "lumaNoise",           label: "Luma Noise",                 type: "slider",  min: 0,    max: 0.2,  step: 0.001,group: "Analog Layer" },
+    { key: "chromaNoise",         label: "Chroma Noise",               type: "slider",  min: 0,    max: 0.2,  step: 0.001,group: "Analog Layer" },
+    { key: "jitterFrequency",     label: "Jitter Frequency",           type: "slider",  min: 0,    max: 1,    step: 0.01, group: "Mechanical Errors" },
+    { key: "jitterAmplitude",     label: "Jitter Amplitude",           type: "slider",  min: 0,    max: 10,   step: 0.1,  group: "Mechanical Errors" },
+    { key: "headSwitchHeight",    label: "Head Switch Height",         type: "slider",  min: 0,    max: 50,   step: 1,    group: "Mechanical Errors" },
+    { key: "bottomDistortion",    label: "Bottom Distortion",          type: "slider",  min: 0,    max: 100,  step: 0.5,  group: "Mechanical Errors" },
+    { key: "bottomStaticDensity", label: "Bottom Static Density",      type: "slider",  min: 0,    max: 1,    step: 0.01, group: "Mechanical Errors" },
+    { key: "dropoutCount",        label: "Dropout (Scratch) Count",    type: "slider",  min: 0,    max: 20,   step: 1,    group: "Mechanical Errors" },
+    { key: "scratchMaxLength",    label: "Scratch Max Length",         type: "slider",  min: 0,    max: 200,  step: 1,    group: "Mechanical Errors" },
+    { key: "scratchIntensity",    label: "Scratch Intensity",          type: "slider",  min: 0,    max: 1,    step: 0.01, group: "Mechanical Errors" },
+    { key: "applyScanlines",      label: "Apply Scanlines",            type: "checkbox",                                  group: "Scanlines" },
+    { key: "scanlineBrightness",  label: "Scanline Brightness",        type: "slider",  min: 0.5,  max: 1.0,  step: 0.01, group: "Scanlines" },
+  ],
+  processor: (data, { width, height, time = 0 }, params) => {
+    const applyJpegNoise      = (params.applyJpegNoise      as boolean) ?? true;
+    const jpegQuality         = (params.jpegQuality         as number)  ?? 65;
+    const toneLow             = (params.toneLow             as number)  ?? 16;
+    const toneHigh            = (params.toneHigh            as number)  ?? 230;
+    const applyRinging        = (params.applyRinging        as boolean) ?? true;
+    const sharpenIntensity    = (params.sharpenIntensity    as number)  ?? 3.0;
+    const sharpenWidth        = Math.max(1, Math.round((params.sharpenWidth as number) ?? 2));
+    const applyColorCast      = (params.applyColorCast      as boolean) ?? true;
+    const redTint             = (params.redTint             as number)  ?? 0.95;
+    const greenTint           = (params.greenTint           as number)  ?? 1.05;
+    const blueTint            = (params.blueTint            as number)  ?? 1.0;
+    const lumaBandwidth       = Math.max(0.01, (params.lumaBandwidth    as number) ?? 0.40);
+    const chromaIBandwidth    = Math.max(0.01, (params.chromaIBandwidth as number) ?? 0.03);
+    const chromaQBandwidth    = Math.max(0.01, (params.chromaQBandwidth as number) ?? 0.03);
+    const chromaShiftX        = Math.round((params.chromaShiftX        as number)  ?? 3);
+    const lumaNoise           = (params.lumaNoise           as number)  ?? 0.020;
+    const chromaNoise         = (params.chromaNoise         as number)  ?? 0.010;
+    const jitterFrequency     = (params.jitterFrequency     as number)  ?? 0.05;
+    const jitterAmplitude     = (params.jitterAmplitude     as number)  ?? 0.5;
+    const headSwitchHeight    = Math.round((params.headSwitchHeight    as number)  ?? 15);
+    const bottomDistortion    = (params.bottomDistortion    as number)  ?? 30.0;
+    const bottomStaticDensity = (params.bottomStaticDensity as number)  ?? 0.40;
+    const dropoutCount        = Math.round((params.dropoutCount        as number)  ?? 2);
+    const scratchMaxLength    = Math.round((params.scratchMaxLength    as number)  ?? 80);
+    const scratchIntensity    = (params.scratchIntensity    as number)  ?? 0.8;
+    const applyScanlines      = (params.applyScanlines      as boolean) ?? true;
+    const scanlineBrightness  = (params.scanlineBrightness  as number)  ?? 0.97;
+
+    const seed = Math.floor(time * 7);
+
+    // ── Digital Layer ─────────────────────────────────────────────────────────
+
+    if (applyJpegNoise) {
+      const blockSize = 8;
+      const quality = clamp(jpegQuality, 1, 100);
+      const chromaStep = 256 / Math.pow(2, Math.max(1, 4 - quality / 25));
+
+      for (let by = 0; by < height; by += blockSize) {
+        for (let bx = 0; bx < width; bx += blockSize) {
+          const endY = Math.min(by + blockSize, height);
+          const endX = Math.min(bx + blockSize, width);
+          let sumR = 0, sumG = 0, sumB = 0, count = 0;
+
+          for (let y = by; y < endY; y++) {
+            for (let x = bx; x < endX; x++) {
+              const i = (y * width + x) * 4;
+              sumR += data[i]; sumG += data[i + 1]; sumB += data[i + 2];
+              count++;
+            }
+          }
+          const avgR = sumR / count;
+          const avgG = sumG / count;
+          const avgB = sumB / count;
+          const qR = Math.round(avgR / chromaStep) * chromaStep;
+          const qG = Math.round(avgG / chromaStep) * chromaStep;
+          const qB = Math.round(avgB / chromaStep) * chromaStep;
+          const blend = 1 - quality / 100;
+
+          for (let y = by; y < endY; y++) {
+            for (let x = bx; x < endX; x++) {
+              const i = (y * width + x) * 4;
+              data[i]     = clamp(data[i]     + (qR - data[i])     * blend, 0, 255);
+              data[i + 1] = clamp(data[i + 1] + (qG - data[i + 1]) * blend, 0, 255);
+              data[i + 2] = clamp(data[i + 2] + (qB - data[i + 2]) * blend, 0, 255);
+            }
+          }
+        }
+      }
+    }
+
+    // Tone crush: remap blacks and whites
+    if (toneLow > 0 || toneHigh < 255) {
+      const range = toneHigh - toneLow;
+      for (let i = 0; i < data.length; i += 4) {
+        data[i]     = clamp(Math.round((data[i]     - toneLow) / range * 255), 0, 255);
+        data[i + 1] = clamp(Math.round((data[i + 1] - toneLow) / range * 255), 0, 255);
+        data[i + 2] = clamp(Math.round((data[i + 2] - toneLow) / range * 255), 0, 255);
+      }
+    }
+
+    // ── Hardware Layer ────────────────────────────────────────────────────────
+
+    if (applyRinging && sharpenIntensity > 0) {
+      const radius = sharpenWidth;
+      const source = new Uint8ClampedArray(data);
+      const kernelSize = 2 * radius + 1;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          let blurR = 0, blurG = 0, blurB = 0;
+          for (let k = -radius; k <= radius; k++) {
+            const sx = clamp(x + k, 0, width - 1);
+            const si = (y * width + sx) * 4;
+            blurR += source[si]; blurG += source[si + 1]; blurB += source[si + 2];
+          }
+          blurR /= kernelSize; blurG /= kernelSize; blurB /= kernelSize;
+          const amt = sharpenIntensity / 10;
+          data[i]     = clamp(source[i]     + (source[i]     - blurR) * amt, 0, 255);
+          data[i + 1] = clamp(source[i + 1] + (source[i + 1] - blurG) * amt, 0, 255);
+          data[i + 2] = clamp(source[i + 2] + (source[i + 2] - blurB) * amt, 0, 255);
+        }
+      }
+    }
+
+    if (applyColorCast) {
+      for (let i = 0; i < data.length; i += 4) {
+        data[i]     = clamp(data[i]     * redTint,   0, 255);
+        data[i + 1] = clamp(data[i + 1] * greenTint, 0, 255);
+        data[i + 2] = clamp(data[i + 2] * blueTint,  0, 255);
+      }
+    }
+
+    // ── Analog Layer (YIQ color space) ────────────────────────────────────────
+
+    // Convert to YIQ float planes
+    const Y = new Float32Array(width * height);
+    const I = new Float32Array(width * height);
+    const Q = new Float32Array(width * height);
+
+    for (let j = 0; j < width * height; j++) {
+      const idx = j * 4;
+      const r = data[idx] / 255;
+      const g = data[idx + 1] / 255;
+      const b = data[idx + 2] / 255;
+      Y[j] =  0.299 * r + 0.587 * g + 0.114 * b;
+      I[j] =  0.596 * r - 0.274 * g - 0.322 * b;
+      Q[j] =  0.211 * r - 0.523 * g + 0.311 * b;
+    }
+
+    // 1D horizontal box blur (running-sum, O(width) per row)
+    const boxBlur1D = (plane: Float32Array, bw: number) => {
+      const radius = Math.max(0, Math.floor(1 / bw) - 1);
+      if (radius === 0) return;
+      const len = 2 * radius + 1;
+      const inv = 1 / len;
+      const row = new Float32Array(width);
+
+      for (let y = 0; y < height; y++) {
+        const base = y * width;
+        // Build running sum
+        let sum = 0;
+        for (let x = 0; x < len && x < width; x++) sum += plane[base + x];
+
+        for (let x = 0; x < width; x++) {
+          row[x] = sum * inv;
+          const addIdx = x + radius + 1;
+          const removeIdx = x - radius;
+          if (addIdx < width) sum += plane[base + addIdx];
+          if (removeIdx >= 0) sum -= plane[base + removeIdx];
+        }
+        for (let x = 0; x < width; x++) plane[base + x] = row[x];
+      }
+    };
+
+    boxBlur1D(Y, lumaBandwidth);
+    boxBlur1D(I, chromaIBandwidth);
+    boxBlur1D(Q, chromaQBandwidth);
+
+    // Chroma horizontal shift (shift I and Q channels to the right)
+    if (chromaShiftX !== 0) {
+      const shift = chromaShiftX;
+      for (let y = 0; y < height; y++) {
+        const base = y * width;
+        if (shift > 0) {
+          for (let x = width - 1; x >= 0; x--) {
+            const src = clamp(x - shift, 0, width - 1);
+            I[base + x] = I[base + src];
+            Q[base + x] = Q[base + src];
+          }
+        } else {
+          for (let x = 0; x < width; x++) {
+            const src = clamp(x - shift, 0, width - 1);
+            I[base + x] = I[base + src];
+            Q[base + x] = Q[base + src];
+          }
+        }
+      }
+    }
+
+    // Noise on luma and chroma
+    if (lumaNoise > 0 || chromaNoise > 0) {
+      for (let j = 0; j < width * height; j++) {
+        if (lumaNoise > 0) {
+          Y[j] += (pseudoRandom(seed + j * 3.1) - 0.5) * 2 * lumaNoise;
+        }
+        if (chromaNoise > 0) {
+          I[j] += (pseudoRandom(seed + j * 5.7) - 0.5) * 2 * chromaNoise;
+          Q[j] += (pseudoRandom(seed + j * 7.3) - 0.5) * 2 * chromaNoise;
+        }
+      }
+    }
+
+    // Convert back to RGB
+    for (let j = 0; j < width * height; j++) {
+      const idx = j * 4;
+      const y = Y[j];
+      const iv = I[j];
+      const q = Q[j];
+      data[idx]     = clamp(Math.round((y + 0.956 * iv + 0.621 * q) * 255), 0, 255);
+      data[idx + 1] = clamp(Math.round((y - 0.272 * iv - 0.647 * q) * 255), 0, 255);
+      data[idx + 2] = clamp(Math.round((y - 1.106 * iv + 1.703 * q) * 255), 0, 255);
+    }
+
+    // ── Mechanical Errors ─────────────────────────────────────────────────────
+
+    const source2 = new Uint8ClampedArray(data);
+
+    // Per-scanline jitter
+    if (jitterFrequency > 0 && jitterAmplitude > 0) {
+      for (let y = 0; y < height; y++) {
+        if (pseudoRandom(seed + y * 1.3) < jitterFrequency) {
+          const offset = Math.round((pseudoRandom(seed + y * 2.7) - 0.5) * 2 * jitterAmplitude);
+          if (offset === 0) continue;
+          for (let x = 0; x < width; x++) {
+            const src = clamp(x - offset, 0, width - 1);
+            const di = (y * width + x) * 4;
+            const si = (y * width + src) * 4;
+            data[di]     = source2[si];
+            data[di + 1] = source2[si + 1];
+            data[di + 2] = source2[si + 2];
+          }
+        }
+      }
+    }
+
+    // Head switch distortion at the bottom of the frame
+    if (headSwitchHeight > 0 && bottomDistortion > 0) {
+      const switchStart = height - headSwitchHeight;
+      for (let y = switchStart; y < height; y++) {
+        const t = (y - switchStart) / headSwitchHeight;
+        const maxOff = bottomDistortion * t;
+        const offset = Math.round((pseudoRandom(seed + y * 4.1) - 0.5) * maxOff);
+
+        for (let x = 0; x < width; x++) {
+          const src = clamp(x + offset, 0, width - 1);
+          const di = (y * width + x) * 4;
+          const si = (y * width + src) * 4;
+          data[di]     = source2[si];
+          data[di + 1] = source2[si + 1];
+          data[di + 2] = source2[si + 2];
+        }
+      }
+    }
+
+    // Bottom static (noise) in the head-switch region
+    if (headSwitchHeight > 0 && bottomStaticDensity > 0) {
+      const switchStart = height - headSwitchHeight;
+      for (let y = switchStart; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (pseudoRandom(seed + (y * width + x) * 1.9) < bottomStaticDensity) {
+            const i = (y * width + x) * 4;
+            const v = Math.round(pseudoRandom(seed + (y * width + x) * 3.3) * 255);
+            data[i] = v; data[i + 1] = v; data[i + 2] = v;
+          }
+        }
+      }
+    }
+
+    // Dropout / scratch lines
+    if (dropoutCount > 0 && scratchMaxLength > 0) {
+      for (let d = 0; d < dropoutCount; d++) {
+        const scratchY = Math.floor(pseudoRandom(seed + d * 11.3) * height);
+        const startX = Math.floor(pseudoRandom(seed + d * 13.7) * width);
+        const length = Math.round(pseudoRandom(seed + d * 17.1) * scratchMaxLength);
+        const endX = Math.min(startX + length, width);
+
+        for (let x = startX; x < endX; x++) {
+          const i = (scratchY * width + x) * 4;
+          const base = Math.round(pseudoRandom(seed + x * 1.1 + d) * 255 * scratchIntensity);
+          const orig = data[i] * (1 - scratchIntensity);
+          const v = clamp(orig + base, 0, 255);
+          data[i] = v; data[i + 1] = v; data[i + 2] = v;
+        }
+      }
+    }
+
+    // ── Scanlines ─────────────────────────────────────────────────────────────
+
+    if (applyScanlines && scanlineBrightness < 1) {
+      for (let y = 0; y < height; y += 2) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          data[i]     = Math.round(data[i]     * scanlineBrightness);
+          data[i + 1] = Math.round(data[i + 1] * scanlineBrightness);
+          data[i + 2] = Math.round(data[i + 2] * scanlineBrightness);
+        }
+      }
+    }
+  },
+});
