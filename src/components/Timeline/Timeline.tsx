@@ -105,6 +105,11 @@ export function Timeline({
   const [trackHeight, setTrackHeight] = useState(DEFAULT_TRACK_H);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [snapLine, setSnapLine] = useState<number | null>(null);
+  const [expandedEffects, setExpandedEffects] = useState<Record<string, boolean>>({});
+
+  const toggleEffectExpanded = useCallback((id: string) => {
+    setExpandedEffects((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
   const tracksAreaRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -225,18 +230,6 @@ export function Timeline({
         />,
       );
     }
-    labels.push(
-      <button
-        key="add-media-track"
-        className={styles.addTrackBtn}
-        onClick={addMediaTrack}
-        title="Add media track"
-      >
-        <Plus size={10} />
-        <span>Add track</span>
-      </button>,
-    );
-
     // Overlay track rows
     for (let i = 0; i < numOverlayRows; i++) {
       const track = overlayTracks[i];
@@ -252,27 +245,15 @@ export function Timeline({
         />,
       );
     }
-    labels.push(
-      <button
-        key="add-overlay-track"
-        className={styles.addTrackBtn}
-        onClick={addOverlayTrack}
-        title="Add overlay track"
-      >
-        <Plus size={10} />
-        <span>Add overlay</span>
-      </button>,
-    );
 
-    // Effect track labels
+    // Effect track labels — heights must exactly mirror EffectTrack's rendered rows
     for (const effect of activeEffects) {
       const tracks = effectParamTracks.filter((t) => t.effectId === effect.id);
-      const hasParamRows = tracks.length > 0;
+      const isExpanded = expandedEffects[effect.id] ?? false;
       const effectName = effect.type
         .split("-")
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ");
-
       labels.push(
         <div key={effect.id}>
           <div
@@ -293,23 +274,28 @@ export function Timeline({
               </button>
             </div>
           </div>
-          {hasParamRows &&
-            tracks.map((t) => (
-              <div key={t.id} className={styles.trackLabel} style={{ height: 24, paddingLeft: 20 }}>
-                <span className={styles.trackLabelText} style={{ color: "#ffaa00", fontSize: 9 }}>
-                  {t.paramKey}
-                </span>
-                <div className={styles.trackLabelActions}>
-                  <button
-                    className={`${styles.trackLabelBtn} ${styles.danger}`}
-                    onClick={() => onRemoveEffectParamTrack(t.id)}
-                    title="Remove param track"
-                  >
-                    <Trash2 size={9} />
-                  </button>
+          {isExpanded && (
+            <>
+              {/* Matches the 24px "add param tracks" row in EffectTrack */}
+              <div style={{ height: 24, background: "var(--bg-base, #0c0c0e)" }} />
+              {tracks.map((t) => (
+                <div key={t.id} className={styles.trackLabel} style={{ height: 24, paddingLeft: 20 }}>
+                  <span className={styles.trackLabelText} style={{ color: "#cc7700", fontSize: 9 }}>
+                    {t.paramKey}
+                  </span>
+                  <div className={styles.trackLabelActions}>
+                    <button
+                      className={`${styles.trackLabelBtn} ${styles.danger}`}
+                      onClick={() => onRemoveEffectParamTrack(t.id)}
+                      title="Remove param track"
+                    >
+                      <Trash2 size={9} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </>
+          )}
         </div>,
       );
     }
@@ -352,6 +338,14 @@ export function Timeline({
             <Maximize2 size={12} />
           </button>
         </div>
+        <button className={styles.headerBtn} onClick={addMediaTrack} title="Add media track">
+          <Film size={12} />
+          <Plus size={10} />
+        </button>
+        <button className={styles.headerBtn} onClick={addOverlayTrack} title="Add overlay track">
+          <Layers size={12} />
+          <Plus size={10} />
+        </button>
       </div>
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
@@ -455,6 +449,8 @@ export function Timeline({
                   duration={duration}
                   currentTime={currentTime}
                   snapEnabled={snapEnabled}
+                  expanded={expandedEffects[effect.id] ?? false}
+                  onToggleExpanded={() => toggleEffectExpanded(effect.id)}
                   onUpdateEffect={onUpdateEffect}
                   onAddParamTrack={onAddEffectParamTrack}
                   onRemoveParamTrack={onRemoveEffectParamTrack}
@@ -465,12 +461,6 @@ export function Timeline({
                 />
               );
             })}
-
-            {activeEffects.length === 0 && (
-              <div className={styles.emptyState} style={{ height: 80 }}>
-                <span>Add effects to see effect tracks</span>
-              </div>
-            )}
           </div>
         </div>
       </div>

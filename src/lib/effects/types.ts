@@ -119,8 +119,9 @@ export interface Overlay {
   startTime: number;
   endTime: number;
   trackIndex: number; // row in timeline
-  color?: string;     // For text
-  fontSize?: number;  // For text
+  color?: string;
+  fontSize?: number;
+  fontFamily?: string;
   isEffectZone?: boolean; // If true, it acts as a mask and isn't drawn directly
 }
 

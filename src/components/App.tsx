@@ -645,6 +645,7 @@ function App() {
                 onReorderEffect={reorderEffect}
                 onRemoveRegion={handleRemoveRegion}
                 onSelectRegion={setActiveRegionId}
+                onSelectOverlay={setActiveOverlayId}
                 onStartDrawingRegion={handleStartDrawingRegion}
                 onUpdateOverlay={(id, updates) => updateOverlay(id, updates)}
                 onAddTextOverlay={handleAddTextOverlay}

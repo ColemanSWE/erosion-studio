@@ -427,6 +427,33 @@
   }
 }
 
+.fontSelect {
+  flex: 1;
+  font-size: 11px;
+  padding: 3px variables.$spacing-xs;
+  height: auto;
+  background-color: variables.$bg-elevated;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-sm;
+  color: variables.$text-primary;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: variables.$accent-primary;
+  }
+}
+
+.zoneHint {
+  font-size: 10px;
+  color: variables.$text-tertiary;
+  line-height: 1.4;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  border-left: 2px solid variables.$accent-primary;
+  margin: variables.$spacing-xs 0 0;
+  opacity: 0.8;
+}
+
 .count {
   color: variables.$text-tertiary;
   font-size: 10px;

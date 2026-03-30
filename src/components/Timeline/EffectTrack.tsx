@@ -20,6 +20,8 @@ interface EffectTrackProps {
   duration: number;
   currentTime: number;
   snapEnabled: boolean;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onUpdateEffect: (id: string, updates: Partial<Effect>) => void;
   onAddParamTrack: (track: EffectParamTrack) => void;
   onRemoveParamTrack: (id: string) => void;
@@ -41,6 +43,8 @@ export function EffectTrack({
   duration,
   currentTime,
   snapEnabled,
+  expanded,
+  onToggleExpanded,
   onUpdateEffect,
   onAddParamTrack,
   onRemoveParamTrack,
@@ -49,7 +53,6 @@ export function EffectTrack({
   onRemoveKeyframe,
   onSnapLine,
 }: EffectTrackProps) {
-  const [expanded, setExpanded] = useState(false);
   const [selectedKf, setSelectedKf] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -202,7 +205,7 @@ export function EffectTrack({
           <button
             className={styles.addKeyframeBtn}
             title="Add keyframe track for a param"
-            onClick={() => setExpanded((v) => !v)}
+            onClick={onToggleExpanded}
           >
             {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
           </button>

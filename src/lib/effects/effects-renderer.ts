@@ -270,7 +270,7 @@ export function drawOverlay(
     ctx.save();
     ctx.fillStyle = overlay.color || "#ffffff";
     const fontSize = overlay.fontSize ? overlay.fontSize * drawHeight : h * 0.8;
-    ctx.font = `bold ${fontSize}px Inter, sans-serif`;
+    ctx.font = `bold ${fontSize}px ${overlay.fontFamily || "Inter, sans-serif"}`;
     ctx.textBaseline = "top";
     ctx.textAlign = "center";
     ctx.fillText(overlay.text, x + w / 2, y + h * 0.1, w);

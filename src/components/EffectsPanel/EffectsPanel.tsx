@@ -14,6 +14,19 @@ import styles from "./EffectsPanel.module.scss";
 import type { Effect, EffectType, Region, Overlay } from "../../lib/effects/types";
 import { isStyleEffect, getAllEffects } from "../../lib/effects/effect-registry";
 
+const FONT_OPTIONS = [
+  { label: "Inter", value: "Inter, sans-serif" },
+  { label: "JetBrains Mono", value: "'JetBrains Mono', monospace" },
+  { label: "MingLiU", value: "MingLiU, 'Noto Serif TC', 'Songti SC', STSong, serif" },
+  { label: "Noto Serif TC", value: "'Noto Serif TC', serif" },
+  { label: "Space Mono", value: "'Space Mono', monospace" },
+  { label: "VT323", value: "VT323, monospace" },
+  { label: "Bebas Neue", value: "'Bebas Neue', sans-serif" },
+  { label: "Courier New", value: "'Courier New', Courier, monospace" },
+  { label: "Georgia", value: "Georgia, serif" },
+  { label: "Arial Black", value: "'Arial Black', sans-serif" },
+];
+
 interface EffectsPanelProps {
   effects: Effect[];
   regions: Region[];
@@ -26,6 +39,7 @@ interface EffectsPanelProps {
   onReorderEffect: (id: string, newIndex: number) => void;
   onRemoveRegion: (id: string) => void;
   onSelectRegion: (id: string | null) => void;
+  onSelectOverlay: (id: string | null) => void;
   onStartDrawingRegion: () => void;
   onUpdateOverlay: (id: string, updates: Partial<Overlay>) => void;
   onAddTextOverlay: () => void;
@@ -45,6 +59,7 @@ function EffectsPanel({
   onReorderEffect,
   onRemoveRegion,
   onSelectRegion,
+  onSelectOverlay,
   onStartDrawingRegion,
   onUpdateOverlay,
   onAddTextOverlay,
@@ -274,6 +289,20 @@ function EffectsPanel({
                       />
                     </div>
                     <div className={styles.paramRow}>
+                      <span className={styles.paramLabel}>Font</span>
+                      <select
+                        className={styles.fontSelect}
+                        value={overlay.fontFamily || "Inter, sans-serif"}
+                        onChange={(e) => onUpdateOverlay(overlay.id, { fontFamily: e.target.value })}
+                      >
+                        {FONT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value} style={{ fontFamily: opt.value }}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className={styles.paramRow}>
                       <span className={styles.paramLabel}>Color</span>
                       <input
                         type="color"
@@ -294,6 +323,11 @@ function EffectsPanel({
                     Use as Effect Zone
                   </label>
                 </div>
+                {overlay.isEffectZone && (
+                  <p className={styles.zoneHint}>
+                    Select this zone in the Active stack below, then add effects from the panel above to fill the text shape.
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -355,10 +389,12 @@ function EffectsPanel({
             {overlays.filter(o => o.isEffectZone || activeOverlayId === o.id).map((overlay) => {
               const overlayEffects = overlayEffectsMap.get(overlay.id) || [];
               if (overlayEffects.length === 0 && activeOverlayId !== overlay.id) return null;
+              const isActive = activeOverlayId === overlay.id;
               return (
                 <div
                   key={overlay.id}
-                  className={`${styles.regionGroup} ${activeOverlayId === overlay.id ? styles.active : ''}`}
+                  className={`${styles.regionGroup} ${isActive ? styles.active : ''}`}
+                  onClick={() => onSelectOverlay(isActive ? null : overlay.id)}
                 >
                   <div className={styles.regionHeader}>
                     <div className={styles.regionHeaderLeft}>
@@ -372,6 +408,9 @@ function EffectsPanel({
                       <span className={styles.count}>{overlayEffects.length}</span>
                     </div>
                   </div>
+                  {overlayEffects.length === 0 && isActive && (
+                    <p className={styles.zoneHint}>Add effects from the panel above — they will fill this zone&apos;s shape.</p>
+                  )}
                   {overlayEffects.map((effect, index) => renderEffectCard(effect, index))}
                 </div>
               );
