@@ -1,8 +1,8 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Film, Trash2 } from "lucide-react";
-import type { TimelineClip } from "../../lib/effects/types";
+import type { TimelineClip, Overlay, TimelineTrack } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
-import { snapTime, getSnapInterval } from "../../lib/timeline";
+import { collectSnapTargets, applySnap } from "../../lib/timeline";
 import styles from "./Timeline.module.scss";
 
 export const MEDIA_ROW_H = 40;
@@ -10,42 +10,64 @@ export const MIN_TRACK_ROWS = 2;
 
 interface MediaTrackProps {
   clips: TimelineClip[];
+  overlays: Overlay[];
+  tracks: TimelineTrack[];
   media: MediaItem[];
-  zoom: number; // px per second
+  zoom: number;
   duration: number;
   currentTime: number;
+  rowHeight: number;
+  snapEnabled: boolean;
   onAddClip: (clip: TimelineClip) => void;
   onUpdateClip: (id: string, updates: Partial<TimelineClip>) => void;
   onRemoveClip: (id: string) => void;
+  onSnapLine: (time: number | null) => void;
 }
 
-interface GhostClip {
-  left: number;  // px from track left
-  width: number; // px
-  top: number;   // px from track top
+interface DragState {
+  clipId: string;
+  startTime: number;
+  trackIndex: number;
 }
 
 let clipIdCounter = 0;
 
 export function MediaTrack({
   clips,
+  overlays,
+  tracks,
   media,
   zoom,
   duration,
+  currentTime,
+  rowHeight,
+  snapEnabled,
   onAddClip,
   onUpdateClip,
   onRemoveClip,
+  onSnapLine,
 }: MediaTrackProps) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [newMediaGhostX, setNewMediaGhostX] = useState<number | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [ghostClip, setGhostClip] = useState<GhostClip | null>(null);
+  const [draggingState, setDraggingState] = useState<DragState | null>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
-  // Stores clip info for the clip currently being dragged, so handleDragOver
-  // can compute the ghost position without reading from dataTransfer (restricted during dragover).
-  const activeDragRef = useRef<{
-    offsetPx: number;
-    durationSec: number;
+  // Ref mirror of draggingState for stable access in async handlers
+  const draggingStateRef = useRef<DragState | null>(null);
+  const setDragging = (s: DragState | null) => {
+    draggingStateRef.current = s;
+    setDraggingState(s);
+  };
+
+  const dragMoveRef = useRef<{
+    clipId: string;
+    startX: number;
+    startY: number;
+    origStart: number;
+    origEnd: number;
+    origTrack: number;
+    hasMoved: boolean;
   } | null>(null);
 
   const resizingRef = useRef<{
@@ -59,8 +81,12 @@ export function MediaTrack({
   const lastResizeX = useRef(0);
   const resizeRafRef = useRef<number | null>(null);
 
-  const numTracks = Math.max(MIN_TRACK_ROWS, ...clips.map((c) => c.trackIndex + 1));
-  const totalHeight = numTracks * MEDIA_ROW_H;
+  const numTracks = Math.max(
+    tracks.length,
+    ...clips.map((c) => c.trackIndex + 1),
+    ...(draggingState ? [draggingState.trackIndex + 1] : []),
+  );
+  const totalHeight = numTracks * rowHeight;
 
   const getMediaName = (mediaId: string) =>
     media.find((m) => m.id === mediaId)?.name ?? "Unknown";
@@ -81,142 +107,111 @@ export function MediaTrack({
       if (!el) return 0;
       const rect = el.getBoundingClientRect();
       const relY = clientY - rect.top;
-      const idx = Math.floor(relY / MEDIA_ROW_H);
-      return Math.max(0, Math.min(numTracks - 1, idx));
+      const idx = Math.floor(relY / rowHeight);
+      return Math.max(0, Math.min(numTracks, idx));
     },
-    [numTracks],
+    [numTracks, rowHeight],
   );
 
-  // ─── Drop from MediaBrowser ───────────────────────────────────────────────
-  const handleDragOver = useCallback(
-    (e: React.DragEvent) => {
+  // ─── Real-time clip drag ──────────────────────────────────────────────────
+  const startClipDrag = useCallback(
+    (e: React.MouseEvent, clipId: string) => {
+      if ((e.target as HTMLElement).closest(`.${styles.clipHandle}`)) return;
+      if ((e.target as HTMLElement).closest(`.${styles.removeClipBtn}`)) return;
       e.preventDefault();
-      const isExisting = e.dataTransfer.types.includes("application/timeline-clip");
-      const isNew = e.dataTransfer.types.includes("application/media-item");
-      if (!isExisting && !isNew) return;
+      e.stopPropagation();
 
-      e.dataTransfer.dropEffect = isExisting ? "move" : "copy";
-      setIsDragOver(true);
-
-      // Compute ghost clip position for visual feedback
-      const el = dropRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const trackIndex = yToTrackIndex(e.clientY);
-      const top = trackIndex * MEDIA_ROW_H;
-
-      if (isExisting && activeDragRef.current) {
-        const startPx = x - activeDragRef.current.offsetPx;
-        const startSec = snapTime(
-          Math.max(0, startPx / zoom),
-          getSnapInterval(zoom),
-        );
-        setGhostClip({
-          left: startSec * zoom,
-          width: activeDragRef.current.durationSec * zoom,
-          top,
-        });
-      } else {
-        // New media — width unknown, show a thin position indicator
-        setGhostClip({ left: Math.max(0, x - 2), width: 6, top });
-      }
-    },
-    [zoom, yToTrackIndex],
-  );
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragOver(false);
-    setGhostClip(null);
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      setGhostClip(null);
-      activeDragRef.current = null;
-
-      const snap = getSnapInterval(zoom);
-
-      // New media item from browser
-      const json = e.dataTransfer.getData("application/media-item");
-      if (json) {
-        const item: MediaItem = JSON.parse(json);
-        const el = dropRef.current;
-        if (!el) return;
-
-        const rect = el.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const startTime = snapTime(Math.max(0, x / zoom), snap);
-        const clipDuration = getMediaDuration(item.id);
-        const endTime = Math.min(duration, startTime + clipDuration);
-        const trackIndex = yToTrackIndex(e.clientY);
-
-        onAddClip({
-          id: `clip-${Date.now()}-${clipIdCounter++}`,
-          mediaId: item.id,
-          startTime,
-          endTime,
-          trackIndex,
-        });
-        return;
-      }
-
-      // Existing clip being repositioned
-      const clipId = e.dataTransfer.getData("application/timeline-clip");
-      if (clipId) {
-        const clip = clips.find((c) => c.id === clipId);
-        if (!clip) return;
-
-        const el = dropRef.current;
-        if (!el) return;
-
-        const offsetXStr = e.dataTransfer.getData("application/timeline-clip-offset");
-        const offsetX = offsetXStr ? parseFloat(offsetXStr) : 0;
-
-        const rect = el.getBoundingClientRect();
-        const x = e.clientX - rect.left - offsetX;
-        const newStart = snapTime(Math.max(0, x / zoom), snap);
-        const clipLen = clip.endTime - clip.startTime;
-        const newEnd = Math.min(duration, newStart + clipLen);
-        const trackIndex = yToTrackIndex(e.clientY);
-
-        onUpdateClip(clipId, { startTime: newStart, endTime: newEnd, trackIndex });
-      }
-    },
-    [zoom, duration, onAddClip, onUpdateClip, getMediaDuration, yToTrackIndex, clips],
-  );
-
-  // ─── Drag clip to reposition ──────────────────────────────────────────────
-  const handleClipDragStart = useCallback(
-    (e: React.DragEvent, clipId: string) => {
-      e.dataTransfer.setData("application/timeline-clip", clipId);
-      e.dataTransfer.effectAllowed = "move";
-
-      const el = dropRef.current;
       const clip = clips.find((c) => c.id === clipId);
-      if (el && clip) {
-        const rect = el.getBoundingClientRect();
-        const mouseXInTrack = e.clientX - rect.left;
-        const clipStartXInTrack = clip.startTime * zoom;
-        const offsetX = mouseXInTrack - clipStartXInTrack;
-        e.dataTransfer.setData("application/timeline-clip-offset", String(offsetX));
+      if (!clip) return;
 
-        // Store for use in handleDragOver (can't read dataTransfer there)
-        activeDragRef.current = {
-          offsetPx: offsetX,
-          durationSec: clip.endTime - clip.startTime,
-        };
-      }
+      setSelectedClipId(clipId);
+      dragMoveRef.current = {
+        clipId,
+        startX: e.clientX,
+        startY: e.clientY,
+        origStart: clip.startTime,
+        origEnd: clip.endTime,
+        origTrack: clip.trackIndex,
+        hasMoved: false,
+      };
+
+      let rafId: number | null = null;
+      let lastX = e.clientX;
+      let lastY = e.clientY;
+
+      const onMove = (me: MouseEvent) => {
+        lastX = me.clientX;
+        lastY = me.clientY;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const r = dragMoveRef.current;
+          if (!r) return;
+
+          const dx = lastX - r.startX;
+          const dy = lastY - r.startY;
+          if (!r.hasMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+          r.hasMoved = true;
+
+          const clipDuration = r.origEnd - r.origStart;
+          const rawStart = r.origStart + dx / zoom;
+
+          const el = dropRef.current;
+          const currentNumTracks = el
+            ? Math.max(
+                tracks.length,
+                ...clips.map((c) => c.trackIndex + 1),
+              )
+            : numTracks;
+          const trackDelta = Math.round(dy / rowHeight);
+          const newTrackIndex = Math.max(
+            0,
+            Math.min(currentNumTracks, r.origTrack + trackDelta),
+          );
+
+          const snapTargets = collectSnapTargets(clips, overlays, currentTime, r.clipId);
+          const { snappedTime: snappedStart, magnetTime: magnetStart } = applySnap(
+            rawStart, snapTargets, zoom, snapEnabled,
+          );
+          const { snappedTime: snappedEnd, magnetTime: magnetEnd } = applySnap(
+            rawStart + clipDuration, snapTargets, zoom, snapEnabled,
+          );
+
+          let finalStart = snappedStart;
+          if (!magnetStart && magnetEnd) {
+            finalStart = Math.max(0, snappedEnd - clipDuration);
+          }
+
+          onSnapLine(magnetStart ?? magnetEnd ?? null);
+          setDragging({ clipId: r.clipId, startTime: finalStart, trackIndex: newTrackIndex });
+        });
+      };
+
+      const onUp = () => {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        const r = dragMoveRef.current;
+        if (r?.hasMoved) {
+          const ds = draggingStateRef.current;
+          if (ds) {
+            onUpdateClip(r.clipId, {
+              startTime: ds.startTime,
+              endTime: ds.startTime + (r.origEnd - r.origStart),
+              trackIndex: ds.trackIndex,
+            });
+          }
+        }
+        dragMoveRef.current = null;
+        setDragging(null);
+        onSnapLine(null);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
     },
-    [clips, zoom],
+    [clips, overlays, zoom, rowHeight, numTracks, currentTime, snapEnabled, tracks, onUpdateClip, onSnapLine],
   );
-
-  const handleClipDragEnd = useCallback(() => {
-    activeDragRef.current = null;
-    setGhostClip(null);
-  }, []);
 
   // ─── Resize handles ───────────────────────────────────────────────────────
   const startResize = useCallback(
@@ -234,7 +229,7 @@ export function MediaTrack({
         origEnd: clip.endTime,
       };
 
-      const snap = getSnapInterval(zoom);
+      const snapTargets = collectSnapTargets(clips, overlays, currentTime, clipId);
 
       const onMove = (me: MouseEvent) => {
         lastResizeX.current = me.clientX;
@@ -244,19 +239,15 @@ export function MediaTrack({
           const r = resizingRef.current;
           if (!r) return;
           const dx = lastResizeX.current - r.startX;
-          const dt = dx / zoom;
+          const rawTime = (r.side === "left" ? r.origStart : r.origEnd) + dx / zoom;
+          const { snappedTime, magnetTime } = applySnap(rawTime, snapTargets, zoom, snapEnabled);
 
+          onSnapLine(magnetTime);
           if (r.side === "left") {
-            const newStart = snapTime(
-              Math.max(0, Math.min(r.origEnd - 0.1, r.origStart + dt)),
-              snap,
-            );
+            const newStart = Math.max(0, Math.min(r.origEnd - 0.1, snappedTime));
             onUpdateClip(r.clipId, { startTime: newStart });
           } else {
-            const newEnd = snapTime(
-              Math.max(r.origStart + 0.1, Math.min(duration, r.origEnd + dt)),
-              snap,
-            );
+            const newEnd = Math.max(r.origStart + 0.1, Math.min(duration, snappedTime));
             onUpdateClip(r.clipId, { endTime: newEnd });
           }
         });
@@ -268,6 +259,7 @@ export function MediaTrack({
           resizeRafRef.current = null;
         }
         resizingRef.current = null;
+        onSnapLine(null);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -275,7 +267,60 @@ export function MediaTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [clips, zoom, duration, onUpdateClip],
+    [clips, overlays, zoom, duration, currentTime, snapEnabled, onUpdateClip, onSnapLine],
+  );
+
+  // ─── New media drop from MediaBrowser ────────────────────────────────────
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      const isNew = e.dataTransfer.types.includes("application/media-item");
+      if (!isNew) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      setIsDragOver(true);
+      const el = dropRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setNewMediaGhostX(e.clientX - rect.left);
+    },
+    [],
+  );
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragOver(false);
+    setNewMediaGhostX(null);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      setNewMediaGhostX(null);
+
+      const json = e.dataTransfer.getData("application/media-item");
+      if (!json) return;
+      const item: MediaItem = JSON.parse(json);
+      const el = dropRef.current;
+      if (!el) return;
+
+      const rect = el.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const rawStart = x / zoom;
+      const snapTargets = collectSnapTargets(clips, overlays, currentTime);
+      const { snappedTime: startTime } = applySnap(rawStart, snapTargets, zoom, snapEnabled);
+      const clipDuration = getMediaDuration(item.id);
+      const endTime = Math.min(duration, startTime + clipDuration);
+      const trackIndex = yToTrackIndex(e.clientY);
+
+      onAddClip({
+        id: `clip-${Date.now()}-${clipIdCounter++}`,
+        mediaId: item.id,
+        startTime,
+        endTime,
+        trackIndex,
+      });
+    },
+    [zoom, duration, clips, overlays, currentTime, snapEnabled, onAddClip, getMediaDuration, yToTrackIndex],
   );
 
   const maxClipEnd = clips.reduce((max, c) => Math.max(max, c.endTime), duration);
@@ -295,16 +340,15 @@ export function MediaTrack({
       onDrop={handleDrop}
       onMouseDown={() => setSelectedClipId(null)}
     >
-      {/* Track row lane backgrounds */}
       {Array.from({ length: numTracks }, (_, idx) => (
         <div
           key={`lane-${idx}`}
           style={{
             position: "absolute",
             left: 0,
-            top: idx * MEDIA_ROW_H,
+            top: idx * rowHeight,
             width: "100%",
-            height: MEDIA_ROW_H,
+            height: rowHeight,
             borderBottom: "1px solid rgba(255,255,255,0.05)",
             background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)",
             pointerEvents: "none",
@@ -312,40 +356,36 @@ export function MediaTrack({
         />
       ))}
 
-      {/* Ghost drop preview */}
-      {ghostClip && (
+      {/* Ghost for new media drop */}
+      {newMediaGhostX !== null && (
         <div
           className={styles.clipGhost}
           style={{
-            left: ghostClip.left,
-            width: Math.max(6, ghostClip.width),
-            top: ghostClip.top + 2,
-            height: MEDIA_ROW_H - 4,
+            left: Math.max(0, newMediaGhostX - 2),
+            width: 6,
+            top: 2,
+            height: rowHeight - 4,
           }}
         />
       )}
 
-      {/* Clips */}
       {clips.map((clip) => {
-        const left = clip.startTime * zoom;
+        const isDragging = draggingState?.clipId === clip.id;
+        const renderStart = isDragging ? draggingState!.startTime : clip.startTime;
+        const renderTrack = isDragging ? draggingState!.trackIndex : clip.trackIndex;
+        const left = renderStart * zoom;
         const width = Math.max(4, (clip.endTime - clip.startTime) * zoom);
-        const top = clip.trackIndex * MEDIA_ROW_H;
+        const top = renderTrack * rowHeight;
         const isSelected = selectedClipId === clip.id;
         const color = getTrackColor(clip.trackIndex);
 
         return (
           <div
             key={clip.id}
-            className={`${styles.clip} ${isSelected ? styles.selected : ""}`}
-            style={{ left, width, top, height: MEDIA_ROW_H - 4, background: color }}
-            draggable
+            className={`${styles.clip} ${isSelected ? styles.selected : ""} ${isDragging ? styles.dragging : ""}`}
+            style={{ left, width, top, height: rowHeight - 4, background: color }}
             tabIndex={0}
-            onDragStart={(e) => handleClipDragStart(e, clip.id)}
-            onDragEnd={handleClipDragEnd}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              setSelectedClipId(clip.id);
-            }}
+            onMouseDown={(e) => startClipDrag(e, clip.id)}
             onKeyDown={(e) => {
               if (e.key === "Delete" || e.key === "Backspace") {
                 onRemoveClip(clip.id);

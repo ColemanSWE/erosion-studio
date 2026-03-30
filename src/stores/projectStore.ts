@@ -5,6 +5,7 @@ import type {
   Region,
   Overlay,
   TimelineClip,
+  TimelineTrack,
   EffectParamTrack,
   Keyframe,
 } from "../lib/effects/types";
@@ -33,6 +34,10 @@ interface ProjectState {
   clips: TimelineClip[];
   /** Per-effect param animation tracks */
   effectParamTracks: EffectParamTrack[];
+  /** Named rows in the media section of the timeline */
+  mediaTracks: TimelineTrack[];
+  /** Named rows in the overlay section of the timeline */
+  overlayTracks: TimelineTrack[];
 
   setProjectName: (name: string) => void;
   setResolution: (resolution: Resolution) => void;
@@ -64,6 +69,16 @@ interface ProjectState {
   removeClip: (id: string) => void;
   updateClip: (id: string, updates: Partial<TimelineClip>) => void;
 
+  // Media track management
+  addMediaTrack: () => void;
+  removeMediaTrack: (id: string) => void;
+  renameMediaTrack: (id: string, name: string) => void;
+
+  // Overlay track management
+  addOverlayTrack: () => void;
+  removeOverlayTrack: (id: string) => void;
+  renameOverlayTrack: (id: string, name: string) => void;
+
   // Effect param track actions
   addEffectParamTrack: (track: EffectParamTrack) => void;
   removeEffectParamTrack: (id: string) => void;
@@ -76,6 +91,14 @@ interface ProjectState {
 }
 
 let effectIdCounter = 0;
+let trackIdCounter = 0;
+
+function defaultMediaTrack(): TimelineTrack {
+  return { id: `mt-${trackIdCounter++}`, name: "Video", type: "media" };
+}
+function defaultOverlayTrack(): TimelineTrack {
+  return { id: `ot-${trackIdCounter++}`, name: "Overlays", type: "overlay" };
+}
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projectName: "Untitled Project",
@@ -90,6 +113,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isPlaying: false,
   clips: [],
   effectParamTracks: [],
+  mediaTracks: [defaultMediaTrack()],
+  overlayTracks: [defaultOverlayTrack()],
 
   setProjectName: (name) => set({ projectName: name }),
   setResolution: (resolution) => set({ resolution }),
@@ -254,6 +279,60 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       clips: state.clips.map((c) => (c.id === id ? { ...c, ...updates } : c)),
     })),
 
+  // Media track management
+  addMediaTrack: () =>
+    set((state) => ({
+      mediaTracks: [
+        ...state.mediaTracks,
+        { id: `mt-${trackIdCounter++}`, name: `Track ${state.mediaTracks.length + 1}`, type: "media" as const },
+      ],
+    })),
+
+  removeMediaTrack: (id) =>
+    set((state) => {
+      if (state.mediaTracks.length <= 1) return state;
+      const idx = state.mediaTracks.findIndex((t) => t.id === id);
+      if (idx === -1) return state;
+      return {
+        mediaTracks: state.mediaTracks.filter((t) => t.id !== id),
+        clips: state.clips
+          .filter((c) => c.trackIndex !== idx)
+          .map((c) => c.trackIndex > idx ? { ...c, trackIndex: c.trackIndex - 1 } : c),
+      };
+    }),
+
+  renameMediaTrack: (id, name) =>
+    set((state) => ({
+      mediaTracks: state.mediaTracks.map((t) => (t.id === id ? { ...t, name } : t)),
+    })),
+
+  // Overlay track management
+  addOverlayTrack: () =>
+    set((state) => ({
+      overlayTracks: [
+        ...state.overlayTracks,
+        { id: `ot-${trackIdCounter++}`, name: `Overlay ${state.overlayTracks.length + 1}`, type: "overlay" as const },
+      ],
+    })),
+
+  removeOverlayTrack: (id) =>
+    set((state) => {
+      if (state.overlayTracks.length <= 1) return state;
+      const idx = state.overlayTracks.findIndex((t) => t.id === id);
+      if (idx === -1) return state;
+      return {
+        overlayTracks: state.overlayTracks.filter((t) => t.id !== id),
+        overlays: state.overlays
+          .filter((o) => o.trackIndex !== idx)
+          .map((o) => o.trackIndex > idx ? { ...o, trackIndex: o.trackIndex - 1 } : o),
+      };
+    }),
+
+  renameOverlayTrack: (id, name) =>
+    set((state) => ({
+      overlayTracks: state.overlayTracks.map((t) => (t.id === id ? { ...t, name } : t)),
+    })),
+
   // Effect param tracks
   addEffectParamTrack: (track) =>
     set((state) => ({ effectParamTracks: [...state.effectParamTracks, track] })),
@@ -314,6 +393,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       overlays: state.overlays,
       clips: state.clips,
       effectParamTracks: state.effectParamTracks,
+      mediaTracks: state.mediaTracks,
+      overlayTracks: state.overlayTracks,
     };
 
     const res = await window.electron.file.writeText(
@@ -347,6 +428,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
       }
 
+      const loadedClips: TimelineClip[] = projectData.clips || [];
+      const loadedOverlays: Overlay[] = projectData.overlays || [];
+
+      // Migrate: if no saved tracks, auto-create enough rows to cover existing clips/overlays
+      let loadedMediaTracks: TimelineTrack[] = projectData.mediaTracks || [];
+      if (loadedMediaTracks.length === 0) {
+        const maxIdx = loadedClips.reduce((m: number, c: TimelineClip) => Math.max(m, c.trackIndex), 0);
+        loadedMediaTracks = Array.from({ length: Math.max(1, maxIdx + 1) }, (_, i) => ({
+          id: `mt-${trackIdCounter++}`,
+          name: i === 0 ? "Video" : `Track ${i + 1}`,
+          type: "media" as const,
+        }));
+      }
+
+      let loadedOverlayTracks: TimelineTrack[] = projectData.overlayTracks || [];
+      if (loadedOverlayTracks.length === 0) {
+        const maxIdx = loadedOverlays.reduce((m: number, o: Overlay) => Math.max(m, o.trackIndex), 0);
+        loadedOverlayTracks = Array.from({ length: Math.max(1, maxIdx + 1) }, (_, i) => ({
+          id: `ot-${trackIdCounter++}`,
+          name: i === 0 ? "Overlays" : `Overlay ${i + 1}`,
+          type: "overlay" as const,
+        }));
+      }
+
       set({
         projectName: projectData.projectName || "Untitled Project",
         resolution: projectData.resolution || DEFAULT_RESOLUTION,
@@ -354,9 +459,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         media: projectData.media || [],
         effects: projectData.effects || [],
         regions: projectData.regions || [],
-        overlays: projectData.overlays || [],
-        clips: projectData.clips || [],
+        overlays: loadedOverlays,
+        clips: loadedClips,
         effectParamTracks: projectData.effectParamTracks || [],
+        mediaTracks: loadedMediaTracks,
+        overlayTracks: loadedOverlayTracks,
 
         currentTime: 0,
         isPlaying: false,

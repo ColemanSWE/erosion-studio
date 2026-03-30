@@ -1,11 +1,16 @@
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
 import {
   Play,
   Pause,
   Square,
   ZoomIn,
   ZoomOut,
-  Clock,
+  Maximize2,
+  Magnet,
+  Plus,
+  Trash2,
+  Film,
+  Layers,
 } from "lucide-react";
 import type {
   Effect,
@@ -16,10 +21,11 @@ import type {
 } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
 import { TimelineRuler } from "./TimelineRuler";
-import { MediaTrack, MEDIA_ROW_H, MIN_TRACK_ROWS } from "./MediaTrack";
+import { MediaTrack, MEDIA_ROW_H } from "./MediaTrack";
 import { OverlayTrack } from "./OverlayTrack";
 import { EffectTrack } from "./EffectTrack";
 import { formatTime } from "../../lib/timeline";
+import { useProjectStore } from "../../stores/projectStore";
 import styles from "./Timeline.module.scss";
 
 interface TimelineProps {
@@ -59,7 +65,12 @@ interface TimelineProps {
 
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 400;
-const DEFAULT_ZOOM = 60; // 60px per second = 1min fills ~3600px
+const DEFAULT_ZOOM = 60;
+const MIN_TRACK_H = 24;
+const MAX_TRACK_H = 100;
+const DEFAULT_TRACK_H = 40;
+const RULER_H = 28;
+const LABEL_W = 170;
 
 export function Timeline({
   media,
@@ -91,14 +102,26 @@ export function Timeline({
   onStop,
 }: TimelineProps) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [trackHeight, setTrackHeight] = useState(DEFAULT_TRACK_H);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [snapLine, setSnapLine] = useState<number | null>(null);
   const tracksAreaRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   const pendingScrollLeftRef = useRef(0);
   const scrollRafRef = useRef<number | null>(null);
 
-  // Keep labels column scroll in sync with tracks area (vertical only — horizontal is independent).
-  // Batches scroll events with RAF to avoid a state update on every pixel of scroll.
+  const {
+    mediaTracks,
+    overlayTracks,
+    addMediaTrack,
+    removeMediaTrack,
+    renameMediaTrack,
+    addOverlayTrack,
+    removeOverlayTrack,
+    renameOverlayTrack,
+  } = useProjectStore();
+
   const syncScroll = useCallback(() => {
     const ta = tracksAreaRef.current;
     const lb = labelsRef.current;
@@ -127,67 +150,120 @@ export function Timeline({
     }
   }, [currentTime, isPlaying, zoom]);
 
-  const zoomIn = useCallback(
-    () => setZoom((z) => Math.min(MAX_ZOOM, z * 1.5)),
-    [],
-  );
-  const zoomOut = useCallback(
-    () => setZoom((z) => Math.max(MIN_ZOOM, z / 1.5)),
-    [],
-  );
+  const zoomIn = useCallback(() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.5)), []);
+  const zoomOut = useCallback(() => setZoom((z) => Math.max(MIN_ZOOM, z / 1.5)), []);
 
-  // Wheel to zoom (horizontal) — must use native listener with passive:false
-  // because React mounts onWheel as passive by default, blocking preventDefault()
+  const zoomToFit = useCallback(() => {
+    const ta = tracksAreaRef.current;
+    if (!ta) return;
+    const maxClipEnd = clips.reduce((m, c) => Math.max(m, c.endTime), duration);
+    const effectiveDur = Math.max(duration, maxClipEnd);
+    if (effectiveDur <= 0) return;
+    const fitZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, ta.clientWidth / effectiveDur));
+    setZoom(fitZoom);
+    ta.scrollLeft = 0;
+    setScrollLeft(0);
+  }, [clips, duration]);
+
+  // Wheel: Ctrl/Meta = horizontal zoom (cursor-centred), Shift = vertical zoom
   useEffect(() => {
     const el = tracksAreaRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        setZoom((z) =>
-          Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z * (e.deltaY < 0 ? 1.2 : 0.85)))
+        const rect = el.getBoundingClientRect();
+        const cursorX = e.clientX - rect.left;
+        setZoom((oldZoom) => {
+          const factor = e.deltaY < 0 ? 1.2 : 0.85;
+          const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom * factor));
+          const cursorTime = (el.scrollLeft + cursorX) / oldZoom;
+          requestAnimationFrame(() => {
+            el.scrollLeft = cursorTime * newZoom - cursorX;
+            setScrollLeft(el.scrollLeft);
+          });
+          return newZoom;
+        });
+      } else if (e.shiftKey) {
+        e.preventDefault();
+        setTrackHeight((h) =>
+          Math.max(MIN_TRACK_H, Math.min(MAX_TRACK_H, h + (e.deltaY < 0 ? 4 : -4))),
         );
       }
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, []); // tracksAreaRef.current is stable after mount
+  }, []);
 
   const activeEffects = effects.filter((e) => e.active);
-  // Extend duration to cover all placed clips
   const maxClipEnd = clips.reduce((max, c) => Math.max(max, c.endTime), duration);
   const effectiveDuration = Math.max(duration, maxClipEnd);
-  // Add generous right padding so the ruler always extends well past all content
   const totalWidth = Math.max(effectiveDuration * zoom + 500, 800);
-  const LABEL_W = 170;
-  const RULER_H = 28;
-  const ROW_H = 40;
 
-  const numMediaTracks = Math.max(MIN_TRACK_ROWS, ...clips.map((c) => c.trackIndex + 1));
-  const MEDIA_TRACK_H = numMediaTracks * MEDIA_ROW_H;
+  const numMediaRows = Math.max(mediaTracks.length, ...clips.map((c) => c.trackIndex + 1));
+  const MEDIA_TRACK_H = numMediaRows * trackHeight;
 
-  const numOverlayTracks = Math.max(MIN_TRACK_ROWS, ...overlays.map((o) => o.trackIndex + 1));
-  const OVERLAY_TRACK_H = numOverlayTracks * MEDIA_ROW_H;
+  const numOverlayRows = Math.max(overlayTracks.length, ...overlays.map((o) => o.trackIndex + 1));
+  const OVERLAY_TRACK_H = numOverlayRows * trackHeight;
 
-  // ─── Label rows —— must mirror track rows exactly ─────────────────────────
+  // ─── Labels column ────────────────────────────────────────────────────────
   const renderLabels = () => {
     const labels: React.ReactNode[] = [];
 
-    // Header spacer (mirrors ruler)
     labels.push(<div key="ruler-spacer" className={styles.labelsHeader} />);
 
-    // Media track label — height matches dynamic multi-row height
+    // Media track rows
+    for (let i = 0; i < numMediaRows; i++) {
+      const track = mediaTracks[i];
+      labels.push(
+        <TrackLabelRow
+          key={track ? track.id : `media-auto-${i}`}
+          name={track?.name ?? `Track ${i + 1}`}
+          icon={<Film size={11} />}
+          height={trackHeight}
+          canDelete={mediaTracks.length > 1 && !!track}
+          onRename={track ? (name) => renameMediaTrack(track.id, name) : undefined}
+          onDelete={track ? () => removeMediaTrack(track.id) : undefined}
+        />,
+      );
+    }
     labels.push(
-      <div key="media-label" className={styles.trackLabel} style={{ height: MEDIA_TRACK_H }}>
-        <Clock size={12} className={styles.trackIcon} />
-        <span className={styles.trackLabelText}>Media</span>
-      </div>,
+      <button
+        key="add-media-track"
+        className={styles.addTrackBtn}
+        onClick={addMediaTrack}
+        title="Add media track"
+      >
+        <Plus size={10} />
+        <span>Add track</span>
+      </button>,
     );
 
+    // Overlay track rows
+    for (let i = 0; i < numOverlayRows; i++) {
+      const track = overlayTracks[i];
+      labels.push(
+        <TrackLabelRow
+          key={track ? track.id : `overlay-auto-${i}`}
+          name={track?.name ?? `Overlay ${i + 1}`}
+          icon={<Layers size={11} />}
+          height={trackHeight}
+          canDelete={overlayTracks.length > 1 && !!track}
+          onRename={track ? (name) => renameOverlayTrack(track.id, name) : undefined}
+          onDelete={track ? () => removeOverlayTrack(track.id) : undefined}
+        />,
+      );
+    }
     labels.push(
-      <div key="overlay-label" className={styles.trackLabel} style={{ height: OVERLAY_TRACK_H }}>
-        <span className={styles.trackLabelText}>Overlays</span>
-      </div>,
+      <button
+        key="add-overlay-track"
+        className={styles.addTrackBtn}
+        onClick={addOverlayTrack}
+        title="Add overlay track"
+      >
+        <Plus size={10} />
+        <span>Add overlay</span>
+      </button>,
     );
 
     // Effect track labels
@@ -204,7 +280,7 @@ export function Timeline({
           <div
             className={styles.trackLabel}
             style={{
-              height: ROW_H,
+              height: trackHeight,
               borderLeft: `2px solid ${effect.startTime != null || effect.endTime != null ? "#4ad0d0" : "#555"}`,
             }}
           >
@@ -212,17 +288,13 @@ export function Timeline({
             <div className={styles.trackLabelActions}>
               <button
                 className={`${styles.trackLabelBtn} ${styles.danger}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveEffect(effect.id);
-                }}
+                onClick={(e) => { e.stopPropagation(); onRemoveEffect(effect.id); }}
                 title="Remove effect"
               >
-                ×
+                <Trash2 size={10} />
               </button>
             </div>
           </div>
-          {/* Param track labels */}
           {hasParamRows &&
             tracks.map((t) => (
               <div key={t.id} className={styles.trackLabel} style={{ height: 24, paddingLeft: 20 }}>
@@ -235,7 +307,7 @@ export function Timeline({
                     onClick={() => onRemoveEffectParamTrack(t.id)}
                     title="Remove param track"
                   >
-                    ×
+                    <Trash2 size={9} />
                   </button>
                 </div>
               </div>
@@ -249,32 +321,26 @@ export function Timeline({
 
   return (
     <div className={styles.timeline} style={{ height: 220 }}>
-      {/* ── Header bar ───────────────────────────────────────────────────── */}
+      {/* ── Header bar ──────────────────────────────────────────────────── */}
       <div className={styles.timelineHeader}>
         <span className={styles.timelineTitle}>Timeline</span>
 
-        <button
-          className={styles.headerBtn}
-          onClick={isPlaying ? onPause : onPlay}
-          title={isPlaying ? "Pause" : "Play"}
-        >
+        <button className={styles.headerBtn} onClick={isPlaying ? onPause : onPlay} title={isPlaying ? "Pause" : "Play"}>
           {isPlaying ? <Pause size={12} /> : <Play size={12} />}
         </button>
         <button className={styles.headerBtn} onClick={onStop} title="Stop">
           <Square size={12} />
         </button>
 
-        <span
-          style={{
-            fontFamily: "monospace",
-            fontSize: 10,
-            color: "#666",
-            minWidth: 60,
-            textAlign: "center",
-          }}
+        <span className={styles.timeDisplay}>{formatTime(currentTime)}</span>
+
+        <button
+          className={`${styles.headerBtn} ${snapEnabled ? styles.active : ""}`}
+          onClick={() => setSnapEnabled((v) => !v)}
+          title={snapEnabled ? "Snapping on" : "Snapping off"}
         >
-          {formatTime(currentTime)}
-        </span>
+          <Magnet size={12} />
+        </button>
 
         <div className={styles.zoomControls}>
           <button className={styles.headerBtn} onClick={zoomOut} title="Zoom Out">
@@ -283,6 +349,9 @@ export function Timeline({
           <span className={styles.zoomLabel}>{Math.round(zoom)}px/s</span>
           <button className={styles.headerBtn} onClick={zoomIn} title="Zoom In">
             <ZoomIn size={12} />
+          </button>
+          <button className={styles.headerBtn} onClick={zoomToFit} title="Zoom to fit">
+            <Maximize2 size={12} />
           </button>
         </div>
       </div>
@@ -299,21 +368,17 @@ export function Timeline({
         </div>
 
         {/* Tracks area */}
-        <div
-          ref={tracksAreaRef}
-          className={styles.tracksArea}
-          onScroll={syncScroll}
-        >
+        <div ref={tracksAreaRef} className={styles.tracksArea} onScroll={syncScroll}>
           {/* Sticky ruler */}
           <TimelineRuler
-            duration={effectiveDuration + (500 / zoom)}
+            duration={effectiveDuration + 500 / zoom}
             currentTime={currentTime}
             zoom={zoom}
             onSeek={onSeek}
             scrollLeft={scrollLeft}
           />
 
-          {/* Playhead line spanning all rows */}
+          {/* Playhead line */}
           <div
             style={{
               position: "absolute",
@@ -327,36 +392,54 @@ export function Timeline({
             }}
           />
 
-          {/* Media track row — height is dynamic */}
+          {/* Magnetic snap indicator */}
+          {snapLine !== null && (
+            <div
+              className={styles.snapLine}
+              style={{ left: snapLine * zoom, top: RULER_H }}
+            />
+          )}
+
+          {/* Media track */}
           <div className={styles.trackRow} style={{ width: totalWidth, height: MEDIA_TRACK_H }}>
             <MediaTrack
               clips={clips}
+              overlays={overlays}
+              tracks={mediaTracks}
               media={media}
               zoom={zoom}
               duration={duration}
               currentTime={currentTime}
+              rowHeight={trackHeight}
+              snapEnabled={snapEnabled}
               onAddClip={onAddClip}
               onUpdateClip={onUpdateClip}
               onRemoveClip={onRemoveClip}
+              onSnapLine={setSnapLine}
             />
           </div>
 
-          {/* Overlay track row */}
+          {/* Overlay track */}
           <div className={styles.trackRow} style={{ width: totalWidth, height: OVERLAY_TRACK_H }}>
             <OverlayTrack
               overlays={overlays}
+              clips={clips}
+              tracks={overlayTracks}
               zoom={zoom}
               duration={duration}
               currentTime={currentTime}
+              rowHeight={trackHeight}
+              snapEnabled={snapEnabled}
               onAddOverlay={onAddOverlay}
               onUpdateOverlay={onUpdateOverlay}
               onRemoveOverlay={onRemoveOverlay}
               onSelectOverlay={onSelectOverlay}
               selectedOverlayId={selectedOverlayId}
+              onSnapLine={setSnapLine}
             />
           </div>
 
-          {/* Effect track rows */}
+          {/* Effect tracks */}
           {activeEffects.map((effect) => {
             const tracks = effectParamTracks.filter((t) => t.effectId === effect.id);
             return (
@@ -364,15 +447,19 @@ export function Timeline({
                 key={effect.id}
                 effect={effect}
                 paramTracks={tracks}
+                clips={clips}
+                overlays={overlays}
                 zoom={zoom}
                 duration={duration}
                 currentTime={currentTime}
+                snapEnabled={snapEnabled}
                 onUpdateEffect={onUpdateEffect}
                 onAddParamTrack={onAddEffectParamTrack}
                 onRemoveParamTrack={onRemoveEffectParamTrack}
                 onAddKeyframe={onAddKeyframe}
                 onUpdateKeyframe={onUpdateKeyframe}
                 onRemoveKeyframe={onRemoveKeyframe}
+                onSnapLine={setSnapLine}
               />
             );
           })}
@@ -384,6 +471,67 @@ export function Timeline({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Track label row with inline rename ──────────────────────────────────────
+interface TrackLabelRowProps {
+  name: string;
+  icon: React.ReactNode;
+  height: number;
+  canDelete: boolean;
+  onRename?: (name: string) => void;
+  onDelete?: () => void;
+}
+
+function TrackLabelRow({ name, icon, height, canDelete, onRename, onDelete }: TrackLabelRowProps) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(name);
+
+  const commit = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && onRename) onRename(trimmed);
+    setEditing(false);
+  };
+
+  return (
+    <div className={styles.trackLabel} style={{ height }}>
+      <span className={styles.trackIcon}>{icon}</span>
+      {editing ? (
+        <input
+          className={styles.trackLabelInput}
+          value={editValue}
+          autoFocus
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") { setEditing(false); setEditValue(name); }
+            e.stopPropagation();
+          }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span
+          className={styles.trackLabelText}
+          onDoubleClick={() => onRename && setEditing(true)}
+          title={onRename ? "Double-click to rename" : undefined}
+        >
+          {name}
+        </span>
+      )}
+      {canDelete && onDelete && (
+        <div className={styles.trackLabelActions}>
+          <button
+            className={`${styles.trackLabelBtn} ${styles.danger}`}
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            title="Remove track"
+          >
+            <Trash2 size={10} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

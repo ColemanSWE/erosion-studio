@@ -1,45 +1,67 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Type, Image as ImageIcon, Trash2 } from "lucide-react";
-import type { Overlay } from "../../lib/effects/types";
-import { snapTime, getSnapInterval } from "../../lib/timeline";
+import type { Overlay, TimelineClip, TimelineTrack } from "../../lib/effects/types";
+import { collectSnapTargets, applySnap } from "../../lib/timeline";
 import styles from "./Timeline.module.scss";
-import { MEDIA_ROW_H, MIN_TRACK_ROWS } from "./MediaTrack";
 
 interface OverlayTrackProps {
   overlays: Overlay[];
-  zoom: number; // px per second
+  clips: TimelineClip[];
+  tracks: TimelineTrack[];
+  zoom: number;
   duration: number;
   currentTime: number;
+  rowHeight: number;
+  snapEnabled: boolean;
   onAddOverlay: (overlay: Overlay) => void;
   onUpdateOverlay: (id: string, updates: Partial<Overlay>) => void;
   onRemoveOverlay: (id: string) => void;
   onSelectOverlay: (id: string | null) => void;
   selectedOverlayId: string | null;
+  onSnapLine: (time: number | null) => void;
 }
 
-interface GhostClip {
-  left: number;
-  width: number;
-  top: number;
+interface DragState {
+  overlayId: string;
+  startTime: number;
+  trackIndex: number;
 }
 
 export function OverlayTrack({
   overlays,
+  clips,
+  tracks,
   zoom,
   duration,
+  currentTime,
+  rowHeight,
+  snapEnabled,
   onAddOverlay,
   onUpdateOverlay,
   onRemoveOverlay,
   onSelectOverlay,
   selectedOverlayId,
+  onSnapLine,
 }: OverlayTrackProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [ghostClip, setGhostClip] = useState<GhostClip | null>(null);
+  const [newMediaGhostX, setNewMediaGhostX] = useState<number | null>(null);
+  const [draggingState, setDraggingState] = useState<DragState | null>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
-  const activeDragRef = useRef<{
-    offsetPx: number;
-    durationSec: number;
+  const draggingStateRef = useRef<DragState | null>(null);
+  const setDragging = (s: DragState | null) => {
+    draggingStateRef.current = s;
+    setDraggingState(s);
+  };
+
+  const dragMoveRef = useRef<{
+    overlayId: string;
+    startX: number;
+    startY: number;
+    origStart: number;
+    origEnd: number;
+    origTrack: number;
+    hasMoved: boolean;
   } | null>(null);
 
   const resizingRef = useRef<{
@@ -53,8 +75,12 @@ export function OverlayTrack({
   const lastResizeX = useRef(0);
   const resizeRafRef = useRef<number | null>(null);
 
-  const numTracks = Math.max(MIN_TRACK_ROWS, ...overlays.map((o) => o.trackIndex + 1));
-  const totalHeight = numTracks * MEDIA_ROW_H;
+  const numTracks = Math.max(
+    tracks.length,
+    ...overlays.map((o) => o.trackIndex + 1),
+    ...(draggingState ? [draggingState.trackIndex + 1] : []),
+  );
+  const totalHeight = numTracks * rowHeight;
 
   const yToTrackIndex = useCallback(
     (clientY: number): number => {
@@ -62,148 +88,104 @@ export function OverlayTrack({
       if (!el) return 0;
       const rect = el.getBoundingClientRect();
       const relY = clientY - rect.top;
-      const idx = Math.floor(relY / MEDIA_ROW_H);
-      return Math.max(0, Math.min(numTracks - 1, idx)); // was clamping to numTracks (off-by-one)
+      const idx = Math.floor(relY / rowHeight);
+      return Math.max(0, Math.min(numTracks, idx));
     },
-    [numTracks],
+    [numTracks, rowHeight],
   );
 
-  const handleDragOver = useCallback(
-    (e: React.DragEvent) => {
+  // ─── Real-time overlay drag ───────────────────────────────────────────────
+  const startOverlayDrag = useCallback(
+    (e: React.MouseEvent, overlayId: string) => {
+      if ((e.target as HTMLElement).closest(`.${styles.clipHandle}`)) return;
+      if ((e.target as HTMLElement).closest(`.${styles.removeClipBtn}`)) return;
       e.preventDefault();
-      const isExisting = e.dataTransfer.types.includes("application/timeline-overlay");
-      const isNew = e.dataTransfer.types.includes("application/media-item");
-      if (!isExisting && !isNew) return;
+      e.stopPropagation();
 
-      e.dataTransfer.dropEffect = isExisting ? "move" : "copy";
-      setIsDragOver(true);
-
-      const el = dropRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const trackIndex = yToTrackIndex(e.clientY);
-      const top = trackIndex * MEDIA_ROW_H;
-
-      if (isExisting && activeDragRef.current) {
-        const startPx = x - activeDragRef.current.offsetPx;
-        const startSec = snapTime(
-          Math.max(0, startPx / zoom),
-          getSnapInterval(zoom),
-        );
-        setGhostClip({
-          left: startSec * zoom,
-          width: activeDragRef.current.durationSec * zoom,
-          top,
-        });
-      } else {
-        setGhostClip({ left: Math.max(0, x - 2), width: 6, top });
-      }
-    },
-    [zoom, yToTrackIndex],
-  );
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragOver(false);
-    setGhostClip(null);
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      setGhostClip(null);
-      activeDragRef.current = null;
-
-      const snap = getSnapInterval(zoom);
-
-      const overlayId = e.dataTransfer.getData("application/timeline-overlay");
-      if (overlayId) {
-        const overlay = overlays.find((o) => o.id === overlayId);
-        if (!overlay) return;
-
-        const el = dropRef.current;
-        if (!el) return;
-
-        const offsetXStr = e.dataTransfer.getData("application/timeline-overlay-offset");
-        const offsetX = offsetXStr ? parseFloat(offsetXStr) : 0;
-
-        const rect = el.getBoundingClientRect();
-        const x = e.clientX - rect.left - offsetX;
-        const newStart = snapTime(Math.max(0, x / zoom), snap);
-        const overlayLen = overlay.endTime - overlay.startTime;
-        const newEnd = Math.min(duration, newStart + overlayLen);
-        const trackIndex = yToTrackIndex(e.clientY);
-
-        onUpdateOverlay(overlayId, { startTime: newStart, endTime: newEnd, trackIndex });
-        return;
-      }
-
-      const mediaJson = e.dataTransfer.getData("application/media-item");
-      if (mediaJson) {
-        const item = JSON.parse(mediaJson);
-        const el = dropRef.current;
-        if (!el) return;
-
-        const rect = el.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const startTime = snapTime(Math.max(0, x / zoom), snap);
-        const defaultDuration =
-          item.duration && isFinite(item.duration)
-            ? item.duration
-            : item.type === "image"
-              ? 5
-              : 10;
-        const endTime = Math.min(duration, startTime + defaultDuration);
-        const trackIndex = yToTrackIndex(e.clientY);
-
-        onAddOverlay({
-          id: `overlay-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          name: item.name,
-          type: item.type === "video" ? "video" : "image",
-          mediaId: item.id,
-          x: 0.1,
-          y: 0.1,
-          width: 0.3,
-          height: 0.3,
-          startTime,
-          endTime,
-          trackIndex,
-          isEffectZone: false,
-        });
-      }
-    },
-    [zoom, duration, yToTrackIndex, overlays, onUpdateOverlay, onAddOverlay],
-  );
-
-  const handleOverlayDragStart = useCallback(
-    (e: React.DragEvent, overlayId: string) => {
-      e.dataTransfer.setData("application/timeline-overlay", overlayId);
-      e.dataTransfer.effectAllowed = "move";
-
-      const el = dropRef.current;
       const overlay = overlays.find((o) => o.id === overlayId);
-      if (el && overlay) {
-        const rect = el.getBoundingClientRect();
-        const mouseXInTrack = e.clientX - rect.left;
-        const startXInTrack = overlay.startTime * zoom;
-        const offsetX = mouseXInTrack - startXInTrack;
-        e.dataTransfer.setData("application/timeline-overlay-offset", String(offsetX));
+      if (!overlay) return;
 
-        activeDragRef.current = {
-          offsetPx: offsetX,
-          durationSec: overlay.endTime - overlay.startTime,
-        };
-      }
+      onSelectOverlay(overlayId);
+      dragMoveRef.current = {
+        overlayId,
+        startX: e.clientX,
+        startY: e.clientY,
+        origStart: overlay.startTime,
+        origEnd: overlay.endTime,
+        origTrack: overlay.trackIndex,
+        hasMoved: false,
+      };
+
+      let rafId: number | null = null;
+      let lastX = e.clientX;
+      let lastY = e.clientY;
+
+      const onMove = (me: MouseEvent) => {
+        lastX = me.clientX;
+        lastY = me.clientY;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const r = dragMoveRef.current;
+          if (!r) return;
+
+          const dx = lastX - r.startX;
+          const dy = lastY - r.startY;
+          if (!r.hasMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+          r.hasMoved = true;
+
+          const overlayDuration = r.origEnd - r.origStart;
+          const rawStart = r.origStart + dx / zoom;
+
+          const currentNumTracks = Math.max(tracks.length, ...overlays.map((o) => o.trackIndex + 1));
+          const trackDelta = Math.round(dy / rowHeight);
+          const newTrackIndex = Math.max(0, Math.min(currentNumTracks, r.origTrack + trackDelta));
+
+          const snapTargets = collectSnapTargets(clips, overlays, currentTime, undefined, r.overlayId);
+          const { snappedTime: snappedStart, magnetTime: magnetStart } = applySnap(
+            rawStart, snapTargets, zoom, snapEnabled,
+          );
+          const { snappedTime: snappedEnd, magnetTime: magnetEnd } = applySnap(
+            rawStart + overlayDuration, snapTargets, zoom, snapEnabled,
+          );
+
+          let finalStart = snappedStart;
+          if (!magnetStart && magnetEnd) {
+            finalStart = Math.max(0, snappedEnd - overlayDuration);
+          }
+
+          onSnapLine(magnetStart ?? magnetEnd ?? null);
+          setDragging({ overlayId: r.overlayId, startTime: finalStart, trackIndex: newTrackIndex });
+        });
+      };
+
+      const onUp = () => {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        const r = dragMoveRef.current;
+        if (r?.hasMoved) {
+          const ds = draggingStateRef.current;
+          if (ds) {
+            onUpdateOverlay(r.overlayId, {
+              startTime: ds.startTime,
+              endTime: ds.startTime + (r.origEnd - r.origStart),
+              trackIndex: ds.trackIndex,
+            });
+          }
+        }
+        dragMoveRef.current = null;
+        setDragging(null);
+        onSnapLine(null);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
     },
-    [overlays, zoom],
+    [overlays, clips, zoom, rowHeight, numTracks, currentTime, snapEnabled, tracks, onUpdateOverlay, onSelectOverlay, onSnapLine],
   );
 
-  const handleOverlayDragEnd = useCallback(() => {
-    activeDragRef.current = null;
-    setGhostClip(null);
-  }, []);
-
+  // ─── Resize handles ───────────────────────────────────────────────────────
   const startResize = useCallback(
     (e: React.MouseEvent, overlayId: string, side: "left" | "right") => {
       e.preventDefault();
@@ -219,7 +201,7 @@ export function OverlayTrack({
         origEnd: overlay.endTime,
       };
 
-      const snap = getSnapInterval(zoom);
+      const snapTargets = collectSnapTargets(clips, overlays, currentTime, undefined, overlayId);
 
       const onMove = (me: MouseEvent) => {
         lastResizeX.current = me.clientX;
@@ -229,19 +211,15 @@ export function OverlayTrack({
           const r = resizingRef.current;
           if (!r) return;
           const dx = lastResizeX.current - r.startX;
-          const dt = dx / zoom;
+          const rawTime = (r.side === "left" ? r.origStart : r.origEnd) + dx / zoom;
+          const { snappedTime, magnetTime } = applySnap(rawTime, snapTargets, zoom, snapEnabled);
 
+          onSnapLine(magnetTime);
           if (r.side === "left") {
-            const newStart = snapTime(
-              Math.max(0, Math.min(r.origEnd - 0.1, r.origStart + dt)),
-              snap,
-            );
+            const newStart = Math.max(0, Math.min(r.origEnd - 0.1, snappedTime));
             onUpdateOverlay(r.overlayId, { startTime: newStart });
           } else {
-            const newEnd = snapTime(
-              Math.max(r.origStart + 0.1, r.origEnd + dt),
-              snap,
-            );
+            const newEnd = Math.max(r.origStart + 0.1, snappedTime);
             onUpdateOverlay(r.overlayId, { endTime: newEnd });
           }
         });
@@ -253,6 +231,7 @@ export function OverlayTrack({
           resizeRafRef.current = null;
         }
         resizingRef.current = null;
+        onSnapLine(null);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -260,12 +239,72 @@ export function OverlayTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [overlays, zoom, onUpdateOverlay],
+    [overlays, clips, zoom, currentTime, snapEnabled, onUpdateOverlay, onSnapLine],
+  );
+
+  // ─── New media drop from MediaBrowser ────────────────────────────────────
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      const isNew = e.dataTransfer.types.includes("application/media-item");
+      if (!isNew) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      setIsDragOver(true);
+      const el = dropRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setNewMediaGhostX(e.clientX - rect.left);
+    },
+    [],
+  );
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragOver(false);
+    setNewMediaGhostX(null);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      setNewMediaGhostX(null);
+
+      const mediaJson = e.dataTransfer.getData("application/media-item");
+      if (!mediaJson) return;
+      const item = JSON.parse(mediaJson);
+      const el = dropRef.current;
+      if (!el) return;
+
+      const rect = el.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const rawStart = x / zoom;
+      const snapTargets = collectSnapTargets(clips, overlays, currentTime);
+      const { snappedTime: startTime } = applySnap(rawStart, snapTargets, zoom, snapEnabled);
+      const defaultDuration =
+        item.duration && isFinite(item.duration) ? item.duration : item.type === "image" ? 5 : 10;
+      const endTime = Math.min(duration, startTime + defaultDuration);
+      const trackIndex = yToTrackIndex(e.clientY);
+
+      onAddOverlay({
+        id: `overlay-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        name: item.name,
+        type: item.type === "video" ? "video" : "image",
+        mediaId: item.id,
+        x: 0.1,
+        y: 0.1,
+        width: 0.3,
+        height: 0.3,
+        startTime,
+        endTime,
+        trackIndex,
+        isEffectZone: false,
+      });
+    },
+    [zoom, duration, clips, overlays, currentTime, snapEnabled, yToTrackIndex, onAddOverlay],
   );
 
   const maxEnd = overlays.reduce((max, o) => Math.max(max, o.endTime), duration);
   const totalWidth = Math.max(maxEnd * zoom + 120, 400);
-
   const getTrackColor = (trackIndex: number) => `hsl(${320 - trackIndex * 30}, 60%, 45%)`;
 
   return (
@@ -284,9 +323,9 @@ export function OverlayTrack({
           style={{
             position: "absolute",
             left: 0,
-            top: idx * MEDIA_ROW_H,
+            top: idx * rowHeight,
             width: "100%",
-            height: MEDIA_ROW_H,
+            height: rowHeight,
             borderBottom: "1px solid rgba(255,255,255,0.05)",
             background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)",
             pointerEvents: "none",
@@ -294,46 +333,37 @@ export function OverlayTrack({
         />
       ))}
 
-      {/* Ghost drop preview */}
-      {ghostClip && (
+      {newMediaGhostX !== null && (
         <div
           className={styles.clipGhost}
-          style={{
-            left: ghostClip.left,
-            width: Math.max(6, ghostClip.width),
-            top: ghostClip.top + 2,
-            height: MEDIA_ROW_H - 4,
-          }}
+          style={{ left: Math.max(0, newMediaGhostX - 2), width: 6, top: 2, height: rowHeight - 4 }}
         />
       )}
 
       {overlays.map((overlay) => {
-        const left = overlay.startTime * zoom;
+        const isDragging = draggingState?.overlayId === overlay.id;
+        const renderStart = isDragging ? draggingState!.startTime : overlay.startTime;
+        const renderTrack = isDragging ? draggingState!.trackIndex : overlay.trackIndex;
+        const left = renderStart * zoom;
         const width = Math.max(4, (overlay.endTime - overlay.startTime) * zoom);
-        const top = overlay.trackIndex * MEDIA_ROW_H;
+        const top = renderTrack * rowHeight;
         const isSelected = selectedOverlayId === overlay.id;
         const color = getTrackColor(overlay.trackIndex);
 
         return (
           <div
             key={overlay.id}
-            className={`${styles.clip} ${isSelected ? styles.selected : ""}`}
+            className={`${styles.clip} ${isSelected ? styles.selected : ""} ${isDragging ? styles.dragging : ""}`}
             style={{
               left,
               width,
               top,
-              height: MEDIA_ROW_H - 4,
+              height: rowHeight - 4,
               background: overlay.isEffectZone ? "transparent" : color,
               border: overlay.isEffectZone ? `1px dashed ${color}` : undefined,
             }}
-            draggable
             tabIndex={0}
-            onDragStart={(e) => handleOverlayDragStart(e, overlay.id)}
-            onDragEnd={handleOverlayDragEnd}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              onSelectOverlay(overlay.id);
-            }}
+            onMouseDown={(e) => startOverlayDrag(e, overlay.id)}
             onKeyDown={(e) => {
               if (e.key === "Delete" || e.key === "Backspace") {
                 onRemoveOverlay(overlay.id);
@@ -388,7 +418,7 @@ export function OverlayTrack({
             alignItems: "center",
             justifyContent: "center",
             pointerEvents: "none",
-            height: MEDIA_ROW_H,
+            height: rowHeight,
           }}
         >
           <span style={{ fontFamily: "monospace", fontSize: 10, color: "#444" }}>

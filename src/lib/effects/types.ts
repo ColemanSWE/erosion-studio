@@ -160,6 +160,13 @@ export interface TimelineClip {
   trackIndex: number; // row (0 = primary)
 }
 
+/** A named row on the timeline (media or overlay section) */
+export interface TimelineTrack {
+  id: string;
+  name: string;
+  type: "media" | "overlay";
+}
+
 export interface EffectParamConfig {
   key: string;
   label: string;

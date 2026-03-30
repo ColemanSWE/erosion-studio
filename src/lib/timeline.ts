@@ -1,4 +1,4 @@
-import type { Keyframe, EffectParamTrack, Effect } from "./effects/types";
+import type { Keyframe, EffectParamTrack, Effect, TimelineClip, Overlay } from "./effects/types";
 
 /**
  * Linearly interpolate a value between two keyframes at time `t`.
@@ -82,4 +82,73 @@ export function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60);
   const f = Math.floor((seconds % 1) * 10);
   return `${m}:${String(s).padStart(2, "0")}.${f}`;
+}
+
+// ─── Magnetic snapping ────────────────────────────────────────────────────────
+
+export interface SnapTarget {
+  time: number;
+  type: "clip-start" | "clip-end" | "playhead";
+}
+
+/**
+ * Collect snap targets from all clips, overlays, and the playhead.
+ * Optionally exclude one clip or overlay (the item currently being dragged).
+ */
+export function collectSnapTargets(
+  clips: TimelineClip[],
+  overlays: Overlay[],
+  currentTime: number,
+  excludeClipId?: string,
+  excludeOverlayId?: string,
+): SnapTarget[] {
+  const targets: SnapTarget[] = [{ time: currentTime, type: "playhead" }];
+
+  for (const clip of clips) {
+    if (clip.id === excludeClipId) continue;
+    targets.push({ time: clip.startTime, type: "clip-start" });
+    targets.push({ time: clip.endTime, type: "clip-end" });
+  }
+
+  for (const overlay of overlays) {
+    if (overlay.id === excludeOverlayId) continue;
+    targets.push({ time: overlay.startTime, type: "clip-start" });
+    targets.push({ time: overlay.endTime, type: "clip-end" });
+  }
+
+  return targets;
+}
+
+/**
+ * Apply snapping to a time value. First tries magnetic snap to the provided
+ * targets (within 8px). Falls back to grid snap if nothing is in range.
+ *
+ * Returns the final time and the magnetic snap time if one was applied (null
+ * means only grid snap was used, so no indicator line should be shown).
+ */
+export function applySnap(
+  time: number,
+  targets: SnapTarget[],
+  zoom: number,
+  enabled: boolean,
+): { snappedTime: number; magnetTime: number | null } {
+  const clamped = Math.max(0, time);
+  if (!enabled) return { snappedTime: clamped, magnetTime: null };
+
+  const thresholdSec = 8 / zoom;
+  let best: SnapTarget | null = null;
+  let bestDist = thresholdSec;
+
+  for (const t of targets) {
+    const d = Math.abs(clamped - t.time);
+    if (d < bestDist) {
+      bestDist = d;
+      best = t;
+    }
+  }
+
+  if (best) return { snappedTime: best.time, magnetTime: best.time };
+
+  const interval = getSnapInterval(zoom);
+  return { snappedTime: snapTime(clamped, interval), magnetTime: null };
 }
