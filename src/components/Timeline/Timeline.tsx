@@ -94,14 +94,23 @@ export function Timeline({
   const tracksAreaRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const pendingScrollLeftRef = useRef(0);
+  const scrollRafRef = useRef<number | null>(null);
 
-  // Keep labels column scroll in sync with tracks area (vertical only — horizontal is independent)
+  // Keep labels column scroll in sync with tracks area (vertical only — horizontal is independent).
+  // Batches scroll events with RAF to avoid a state update on every pixel of scroll.
   const syncScroll = useCallback(() => {
     const ta = tracksAreaRef.current;
     const lb = labelsRef.current;
     if (!ta || !lb) return;
     lb.scrollTop = ta.scrollTop;
-    setScrollLeft(ta.scrollLeft);
+    pendingScrollLeftRef.current = ta.scrollLeft;
+    if (scrollRafRef.current === null) {
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        setScrollLeft(pendingScrollLeftRef.current);
+      });
+    }
   }, []);
 
   // Auto-scroll playhead into view during playback

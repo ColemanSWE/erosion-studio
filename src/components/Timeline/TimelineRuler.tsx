@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from "react";
+import React, { useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { formatTime } from "../../lib/timeline";
 import styles from "./Timeline.module.scss";
 
@@ -86,28 +86,27 @@ export function TimelineRuler({
     [duration, zoom, onSeek, scrollLeft],
   );
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      draggingRef.current = true;
-      seekFromEvent(e);
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    },
-    [seekFromEvent],
-  );
+  // Keep a ref to seekFromEvent so that mousemove/mouseup handlers created on
+  // mousedown always call the latest version (avoids stale closures if zoom or
+  // scrollLeft change during a drag).
+  const seekFromEventRef = useRef(seekFromEvent);
+  useLayoutEffect(() => { seekFromEventRef.current = seekFromEvent; });
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (draggingRef.current) seekFromEvent(e);
-    },
-    [seekFromEvent],
-  );
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    draggingRef.current = true;
+    seekFromEventRef.current(e);
 
-  const handleMouseUp = useCallback(() => {
-    draggingRef.current = false;
-    window.removeEventListener("mousemove", handleMouseMove);
-    window.removeEventListener("mouseup", handleMouseUp);
-  }, [handleMouseMove]);
+    const onMove = (me: MouseEvent) => {
+      if (draggingRef.current) seekFromEventRef.current(me);
+    };
+    const onUp = () => {
+      draggingRef.current = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
 
   return (
     <div

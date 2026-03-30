@@ -68,6 +68,14 @@ export function snapTime(time: number, snapInterval: number): number {
   return Math.round(time / snapInterval) * snapInterval;
 }
 
+/** Returns the appropriate snap interval in seconds for a given zoom level (px/s). */
+export function getSnapInterval(zoom: number): number {
+  if (zoom >= 200) return 1 / 30;
+  if (zoom >= 60) return 0.1;
+  if (zoom >= 20) return 0.5;
+  return 1;
+}
+
 /** Format seconds as mm:ss.f */
 export function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);

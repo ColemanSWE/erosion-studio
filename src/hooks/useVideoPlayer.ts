@@ -199,6 +199,9 @@ export function useVideoPlayer({
     // Remove old videos
     for (const [id, video] of map.entries()) {
       if (!currentIds.has(id)) {
+        video.onerror = null;
+        video.onloadedmetadata = null;
+        video.oncanplay = null;
         video.pause();
         video.src = "";
         map.delete(id);

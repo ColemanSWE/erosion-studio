@@ -61,14 +61,21 @@ export function EffectTrack({
       const origStart = startTime;
       const origEnd = endTime;
       const clipLen = origEnd - origStart;
+      let lastX = startX;
+      let rafId: number | null = null;
 
       const onMove = (me: MouseEvent) => {
-        const dx = me.clientX - startX;
-        const dt = dx / zoom;
-        const newStart = Math.max(0, Math.min(duration - clipLen, origStart + dt));
-        onUpdateEffect(effect.id, { startTime: newStart, endTime: newStart + clipLen });
+        lastX = me.clientX;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const dt = (lastX - startX) / zoom;
+          const newStart = Math.max(0, Math.min(duration - clipLen, origStart + dt));
+          onUpdateEffect(effect.id, { startTime: newStart, endTime: newStart + clipLen });
+        });
       };
       const onUp = () => {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -86,19 +93,26 @@ export function EffectTrack({
       const startX = e.clientX;
       const origStart = startTime;
       const origEnd = endTime;
+      let lastX = startX;
+      let rafId: number | null = null;
 
       const onMove = (me: MouseEvent) => {
-        const dx = me.clientX - startX;
-        const dt = dx / zoom;
-        if (side === "left") {
-          const newStart = Math.max(0, Math.min(origEnd - 0.1, origStart + dt));
-          onUpdateEffect(effect.id, { startTime: newStart });
-        } else {
-          const newEnd = Math.max(origStart + 0.1, Math.min(duration, origEnd + dt));
-          onUpdateEffect(effect.id, { endTime: newEnd });
-        }
+        lastX = me.clientX;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const dt = (lastX - startX) / zoom;
+          if (side === "left") {
+            const newStart = Math.max(0, Math.min(origEnd - 0.1, origStart + dt));
+            onUpdateEffect(effect.id, { startTime: newStart });
+          } else {
+            const newEnd = Math.max(origStart + 0.1, Math.min(duration, origEnd + dt));
+            onUpdateEffect(effect.id, { endTime: newEnd });
+          }
+        });
       };
       const onUp = () => {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -312,13 +326,20 @@ function KeyframeMarker({
       e.stopPropagation();
       const startX = e.clientX;
       const origTime = kf.time;
+      let lastX = startX;
+      let rafId: number | null = null;
 
       const onMove = (me: MouseEvent) => {
-        const dx = me.clientX - startX;
-        const newTime = Math.max(0, Math.min(duration, origTime + dx / zoom));
-        onUpdate({ time: newTime });
+        lastX = me.clientX;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const newTime = Math.max(0, Math.min(duration, origTime + (lastX - startX) / zoom));
+          onUpdate({ time: newTime });
+        });
       };
       const onUp = () => {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
