@@ -210,8 +210,6 @@ export function Timeline({
   const renderLabels = () => {
     const labels: React.ReactNode[] = [];
 
-    labels.push(<div key="ruler-spacer" className={styles.labelsHeader} />);
-
     // Media track rows
     for (let i = 0; i < numMediaRows; i++) {
       const track = mediaTracks[i];
@@ -358,117 +356,122 @@ export function Timeline({
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className={styles.timelineBody} style={{ flex: 1, overflow: "hidden" }}>
-        {/* Labels column */}
-        <div
-          ref={labelsRef}
-          className={styles.labelsColumn}
-          style={{ width: LABEL_W, overflowY: "hidden" }}
-        >
-          {renderLabels()}
+        {/* Left panel: fixed header aligned with ruler + scrollable track labels */}
+        <div className={styles.leftPanel} style={{ width: LABEL_W }}>
+          <div className={styles.labelsHeader} />
+          <div ref={labelsRef} className={styles.labelsColumn}>
+            {renderLabels()}
+          </div>
         </div>
 
-        {/* Tracks area */}
-        <div ref={tracksAreaRef} className={styles.tracksArea} onScroll={syncScroll}>
-          {/* Sticky ruler */}
-          <TimelineRuler
-            duration={effectiveDuration + 500 / zoom}
-            currentTime={currentTime}
-            zoom={zoom}
-            onSeek={onSeek}
-            scrollLeft={scrollLeft}
-          />
+        {/* Right panel: ruler row (never scrolls) + scrollable tracks area */}
+        <div className={styles.tracksRight}>
+          {/* Ruler sits outside the scroll container so horizontal scroll
+              doesn't double-offset the tick/playhead positions */}
+          <div className={styles.rulerRow}>
+            <TimelineRuler
+              duration={effectiveDuration + 500 / zoom}
+              currentTime={currentTime}
+              zoom={zoom}
+              onSeek={onSeek}
+              scrollLeft={scrollLeft}
+            />
+          </div>
 
-          {/* Playhead line */}
-          <div
-            style={{
-              position: "absolute",
-              left: currentTime * zoom,
-              top: RULER_H,
-              bottom: 0,
-              width: 1,
-              background: "rgba(255,51,102,0.3)",
-              pointerEvents: "none",
-              zIndex: 4,
-            }}
-          />
-
-          {/* Magnetic snap indicator */}
-          {snapLine !== null && (
+          {/* Scrollable tracks area */}
+          <div ref={tracksAreaRef} className={styles.tracksArea} onScroll={syncScroll}>
+            {/* Playhead line — absolute within scrollable content, aligns with clips */}
             <div
-              className={styles.snapLine}
-              style={{ left: snapLine * zoom, top: RULER_H }}
+              style={{
+                position: "absolute",
+                left: currentTime * zoom,
+                top: 0,
+                bottom: 0,
+                width: 1,
+                background: "rgba(255,51,102,0.3)",
+                pointerEvents: "none",
+                zIndex: 4,
+              }}
             />
-          )}
 
-          {/* Media track */}
-          <div className={styles.trackRow} style={{ width: totalWidth, height: MEDIA_TRACK_H }}>
-            <MediaTrack
-              clips={clips}
-              overlays={overlays}
-              tracks={mediaTracks}
-              media={media}
-              zoom={zoom}
-              duration={duration}
-              currentTime={currentTime}
-              rowHeight={trackHeight}
-              snapEnabled={snapEnabled}
-              onAddClip={onAddClip}
-              onUpdateClip={onUpdateClip}
-              onRemoveClip={onRemoveClip}
-              onSnapLine={setSnapLine}
-            />
-          </div>
+            {/* Magnetic snap indicator */}
+            {snapLine !== null && (
+              <div
+                className={styles.snapLine}
+                style={{ left: snapLine * zoom, top: 0 }}
+              />
+            )}
 
-          {/* Overlay track */}
-          <div className={styles.trackRow} style={{ width: totalWidth, height: OVERLAY_TRACK_H }}>
-            <OverlayTrack
-              overlays={overlays}
-              clips={clips}
-              tracks={overlayTracks}
-              zoom={zoom}
-              duration={duration}
-              currentTime={currentTime}
-              rowHeight={trackHeight}
-              snapEnabled={snapEnabled}
-              onAddOverlay={onAddOverlay}
-              onUpdateOverlay={onUpdateOverlay}
-              onRemoveOverlay={onRemoveOverlay}
-              onSelectOverlay={onSelectOverlay}
-              selectedOverlayId={selectedOverlayId}
-              onSnapLine={setSnapLine}
-            />
-          </div>
-
-          {/* Effect tracks */}
-          {activeEffects.map((effect) => {
-            const tracks = effectParamTracks.filter((t) => t.effectId === effect.id);
-            return (
-              <EffectTrack
-                key={effect.id}
-                effect={effect}
-                paramTracks={tracks}
+            {/* Media track */}
+            <div className={styles.trackRow} style={{ width: totalWidth, height: MEDIA_TRACK_H }}>
+              <MediaTrack
                 clips={clips}
                 overlays={overlays}
+                tracks={mediaTracks}
+                media={media}
                 zoom={zoom}
                 duration={duration}
                 currentTime={currentTime}
+                rowHeight={trackHeight}
                 snapEnabled={snapEnabled}
-                onUpdateEffect={onUpdateEffect}
-                onAddParamTrack={onAddEffectParamTrack}
-                onRemoveParamTrack={onRemoveEffectParamTrack}
-                onAddKeyframe={onAddKeyframe}
-                onUpdateKeyframe={onUpdateKeyframe}
-                onRemoveKeyframe={onRemoveKeyframe}
+                onAddClip={onAddClip}
+                onUpdateClip={onUpdateClip}
+                onRemoveClip={onRemoveClip}
                 onSnapLine={setSnapLine}
               />
-            );
-          })}
-
-          {activeEffects.length === 0 && (
-            <div className={styles.emptyState} style={{ height: 80 }}>
-              <span>Add effects to see effect tracks</span>
             </div>
-          )}
+
+            {/* Overlay track */}
+            <div className={styles.trackRow} style={{ width: totalWidth, height: OVERLAY_TRACK_H }}>
+              <OverlayTrack
+                overlays={overlays}
+                clips={clips}
+                tracks={overlayTracks}
+                zoom={zoom}
+                duration={duration}
+                currentTime={currentTime}
+                rowHeight={trackHeight}
+                snapEnabled={snapEnabled}
+                onAddOverlay={onAddOverlay}
+                onUpdateOverlay={onUpdateOverlay}
+                onRemoveOverlay={onRemoveOverlay}
+                onSelectOverlay={onSelectOverlay}
+                selectedOverlayId={selectedOverlayId}
+                onSnapLine={setSnapLine}
+              />
+            </div>
+
+            {/* Effect tracks */}
+            {activeEffects.map((effect) => {
+              const tracks = effectParamTracks.filter((t) => t.effectId === effect.id);
+              return (
+                <EffectTrack
+                  key={effect.id}
+                  effect={effect}
+                  paramTracks={tracks}
+                  clips={clips}
+                  overlays={overlays}
+                  zoom={zoom}
+                  duration={duration}
+                  currentTime={currentTime}
+                  snapEnabled={snapEnabled}
+                  onUpdateEffect={onUpdateEffect}
+                  onAddParamTrack={onAddEffectParamTrack}
+                  onRemoveParamTrack={onRemoveEffectParamTrack}
+                  onAddKeyframe={onAddKeyframe}
+                  onUpdateKeyframe={onUpdateKeyframe}
+                  onRemoveKeyframe={onRemoveKeyframe}
+                  onSnapLine={setSnapLine}
+                />
+              );
+            })}
+
+            {activeEffects.length === 0 && (
+              <div className={styles.emptyState} style={{ height: 80 }}>
+                <span>Add effects to see effect tracks</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

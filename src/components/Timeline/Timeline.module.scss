@@ -86,21 +86,50 @@
   min-height: 0;
 }
 
-// ─── Labels column ────────────────────────────────────────────────────────────
-.labelsColumn {
-  width: 170px;
+// ─── Left panel (labels header + scrollable labels) ───────────────────────────
+.leftPanel {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid variables.$border-secondary;
+  // overflow hidden so labels don't bleed past the panel
+  overflow: hidden;
+}
+
+.labelsHeader {
+  height: 28px;
+  flex-shrink: 0;
+  border-bottom: 1px solid variables.$border-secondary;
+  background: variables.$bg-elevated;
+}
+
+// Scrollable track label list — scroll is driven programmatically to mirror tracksArea
+.labelsColumn {
+  flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  border-right: 1px solid variables.$border-secondary;
+  min-height: 0;
 
   &::-webkit-scrollbar { display: none; }
 }
 
-.labelsHeader {
-  height: 28px;  // matches ruler height
-  border-bottom: 1px solid variables.$border-secondary;
-  background: variables.$bg-elevated;
+// ─── Right panel (ruler row + scrollable tracks) ──────────────────────────────
+.tracksRight {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+// The ruler never scrolls — it sits above the scrollable tracksArea.
+// Tick marks and the playhead are drawn/positioned using scrollLeft so they
+// stay correctly aligned with clip content without any double-offset.
+.rulerRow {
+  height: 28px;
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
 }
 
 // ─── Tracks area ─────────────────────────────────────────────────────────────
@@ -108,6 +137,7 @@
   flex: 1;
   overflow: auto;
   position: relative;
+  min-height: 0;
 
   &::-webkit-scrollbar {
     height: 6px;
@@ -123,12 +153,10 @@
 
 // ─── Ruler ────────────────────────────────────────────────────────────────────
 .ruler {
-  position: sticky;
-  top: 0;
-  height: 28px;
+  width: 100%;
+  height: 100%;
   background: variables.$bg-elevated;
   border-bottom: 1px solid variables.$border-secondary;
-  z-index: 5;
   cursor: pointer;
   overflow: hidden;
 }

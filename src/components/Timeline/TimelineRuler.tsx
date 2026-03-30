@@ -21,7 +21,8 @@ export function TimelineRuler({
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
 
-  const totalWidth = Math.max(duration * zoom, 200);
+  // playheadX is viewport-relative: the ruler doesn't scroll horizontally,
+  // so we subtract scrollLeft to convert from timeline coords to ruler coords.
   const playheadX = currentTime * zoom - scrollLeft;
 
   // Draw tick marks
@@ -112,7 +113,6 @@ export function TimelineRuler({
     <div
       ref={containerRef}
       className={styles.ruler}
-      style={{ width: totalWidth }}
       onMouseDown={handleMouseDown}
     >
       <canvas ref={canvasRef} className={styles.rulerCanvas} />
