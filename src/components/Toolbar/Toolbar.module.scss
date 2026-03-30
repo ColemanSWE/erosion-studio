@@ -4,11 +4,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: variables.$spacing-md;
-  border-bottom: 2px solid variables.$border-primary;
+  padding: 0 variables.$spacing-sm;
+  border-bottom: 1px solid variables.$border-primary;
   background-color: variables.$bg-surface;
-  height: 60px;
+  height: 40px;
   flex-shrink: 0;
+  gap: variables.$spacing-sm;
 }
 
 .left,
@@ -16,13 +17,13 @@
 .right {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-md;
+  gap: variables.$spacing-xs;
   flex: 1;
 }
 
 .center {
   justify-content: center;
-  gap: variables.$spacing-sm;
+  gap: 2px;
 }
 
 .right {
@@ -31,78 +32,132 @@
 
 .logo {
   font-family: variables.$font-mono;
-  font-weight: bold;
-  font-size: 16px;
-  letter-spacing: -0.5px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: variables.$text-primary;
+  user-select: none;
+  padding: 0 variables.$spacing-xs;
+}
+
+.projectIcon {
+  color: variables.$text-tertiary;
+  flex-shrink: 0;
 }
 
 .projectName {
-  font-size: 14px;
+  font-size: 12px;
   color: variables.$text-secondary;
   font-family: variables.$font-mono;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.button {
+.divider {
+  width: 1px;
+  height: 18px;
+  background: variables.$border-primary;
+  margin: 0 variables.$spacing-xs;
+  flex-shrink: 0;
+}
+
+.iconButton {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-sm variables.$spacing-md;
-  border: 1px solid variables.$border-primary;
-  background-color: variables.$bg-elevated;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   border-radius: variables.$radius-md;
-  transition: all variables.$transition-fast;
-  font-size: 13px;
+  color: variables.$text-secondary;
+  transition: color variables.$transition-fast, background-color variables.$transition-fast;
 
   &:hover:not(:disabled) {
-    background-color: variables.$bg-overlay;
-    border-color: variables.$accent-primary;
+    color: variables.$text-primary;
+    background-color: variables.$bg-elevated;
   }
 
   &:disabled {
+    color: variables.$text-tertiary;
     opacity: 0.4;
   }
 }
 
+.panelToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: variables.$radius-md;
+  color: variables.$text-tertiary;
+  transition: color variables.$transition-fast, background-color variables.$transition-fast;
+
+  &:hover {
+    color: variables.$text-secondary;
+    background-color: variables.$bg-elevated;
+  }
+
+  &.active {
+    color: variables.$accent-primary;
+    background-color: variables.$accent-glow;
+  }
+}
+
 .exportButton {
-  @extend .button;
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-xs;
+  padding: 0 variables.$spacing-sm;
+  height: 28px;
   background-color: variables.$accent-primary;
   color: variables.$text-inverse;
-  border-color: variables.$accent-primary;
+  border-radius: variables.$radius-md;
+  font-size: 12px;
+  font-family: variables.$font-mono;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  transition: background-color variables.$transition-fast, box-shadow variables.$transition-fast;
 
   &:hover {
     background-color: variables.$accent-secondary;
+    box-shadow: 0 0 12px variables.$accent-glow-strong;
   }
 }
 
 .resolutionSelect {
-  padding: variables.$spacing-sm variables.$spacing-md;
+  padding: 0 variables.$spacing-sm;
+  height: 28px;
   border: 1px solid variables.$border-primary;
   background-color: variables.$bg-elevated;
   border-radius: variables.$radius-md;
-  font-size: 13px;
+  font-size: 11px;
   font-family: variables.$font-mono;
-  color: inherit;
+  color: variables.$text-secondary;
   cursor: pointer;
-  transition: all variables.$transition-fast;
+  transition: border-color variables.$transition-fast, color variables.$transition-fast;
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  padding-right: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' viewBox='0 0 8 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23555566' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 8px center;
-  padding-right: 26px;
+  background-position: right 6px center;
 
   &:hover {
-    border-color: variables.$accent-primary;
-    background-color: variables.$bg-overlay;
+    border-color: variables.$border-accent;
+    color: variables.$text-primary;
   }
 
   &:focus {
     outline: none;
     border-color: variables.$accent-primary;
+    box-shadow: 0 0 0 2px variables.$accent-glow;
   }
 
   option {
-    background-color: variables.$bg-surface;
-    color: inherit;
+    background-color: variables.$bg-elevated;
+    color: variables.$text-primary;
   }
 }

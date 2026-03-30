@@ -7,6 +7,7 @@ import {
   Trash2,
   Square,
   Search,
+  Type,
 } from "lucide-react";
 import EffectParams from "./EffectParams";
 import styles from "./EffectsPanel.module.scss";
@@ -27,6 +28,7 @@ interface EffectsPanelProps {
   onSelectRegion: (id: string | null) => void;
   onStartDrawingRegion: () => void;
   onUpdateOverlay: (id: string, updates: Partial<Overlay>) => void;
+  onAddTextOverlay: () => void;
 }
 
 
@@ -45,6 +47,7 @@ function EffectsPanel({
   onSelectRegion,
   onStartDrawingRegion,
   onUpdateOverlay,
+  onAddTextOverlay,
 }: EffectsPanelProps) {
   const allDefs = getAllEffects();
   const EFFECT_CATEGORIES = allDefs.reduce((acc, def) => {
@@ -56,12 +59,7 @@ function EffectsPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
-  >({
-    glitch: true,
-    style: true,
-    face: true,
-    standard: true,
-  });
+  >({});
   const [expandedEffects, setExpandedEffects] = useState<
     Record<string, boolean>
   >({});
@@ -240,10 +238,21 @@ function EffectsPanel({
 
       <div className={styles.activeEffects}>
         <div className={styles.activeHeader}>
-          <h4>Active Effects</h4>
+          <h4>Active</h4>
           <span className={styles.count}>
             {effects.filter((e) => e.active).length}
           </span>
+        </div>
+
+        <div className={styles.actionButtons}>
+          <button className={styles.actionButton} onClick={onAddTextOverlay}>
+            <Type size={13} />
+            <span>Add Text</span>
+          </button>
+          <button className={styles.actionButton} onClick={onStartDrawingRegion}>
+            <Square size={13} />
+            <span>Draw Region</span>
+          </button>
         </div>
 
         {activeOverlayId && (
@@ -370,10 +379,6 @@ function EffectsPanel({
           </div>
         )}
 
-        <button className={styles.drawRegionButton} onClick={onStartDrawingRegion}>
-          <Square size={14} />
-          <span>Draw Region</span>
-        </button>
       </div>
     </aside>
   );

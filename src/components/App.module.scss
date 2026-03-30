@@ -5,10 +5,16 @@
   display: flex;
   flex-direction: column;
   background-color: variables.$bg-base;
+  overflow: hidden;
 }
 
-.mainContent {
-  display: flex;
+.panelGroupVertical {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+.mainPanel {
+  height: 100%;
+  overflow: hidden;
 }

@@ -1,4 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  Panel,
+  Group as PanelGroup,
+  Separator as PanelResizeHandle,
+  type PanelImperativeHandle,
+} from "react-resizable-panels";
 import Toolbar from "./Toolbar/Toolbar";
 import MediaBrowser from "./MediaBrowser/MediaBrowser";
 import Preview from "./Preview/Preview";
@@ -76,10 +82,54 @@ function App() {
     activeRegionId,
     activeOverlayId,
     isDrawingRegion,
+    mediaBrowserSize,
+    effectsPanelSize,
+    timelineSize,
+    setShowMediaBrowser,
+    setShowEffectsPanel,
+    setShowTimeline,
     setActiveRegionId,
     setActiveOverlayId,
     setIsDrawingRegion,
+    setMediaBrowserSize,
+    setEffectsPanelSize,
+    setTimelineSize,
   } = useUIStore();
+
+  const mediaBrowserRef = useRef<PanelImperativeHandle | null>(null);
+  const effectsPanelRef = useRef<PanelImperativeHandle | null>(null);
+  const timelinePanelRef = useRef<PanelImperativeHandle | null>(null);
+
+  // Sync toolbar toggle → panel imperative collapse/expand
+  const handleToggleMediaBrowser = useCallback(() => {
+    const panel = mediaBrowserRef.current;
+    if (!panel) return;
+    if (showMediaBrowser) {
+      panel.collapse();
+    } else {
+      panel.expand();
+    }
+  }, [showMediaBrowser]);
+
+  const handleToggleEffectsPanel = useCallback(() => {
+    const panel = effectsPanelRef.current;
+    if (!panel) return;
+    if (showEffectsPanel) {
+      panel.collapse();
+    } else {
+      panel.expand();
+    }
+  }, [showEffectsPanel]);
+
+  const handleToggleTimeline = useCallback(() => {
+    const panel = timelinePanelRef.current;
+    if (!panel) return;
+    if (showTimeline) {
+      panel.collapse();
+    } else {
+      panel.expand();
+    }
+  }, [showTimeline]);
 
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
 
@@ -95,18 +145,12 @@ function App() {
     version: "1.0",
   };
 
-  const {
-    undo,
-    redo,
-    canUndo,
-    canRedo,
-  } = useHistory(projectSnapshot);
+  const { undo, redo, canUndo, canRedo } = useHistory(projectSnapshot);
 
   const { exportOffline, exportRealtime, exportImage: exportImageFile, isExporting, exportProgress } = useExport();
   const [showExportDialog, setShowExportDialog] = useState(false);
 
   // ─── Playback Heartbeat ──────────────────────────────────────────────────
-  // Use refs so the rAF loop doesn't tear down on every frame
   const currentTimeRef = useRef(currentTime);
   currentTimeRef.current = currentTime;
   const durationRef = useRef(duration);
@@ -139,7 +183,7 @@ function App() {
   // ─── Timeline Rendering logic ─────────────────────────────────────────────
   const activeClips = clips
     .filter((c) => currentTime >= c.startTime && currentTime <= c.endTime)
-    .sort((a, b) => a.startTime - b.startTime); // Primary is first, secondary (transitioning in) is next
+    .sort((a, b) => a.startTime - b.startTime);
 
   const activeMediaList = activeClips
     .map((c) => ({
@@ -151,25 +195,18 @@ function App() {
 
   const selectedMedia = media.find((m) => m.id === selectedMediaId);
 
-  // Use selected media if no clip is active (fallback behavior)
   const renderSources =
     activeMediaList.length > 0
       ? activeMediaList
       : selectedMedia
         ? [{ clip: undefined, media: selectedMedia, isFallback: true }]
         : [];
-  // Resolve effects based on timeline keyframes and time windows
-  const resolvedEffects = resolveEffectsAtTime(
-    effects,
-    effectParamTracks,
-    currentTime
-  );
+
+  const resolvedEffects = resolveEffectsAtTime(effects, effectParamTracks, currentTime);
 
   const isCamera = renderSources.length > 0 && renderSources[0].media?.type === "camera";
   const isVideo = renderSources.length > 0 && renderSources.some((s) => s.media?.type === "video");
-  const isImage = renderSources.length > 0 && renderSources.some((s) => s.media?.type === "image");
 
-  // Filter sources by type for the respective hooks
   const imageSources = renderSources
     .filter((s) => s.media.type === "image")
     .map((s) => ({
@@ -193,11 +230,7 @@ function App() {
     .filter((o) => o.type === "video" && o.mediaId)
     .map((o) => {
       const mediaItem = media.find((m) => m.id === o.mediaId);
-      return {
-        id: o.id,
-        path: mediaItem?.path || "",
-        localTime: currentTime - o.startTime,
-      };
+      return { id: o.id, path: mediaItem?.path || "", localTime: currentTime - o.startTime };
     })
     .filter((o) => o.path);
 
@@ -205,16 +238,11 @@ function App() {
     .filter((o) => o.type === "image" && o.mediaId)
     .map((o) => {
       const mediaItem = media.find((m) => m.id === o.mediaId);
-      return {
-        id: o.id,
-        path: mediaItem?.path || "",
-      };
+      return { id: o.id, path: mediaItem?.path || "" };
     })
     .filter((o) => o.path);
 
   // ─── Rendering Hooks ─────────────────────────────────────────────────────
-  // Only the hook corresponding to the active source type will draw.
-  
   const { exportImage } = usePhotoEditor({
     canvas,
     effects: resolvedEffects,
@@ -224,9 +252,12 @@ function App() {
     overlays,
   });
 
-  const handleVideoDurationChange = useCallback((dur: number) => {
-    if (dur > durationRef.current) setDuration(dur);
-  }, [setDuration]);
+  const handleVideoDurationChange = useCallback(
+    (dur: number) => {
+      if (dur > durationRef.current) setDuration(dur);
+    },
+    [setDuration]
+  );
 
   useVideoPlayer({
     canvas,
@@ -240,7 +271,7 @@ function App() {
     onDurationChange: handleVideoDurationChange,
   });
 
-  const { stream, videoRef: _videoRef } = useCameraPlayer({
+  const { stream } = useCameraPlayer({
     canvas,
     effects: resolvedEffects,
     isActive: isCamera,
@@ -255,23 +286,22 @@ function App() {
     (item: { id: string; type: "image" | "video"; name: string; path: string; duration?: number }) => {
       addMedia(item as any);
       if (item.type === "video" && item.duration) {
-         if (item.duration > duration) setDuration(item.duration);
+        if (item.duration > duration) setDuration(item.duration);
       }
     },
-    [addMedia, duration, setDuration],
+    [addMedia, duration, setDuration]
   );
 
-  const { captureMode, snapPhoto, startRecording, stopRecording } =
-    useCameraCapture({ stream, canvas, onMediaCaptured: handleMediaCaptured });
+  const { captureMode, snapPhoto, startRecording, stopRecording } = useCameraCapture({
+    stream,
+    canvas,
+    onMediaCaptured: handleMediaCaptured,
+  });
 
-  // Tick the recording timer
   useEffect(() => {
     if (captureMode === "recording") {
       setRecSeconds(0);
-      recTimerRef.current = setInterval(
-        () => setRecSeconds((s) => s + 1),
-        1000,
-      );
+      recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
     } else {
       if (recTimerRef.current) {
         clearInterval(recTimerRef.current);
@@ -288,7 +318,7 @@ function App() {
     setCanvas(newCanvas);
   }, []);
 
-  const handleImport = async (type?: "image" | "video") => {
+  const handleImport = async () => {
     if (!window.electron) {
       alert("File dialog only available in Electron");
       return;
@@ -301,24 +331,18 @@ function App() {
           name: "All Supported Media",
           extensions: ["mp4", "mov", "webm", "avi", "mkv", "m4v", "jpg", "jpeg", "png", "gif", "webp"],
         },
-        {
-          name: "Videos",
-          extensions: ["mp4", "mov", "webm", "avi", "mkv", "m4v"],
-        },
-        {
-          name: "Images",
-          extensions: ["jpg", "jpeg", "png", "gif", "webp"],
-        },
+        { name: "Videos", extensions: ["mp4", "mov", "webm", "avi", "mkv", "m4v"] },
+        { name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp"] },
       ],
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
       const fileName = filePath.split("/").pop() || "Unknown";
-      const isVideo = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(fileName);
+      const isVideoFile = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(fileName);
 
       let videoDuration: number | undefined;
-      if (isVideo && window.electron?.ffmpeg) {
+      if (isVideoFile && window.electron?.ffmpeg) {
         const info = await window.electron.ffmpeg.getVideoInfo(filePath);
         if (info.success && info.duration && isFinite(info.duration)) {
           videoDuration = info.duration;
@@ -326,15 +350,13 @@ function App() {
         }
       }
 
-      const newMedia = {
+      addMedia({
         id: `media-${Date.now()}`,
-        type: isVideo ? "video" : "image",
+        type: isVideoFile ? "video" : "image",
         name: fileName,
         path: filePath,
         duration: videoDuration,
-      } as const;
-
-      addMedia(newMedia);
+      } as const);
     }
   };
 
@@ -349,42 +371,39 @@ function App() {
     selectMedia(newMedia.id);
   };
 
-  const handleDropFiles = useCallback(async (files: FileList) => {
-    for (const file of Array.from(files)) {
-      const isVideo = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(file.name);
-      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
-      if (!isVideo && !isImage) continue;
+  const handleDropFiles = useCallback(
+    async (files: FileList) => {
+      for (const file of Array.from(files)) {
+        const isVideoFile = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(file.name);
+        const isImageFile = /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
+        if (!isVideoFile && !isImageFile) continue;
 
-      // Build a pseudo file:// path from the file object
-      // In Electron, File objects have a `path` property
-      const filePath = (file as any).path || file.name;
+        const filePath = (file as any).path || file.name;
 
-      let videoDuration: number | undefined;
-      if (isVideo && window.electron?.ffmpeg && filePath.startsWith("/")) {
-        try {
-          const info = await window.electron.ffmpeg.getVideoInfo(filePath);
-          if (info.success && info.duration && isFinite(info.duration)) {
-            videoDuration = info.duration;
-            if (info.duration > duration) setDuration(info.duration);
-          }
-        } catch {}
+        let videoDuration: number | undefined;
+        if (isVideoFile && window.electron?.ffmpeg && filePath.startsWith("/")) {
+          try {
+            const info = await window.electron.ffmpeg.getVideoInfo(filePath);
+            if (info.success && info.duration && isFinite(info.duration)) {
+              videoDuration = info.duration;
+              if (info.duration > duration) setDuration(info.duration);
+            }
+          } catch {}
+        }
+
+        addMedia({
+          id: `media-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          type: isVideoFile ? "video" : "image",
+          name: file.name,
+          path: filePath.startsWith("/") ? filePath : URL.createObjectURL(file),
+          duration: videoDuration,
+        } as const);
       }
+    },
+    [addMedia, duration, setDuration]
+  );
 
-      const newMedia = {
-        id: `media-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        type: isVideo ? "video" : "image",
-        name: file.name,
-        path: filePath.startsWith("/") ? filePath : URL.createObjectURL(file),
-        duration: videoDuration,
-      } as const;
-
-      addMedia(newMedia);
-    }
-  }, [addMedia, duration, setDuration]);
-
-  const handleExport = () => {
-    setShowExportDialog(true);
-  };
+  const handleExport = () => setShowExportDialog(true);
 
   const handleExportConfirm = async (settings: ExportSettings) => {
     if (!canvas) {
@@ -402,10 +421,8 @@ function App() {
           : selectedMedia?.duration ?? duration;
 
       if (fmt === "png" || fmt === "jpeg") {
-        // Still image export
         result = await exportImageFile(canvas, fmt === "jpeg" ? "jpeg" : "png");
       } else if (fmt === "webm" && isVideo) {
-        // Real-time WebM via MediaRecorder — play the timeline
         pause();
         setCurrentTime(0);
         await new Promise((r) => setTimeout(r, 300));
@@ -413,17 +430,12 @@ function App() {
         result = await exportRealtime(canvas, exportDuration, settings.fps);
         pause();
       } else {
-        // Offline frame-by-frame export (MP4, GIF, or WebM-offline)
         pause();
-
-        const seek = (time: number): Promise<void> => {
-          return new Promise((resolve) => {
+        const seek = (time: number): Promise<void> =>
+          new Promise((resolve) => {
             setCurrentTime(time);
-            // Wait two rAF cycles so the video player can seek and render
             requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
           });
-        };
-
         result = await exportOffline(canvas, exportDuration, settings, seek);
       }
 
@@ -442,46 +454,38 @@ function App() {
     }
   };
 
-  const handleUndo = useCallback(() => {
-    undo();
-  }, [undo]);
-
-  const handleRedo = useCallback(() => {
-    redo();
-  }, [redo]);
-
-  const handleSave = useCallback(async () => {
-    await saveProject();
-  }, [saveProject]);
-
+  const handleUndo = useCallback(() => undo(), [undo]);
+  const handleRedo = useCallback(() => redo(), [redo]);
+  const handleSave = useCallback(async () => saveProject(), [saveProject]);
   const handlePlayPause = useCallback(() => {
-    if (isPlaying) {
-      pause();
-    } else {
-      play();
-    }
+    if (isPlaying) pause();
+    else play();
   }, [isPlaying, pause, play]);
 
-  const handleRegionDrawn = useCallback((region: Omit<Region, 'id' | 'name' | 'color'>) => {
-    const regionNumber = regions.length + 1;
-    const colorIndex = regions.length % REGION_COLORS.length;
-    const newRegion: Region = {
-      id: `region-${Date.now()}`,
-      name: `Region ${regionNumber}`,
-      color: REGION_COLORS[colorIndex],
-      ...region,
-    };
-    addRegion(newRegion);
-    setActiveRegionId(newRegion.id);
-    setIsDrawingRegion(false);
-  }, [regions, addRegion, setActiveRegionId, setIsDrawingRegion]);
+  const handleRegionDrawn = useCallback(
+    (region: Omit<Region, "id" | "name" | "color">) => {
+      const regionNumber = regions.length + 1;
+      const colorIndex = regions.length % REGION_COLORS.length;
+      const newRegion: Region = {
+        id: `region-${Date.now()}`,
+        name: `Region ${regionNumber}`,
+        color: REGION_COLORS[colorIndex],
+        ...region,
+      };
+      addRegion(newRegion);
+      setActiveRegionId(newRegion.id);
+      setIsDrawingRegion(false);
+    },
+    [regions, addRegion, setActiveRegionId, setIsDrawingRegion]
+  );
 
-  const handleRemoveRegion = useCallback((id: string) => {
-    removeRegion(id);
-    if (activeRegionId === id) {
-      setActiveRegionId(null);
-    }
-  }, [removeRegion, activeRegionId, setActiveRegionId]);
+  const handleRemoveRegion = useCallback(
+    (id: string) => {
+      removeRegion(id);
+      if (activeRegionId === id) setActiveRegionId(null);
+    },
+    [removeRegion, activeRegionId, setActiveRegionId]
+  );
 
   const handleStartDrawingRegion = useCallback(() => {
     setIsDrawingRegion(true);
@@ -515,6 +519,9 @@ function App() {
     canRedo,
   });
 
+  // Suppress unused warning — exportImage is used indirectly by usePhotoEditor
+  void exportImage;
+
   return (
     <div className={styles.app}>
       <Toolbar
@@ -524,131 +531,170 @@ function App() {
         onSave={handleSave}
         onOpen={loadProject}
         onExport={handleExport}
-        onAddText={handleAddTextOverlay}
         canUndo={canUndo}
         canRedo={canRedo}
         resolution={resolution}
         onResolutionChange={setResolution}
+        showMediaBrowser={showMediaBrowser}
+        showEffectsPanel={showEffectsPanel}
+        showTimeline={showTimeline}
+        onToggleMediaBrowser={handleToggleMediaBrowser}
+        onToggleEffectsPanel={handleToggleEffectsPanel}
+        onToggleTimeline={handleToggleTimeline}
       />
 
-      <div className={styles.mainContent}>
-        {showMediaBrowser && (
-          <MediaBrowser
+      <PanelGroup orientation="vertical" className={styles.panelGroupVertical}>
+        <Panel minSize={40} className={styles.mainPanel}>
+          <PanelGroup orientation="horizontal">
+            <Panel
+              panelRef={mediaBrowserRef}
+              defaultSize={mediaBrowserSize}
+              minSize={12}
+              collapsible
+              onResize={(size) => {
+                setMediaBrowserSize(size.asPercentage);
+                setShowMediaBrowser(size.asPercentage > 0);
+              }}
+            >
+              <MediaBrowser
+                media={media}
+                selectedId={selectedMediaId}
+                onImport={handleImport}
+                onAddCamera={handleAddCamera}
+                onSelect={(item) => selectMedia(item.id)}
+                onRemove={removeMedia}
+                onDropFiles={handleDropFiles}
+              />
+            </Panel>
+            <PanelResizeHandle />
+            <Panel minSize={30}>
+              <Preview
+                width={resolution.width}
+                height={resolution.height}
+                onCanvasReady={handleCanvasReady}
+                regions={regions}
+                overlays={overlays}
+                activeRegionId={activeRegionId}
+                activeOverlayId={activeOverlayId}
+                isDrawingRegion={isDrawingRegion}
+                onRegionDrawn={handleRegionDrawn}
+                onRegionSelect={setActiveRegionId}
+                onOverlaySelect={setActiveOverlayId}
+                onOverlayUpdate={(id, updates) => updateOverlay(id, updates)}
+                captureHud={
+                  isCamera ? (
+                    <div className={previewStyles.captureHud}>
+                      <button
+                        className={`${previewStyles.captureBtn} ${previewStyles.snap}`}
+                        onClick={snapPhoto}
+                        title="Snap photo from canvas (effects included)"
+                      >
+                        <Camera size={13} />
+                        Snap
+                      </button>
+                      {captureMode === "idle" ? (
+                        <button
+                          className={`${previewStyles.captureBtn} ${previewStyles.record}`}
+                          onClick={startRecording}
+                          title="Start recording (effects included)"
+                        >
+                          <Video size={13} />
+                          Record
+                        </button>
+                      ) : (
+                        <>
+                          <span className={previewStyles.recTimer}>
+                            {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:
+                            {String(recSeconds % 60).padStart(2, "0")}
+                          </span>
+                          <button
+                            className={`${previewStyles.captureBtn} ${previewStyles.record} ${previewStyles.recording}`}
+                            onClick={stopRecording}
+                            title="Stop recording"
+                          >
+                            <StopIcon size={13} />
+                            Stop
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : undefined
+                }
+              />
+            </Panel>
+            <PanelResizeHandle />
+            <Panel
+              panelRef={effectsPanelRef}
+              defaultSize={effectsPanelSize}
+              minSize={14}
+              collapsible
+              onResize={(size) => {
+                setEffectsPanelSize(size.asPercentage);
+                setShowEffectsPanel(size.asPercentage > 0);
+              }}
+            >
+              <EffectsPanel
+                effects={effects}
+                regions={regions}
+                overlays={overlays}
+                activeRegionId={activeRegionId}
+                activeOverlayId={activeOverlayId}
+                onAddEffect={addEffect}
+                onUpdateEffect={updateEffect}
+                onRemoveEffect={removeEffect}
+                onReorderEffect={reorderEffect}
+                onRemoveRegion={handleRemoveRegion}
+                onSelectRegion={setActiveRegionId}
+                onStartDrawingRegion={handleStartDrawingRegion}
+                onUpdateOverlay={(id, updates) => updateOverlay(id, updates)}
+                onAddTextOverlay={handleAddTextOverlay}
+              />
+            </Panel>
+          </PanelGroup>
+        </Panel>
+        <PanelResizeHandle />
+        <Panel
+          panelRef={timelinePanelRef}
+          defaultSize={timelineSize}
+          minSize={12}
+          collapsible
+          onResize={(size) => {
+            setTimelineSize(size.asPercentage);
+            setShowTimeline(size.asPercentage > 0);
+          }}
+        >
+          <Timeline
             media={media}
-            selectedId={selectedMediaId}
-            onImport={() => handleImport()}
-            onAddCamera={handleAddCamera}
-            onSelect={(item) => selectMedia(item.id)}
-            onRemove={removeMedia}
-            onDropFiles={handleDropFiles}
-          />
-        )}
-
-        <Preview
-          width={resolution.width}
-          height={resolution.height}
-          onCanvasReady={handleCanvasReady}
-          regions={regions}
-          overlays={overlays}
-          activeRegionId={activeRegionId}
-          activeOverlayId={activeOverlayId}
-          isDrawingRegion={isDrawingRegion}
-          onRegionDrawn={handleRegionDrawn}
-          onRegionSelect={setActiveRegionId}
-          onOverlaySelect={setActiveOverlayId}
-          onOverlayUpdate={(id, updates) => updateOverlay(id, updates)}
-          captureHud={
-            isCamera ? (
-              <div className={previewStyles.captureHud}>
-                <button
-                  className={`${previewStyles.captureBtn} ${previewStyles.snap}`}
-                  onClick={snapPhoto}
-                  title="Snap photo from canvas (effects included)"
-                >
-                  <Camera size={13} />
-                  Snap
-                </button>
-
-                {captureMode === "idle" ? (
-                  <button
-                    className={`${previewStyles.captureBtn} ${previewStyles.record}`}
-                    onClick={startRecording}
-                    title="Start recording (effects included)"
-                  >
-                    <Video size={13} />
-                    Record
-                  </button>
-                ) : (
-                  <>
-                    <span className={previewStyles.recTimer}>
-                      {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:
-                      {String(recSeconds % 60).padStart(2, "0")}
-                    </span>
-                    <button
-                      className={`${previewStyles.captureBtn} ${previewStyles.record} ${previewStyles.recording}`}
-                      onClick={stopRecording}
-                      title="Stop recording"
-                    >
-                      <StopIcon size={13} />
-                      Stop
-                    </button>
-                  </>
-                )}
-              </div>
-            ) : undefined
-          }
-        />
-
-        {showEffectsPanel && (
-          <EffectsPanel
             effects={effects}
-            regions={regions}
+            clips={clips}
             overlays={overlays}
-            activeRegionId={activeRegionId}
-            activeOverlayId={activeOverlayId}
-            onAddEffect={addEffect}
+            selectedOverlayId={activeOverlayId}
+            effectParamTracks={effectParamTracks}
+            currentTime={currentTime}
+            duration={duration}
+            isPlaying={isPlaying}
+            onAddClip={addClip}
+            onRemoveClip={removeClip}
+            onUpdateClip={updateClip}
+            onAddOverlay={addOverlay}
+            onUpdateOverlay={(id, updates) => updateOverlay(id, updates)}
+            onRemoveOverlay={removeOverlay}
+            onSelectOverlay={setActiveOverlayId}
             onUpdateEffect={updateEffect}
             onRemoveEffect={removeEffect}
-            onReorderEffect={reorderEffect}
-            onRemoveRegion={handleRemoveRegion}
-            onSelectRegion={setActiveRegionId}
-            onStartDrawingRegion={handleStartDrawingRegion}
-            onUpdateOverlay={(id, updates) => updateOverlay(id, updates)}
+            onAddEffectParamTrack={addEffectParamTrack}
+            onRemoveEffectParamTrack={removeEffectParamTrack}
+            onAddKeyframe={addKeyframe}
+            onUpdateKeyframe={updateKeyframe}
+            onRemoveKeyframe={removeKeyframe}
+            onSeek={setCurrentTime}
+            onPlay={play}
+            onPause={pause}
+            onStop={stop}
           />
-        )}
-      </div>
+        </Panel>
+      </PanelGroup>
 
-      {showTimeline && (
-        <Timeline
-          media={media}
-          effects={effects}
-          clips={clips}
-          overlays={overlays}
-          selectedOverlayId={activeOverlayId}
-          effectParamTracks={effectParamTracks}
-          currentTime={currentTime}
-          duration={duration}
-          isPlaying={isPlaying}
-          onAddClip={addClip}
-          onRemoveClip={removeClip}
-          onUpdateClip={updateClip}
-          onAddOverlay={addOverlay}
-          onUpdateOverlay={(id, updates) => updateOverlay(id, updates)}
-          onRemoveOverlay={removeOverlay}
-          onSelectOverlay={setActiveOverlayId}
-          onUpdateEffect={updateEffect}
-          onRemoveEffect={removeEffect}
-          onAddEffectParamTrack={addEffectParamTrack}
-          onRemoveEffectParamTrack={removeEffectParamTrack}
-          onAddKeyframe={addKeyframe}
-          onUpdateKeyframe={updateKeyframe}
-          onRemoveKeyframe={removeKeyframe}
-          onSeek={setCurrentTime}
-          onPlay={play}
-          onPause={pause}
-          onStop={stop}
-        />
-      )}
       {showExportDialog && (
         <ExportDialog
           isVideo={isVideo || false}

@@ -47,8 +47,8 @@ export function TimelineRuler({
     const startSec = Math.floor(scrollLeft / zoom / minorInterval) * minorInterval;
     const endSec = (scrollLeft + w) / zoom + minorInterval;
 
-    ctx.strokeStyle = "#333";
-    ctx.fillStyle = "#666";
+    ctx.strokeStyle = "#2a2a36";
+    ctx.fillStyle = "#555566";
     ctx.font = `9px "JetBrains Mono", monospace`;
     ctx.textBaseline = "top";
 
@@ -58,15 +58,15 @@ export function TimelineRuler({
 
       const isMajor = Math.abs(t % majorInterval) < 0.001 || Math.abs(t % majorInterval - majorInterval) < 0.001;
       if (isMajor) {
-        ctx.strokeStyle = "#555";
+        ctx.strokeStyle = "#3a3a48";
         ctx.beginPath();
         ctx.moveTo(x, h);
         ctx.lineTo(x, h * 0.3);
         ctx.stroke();
-        ctx.fillStyle = "#777";
+        ctx.fillStyle = "#888899";
         ctx.fillText(formatTime(t), x + 2, 2);
       } else {
-        ctx.strokeStyle = "#333";
+        ctx.strokeStyle = "#2a2a36";
         ctx.beginPath();
         ctx.moveTo(x, h);
         ctx.lineTo(x, h * 0.65);

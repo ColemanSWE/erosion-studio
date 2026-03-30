@@ -1,25 +1,25 @@
 @use "../../styles/variables";
 
 .effectsPanel {
-  width: 320px;
   height: 100%;
-  border-left: 2px solid variables.$border-primary;
+  border-left: 1px solid variables.$border-primary;
   background-color: variables.$bg-surface;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
   overflow-y: auto;
 }
 
 .header {
-  padding: variables.$spacing-md;
+  padding: variables.$spacing-sm variables.$spacing-md;
   border-bottom: 1px solid variables.$border-primary;
+  flex-shrink: 0;
 
   h3 {
-    font-size: 12px;
-    font-weight: bold;
+    font-size: 10px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.1em;
+    color: variables.$text-tertiary;
     font-family: variables.$font-mono;
   }
 }
@@ -27,14 +27,16 @@
 .searchContainer {
   display: flex;
   align-items: center;
-  padding: variables.$spacing-sm variables.$spacing-md;
+  padding: variables.$spacing-xs variables.$spacing-sm;
   border-bottom: 1px solid variables.$border-primary;
   background-color: variables.$bg-elevated;
-  gap: variables.$spacing-sm;
+  gap: variables.$spacing-xs;
+  flex-shrink: 0;
 }
 
 .searchIcon {
   color: variables.$text-tertiary;
+  flex-shrink: 0;
 }
 
 .searchInput {
@@ -42,7 +44,7 @@
   background: transparent;
   border: none;
   color: variables.$text-primary;
-  font-size: 13px;
+  font-size: 12px;
   outline: none;
   font-family: inherit;
 
@@ -52,36 +54,41 @@
 }
 
 .categories {
-  /* Remove flex: 1 and overflow to allow natural height */
-  border-bottom: 2px solid variables.$border-primary;
+  border-bottom: 1px solid variables.$border-primary;
+  flex-shrink: 0;
 }
 
 .category {
   border-bottom: 1px solid variables.$border-secondary;
+
+  &:last-child {
+    border-bottom: none;
+  }
 }
 
 .categoryHeader {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-sm variables.$spacing-md;
-  background-color: variables.$bg-elevated;
+  gap: variables.$spacing-xs;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  background-color: transparent;
   border: none;
   text-align: left;
   font-family: variables.$font-mono;
   font-size: 11px;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: background-color variables.$transition-fast;
+  font-weight: 600;
+  color: variables.$text-secondary;
+  transition: color variables.$transition-fast, background-color variables.$transition-fast;
 
   &:hover {
-    background-color: variables.$bg-overlay;
+    background-color: variables.$bg-elevated;
+    color: variables.$text-primary;
   }
 
   span:first-of-type {
     flex: 1;
+    text-transform: capitalize;
   }
 
   .count {
@@ -92,37 +99,42 @@
 
 .effectList {
   padding: variables.$spacing-xs;
-  background-color: variables.$bg-surface;
+  background-color: variables.$bg-base;
 }
 
 .effectButton {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-xs variables.$spacing-sm;
+  gap: variables.$spacing-xs;
+  padding: 3px variables.$spacing-sm;
   background-color: transparent;
   border: 1px solid transparent;
-  border-radius: variables.$radius-md;
+  border-radius: variables.$radius-sm;
   text-align: left;
-  font-size: 12px;
-  margin-bottom: 2px;
+  font-size: 11px;
+  color: variables.$text-secondary;
+  margin-bottom: 1px;
   transition: all variables.$transition-fast;
 
   &:hover:not(:disabled) {
     background-color: variables.$bg-elevated;
     border-color: variables.$border-primary;
+    color: variables.$text-primary;
   }
 
   &:disabled {
-    opacity: 0.4;
+    opacity: 0.3;
     cursor: not-allowed;
   }
 }
 
 .activeEffects {
-  border-top: 2px solid variables.$border-primary;
-  /* Allow natural height */
+  border-top: 1px solid variables.$border-primary;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .activeHeader {
@@ -132,41 +144,76 @@
   padding: variables.$spacing-sm variables.$spacing-md;
   border-bottom: 1px solid variables.$border-primary;
   background-color: variables.$bg-elevated;
+  flex-shrink: 0;
 
   h4 {
-    font-size: 11px;
-    font-weight: bold;
+    font-size: 10px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.1em;
+    color: variables.$text-tertiary;
     font-family: variables.$font-mono;
   }
 
   .count {
-    color: variables.$text-tertiary;
+    color: variables.$accent-primary;
     font-size: 10px;
     font-family: variables.$font-mono;
+    font-weight: 600;
+  }
+}
+
+.actionButtons {
+  display: flex;
+  gap: 1px;
+  padding: variables.$spacing-xs;
+  border-bottom: 1px solid variables.$border-secondary;
+  flex-shrink: 0;
+}
+
+.actionButton {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: variables.$spacing-xs;
+  padding: variables.$spacing-xs;
+  background-color: variables.$bg-elevated;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-sm;
+  font-size: 11px;
+  color: variables.$text-secondary;
+  font-family: variables.$font-mono;
+  transition: all variables.$transition-fast;
+
+  &:hover {
+    background-color: variables.$bg-overlay;
+    border-color: variables.$accent-primary;
+    color: variables.$accent-primary;
   }
 }
 
 .effectStack {
-  padding: variables.$spacing-sm;
+  padding: variables.$spacing-xs;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .regionGroup {
-  margin-bottom: variables.$spacing-md;
+  margin-bottom: variables.$spacing-xs;
   border: 1px solid transparent;
   border-radius: variables.$radius-md;
-  padding: variables.$spacing-xs;
+  overflow: hidden;
   cursor: pointer;
   transition: all variables.$transition-fast;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.02);
+    border-color: variables.$border-primary;
   }
 
   &.active {
-    border-color: variables.$border-primary;
-    background-color: rgba(255, 255, 255, 0.03);
+    border-color: variables.$accent-primary;
+    box-shadow: 0 0 0 1px variables.$accent-glow;
   }
 }
 
@@ -175,14 +222,13 @@
   align-items: center;
   justify-content: space-between;
   padding: variables.$spacing-xs variables.$spacing-sm;
-  margin-bottom: variables.$spacing-xs;
-  font-size: 11px;
+  font-size: 10px;
   font-family: variables.$font-mono;
-  font-weight: bold;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
+  color: variables.$text-tertiary;
   background-color: variables.$bg-elevated;
-  border-radius: variables.$radius-sm;
 }
 
 .regionHeaderLeft {
@@ -198,8 +244,8 @@
 }
 
 .colorDot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -219,40 +265,15 @@
   }
 }
 
-.drawRegionButton {
-  width: calc(100% - #{variables.$spacing-sm * 2});
-  margin: variables.$spacing-sm;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-sm;
-  background-color: variables.$bg-elevated;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-md;
-  font-size: 12px;
-  font-family: variables.$font-mono;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: all variables.$transition-fast;
-
-  &:hover {
-    background-color: variables.$bg-overlay;
-    border-color: variables.$text-primary;
-  }
-}
-
 .empty {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: variables.$spacing-lg variables.$spacing-md;
   color: variables.$text-tertiary;
   text-align: center;
   gap: variables.$spacing-xs;
-  padding: variables.$spacing-md;
 
   p {
     font-size: 12px;
@@ -264,35 +285,41 @@
 }
 
 .effectCard {
-  border: 1px solid variables.$border-primary;
-  background-color: variables.$bg-elevated;
-  border-radius: variables.$radius-md;
-  margin-bottom: variables.$spacing-sm;
+  border: 1px solid variables.$border-secondary;
+  background-color: variables.$bg-surface;
+  border-radius: variables.$radius-sm;
+  margin-bottom: 2px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 }
 
 .effectCardHeader {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
-  padding: variables.$spacing-sm;
+  gap: 4px;
+  padding: 5px variables.$spacing-xs;
 
   input[type="checkbox"] {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     margin: 0;
+    accent-color: variables.$accent-primary;
   }
 
   span {
     flex: 1;
-    font-size: 12px;
+    font-size: 11px;
     font-family: variables.$font-mono;
+    color: variables.$text-primary;
   }
 
   button {
     padding: 0;
     background: none;
     border: none;
-    color: variables.$text-secondary;
+    color: variables.$text-tertiary;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -305,6 +332,7 @@
 
   .dragHandle {
     cursor: grab;
+    color: variables.$text-tertiary;
 
     &:active {
       cursor: grabbing;
@@ -322,4 +350,85 @@
       color: variables.$error;
     }
   }
+}
+
+.overlayPropsSection {
+  border-bottom: 1px solid variables.$border-secondary;
+  margin-bottom: variables.$spacing-xs;
+}
+
+.overlayPropsHeader {
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  background-color: variables.$bg-elevated;
+
+  h5 {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: variables.$text-tertiary;
+    font-family: variables.$font-mono;
+  }
+}
+
+.overlayPropsBody {
+  padding: variables.$spacing-xs variables.$spacing-sm;
+}
+
+.paramRow {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-sm;
+  margin-bottom: variables.$spacing-xs;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.paramLabel {
+  font-size: 10px;
+  color: variables.$text-tertiary;
+  font-family: variables.$font-mono;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 40px;
+}
+
+.textInput {
+  flex: 1;
+  font-size: 11px;
+  padding: 3px variables.$spacing-xs;
+  height: auto;
+}
+
+.colorInput {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid variables.$border-primary;
+  background: none;
+  cursor: pointer;
+  border-radius: variables.$radius-sm;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-xs;
+  font-size: 11px;
+  color: variables.$text-secondary;
+  cursor: pointer;
+
+  input[type="checkbox"] {
+    accent-color: variables.$accent-primary;
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.count {
+  color: variables.$text-tertiary;
+  font-size: 10px;
+  font-family: variables.$font-mono;
 }

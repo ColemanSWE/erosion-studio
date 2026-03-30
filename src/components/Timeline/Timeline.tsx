@@ -318,7 +318,7 @@ export function Timeline({
   };
 
   return (
-    <div className={styles.timeline} style={{ height: 220 }}>
+    <div className={styles.timeline}>
       {/* ── Header bar ──────────────────────────────────────────────────── */}
       <div className={styles.timelineHeader}>
         <span className={styles.timelineTitle}>Timeline</span>

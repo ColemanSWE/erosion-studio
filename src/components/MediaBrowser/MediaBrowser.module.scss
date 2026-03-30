@@ -1,59 +1,88 @@
 @use "../../styles/variables";
 
 .mediaBrowser {
-  width: 280px;
-  border-right: 2px solid variables.$border-primary;
+  height: 100%;
+  border-right: 1px solid variables.$border-primary;
   background-color: variables.$bg-surface;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
+  overflow: hidden;
   position: relative;
-  transition: border-color 0.15s ease;
+  transition: border-color variables.$transition-fast;
 
   &.dragOver {
     border-right-color: variables.$accent-primary;
-    outline: 2px dashed variables.$accent-primary;
-    outline-offset: -4px;
+    outline: 1px dashed variables.$accent-primary;
+    outline-offset: -3px;
   }
 }
 
 .header {
-  padding: variables.$spacing-md;
+  padding: variables.$spacing-sm variables.$spacing-md;
   border-bottom: 1px solid variables.$border-primary;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 
   h3 {
-    font-size: 12px;
-    font-weight: bold;
+    font-size: 10px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.1em;
+    color: variables.$text-tertiary;
     font-family: variables.$font-mono;
   }
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-xs;
 }
 
 .importButton {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-xs variables.$spacing-sm;
+  gap: variables.$spacing-xs;
+  padding: 3px variables.$spacing-sm;
   border: 1px solid variables.$border-primary;
   background-color: variables.$bg-elevated;
   border-radius: variables.$radius-md;
-  font-size: 12px;
+  font-size: 11px;
+  color: variables.$text-secondary;
   transition: all variables.$transition-fast;
 
   &:hover {
     background-color: variables.$bg-overlay;
     border-color: variables.$accent-primary;
+    color: variables.$text-primary;
+  }
+}
+
+.cameraButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid variables.$border-primary;
+  background-color: variables.$bg-elevated;
+  border-radius: variables.$radius-md;
+  color: variables.$text-tertiary;
+  transition: all variables.$transition-fast;
+
+  &:hover {
+    border-color: variables.$accent-primary;
+    color: variables.$accent-primary;
+    background-color: variables.$accent-glow;
   }
 }
 
 .mediaList {
   flex: 1;
   overflow-y: auto;
-  padding: variables.$spacing-sm;
+  padding: variables.$spacing-xs;
 }
 
 .empty {
@@ -65,9 +94,11 @@
   color: variables.$text-tertiary;
   text-align: center;
   gap: variables.$spacing-sm;
+  padding: variables.$spacing-md;
 
   p {
-    font-size: 13px;
+    font-size: 12px;
+    line-height: 1.6;
 
     &.hint {
       font-size: 11px;
@@ -80,28 +111,28 @@
   display: flex;
   align-items: center;
   gap: variables.$spacing-sm;
-  padding: variables.$spacing-sm;
-  border: 1px solid variables.$border-secondary;
-  background-color: variables.$bg-elevated;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  border: 1px solid transparent;
+  background-color: transparent;
   border-radius: variables.$radius-md;
-  margin-bottom: variables.$spacing-sm;
+  margin-bottom: 2px;
   cursor: pointer;
   transition: all variables.$transition-fast;
 
   &:hover {
     border-color: variables.$border-primary;
-    background-color: variables.$bg-overlay;
+    background-color: variables.$bg-elevated;
   }
 
   &.selected {
     border-color: variables.$accent-primary;
-    background-color: variables.$bg-overlay;
+    background-color: variables.$accent-glow;
   }
 }
 
 .thumbnail {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border: 1px solid variables.$border-primary;
   background-color: variables.$bg-base;
   display: flex;
@@ -109,7 +140,14 @@
   justify-content: center;
   border-radius: variables.$radius-sm;
   flex-shrink: 0;
-  color: variables.$text-secondary;
+  color: variables.$text-tertiary;
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
 }
 
 .info {
@@ -121,11 +159,12 @@
 }
 
 .name {
-  font-size: 12px;
+  font-size: 11px;
   font-family: variables.$font-mono;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: variables.$text-primary;
 }
 
 .duration {
@@ -135,11 +174,11 @@
 }
 
 .removeButton {
-  padding: variables.$spacing-xs;
-  border: 1px solid variables.$border-primary;
-  background-color: variables.$bg-surface;
+  padding: 3px;
+  border: none;
+  background-color: transparent;
   border-radius: variables.$radius-sm;
-  color: variables.$error;
+  color: variables.$text-tertiary;
   opacity: 0;
   transition: all variables.$transition-fast;
   flex-shrink: 0;
@@ -149,16 +188,14 @@
   }
 
   &:hover {
-    background-color: variables.$error;
-    color: variables.$text-inverse;
+    color: variables.$error;
   }
 }
 
 .dropOverlay {
   position: absolute;
   inset: 0;
-  background: variables.$accent-primary;
-  opacity: 0.15;
+  background: variables.$accent-glow;
   border-radius: variables.$radius-md;
   display: flex;
   align-items: center;
@@ -166,12 +203,8 @@
   gap: variables.$spacing-sm;
   color: variables.$accent-primary;
   font-family: variables.$font-mono;
-  font-size: 13px;
+  font-size: 12px;
   pointer-events: none;
   z-index: 10;
-}
-
-.dropHint {
-  outline: 2px dashed variables.$accent-primary;
-  border-radius: variables.$radius-md;
+  border: 1px dashed variables.$accent-primary;
 }
