@@ -3,6 +3,7 @@ import type {
   Effect,
   EffectType,
   Region,
+  Overlay,
   TimelineClip,
   EffectParamTrack,
   Keyframe,
@@ -22,6 +23,7 @@ interface ProjectState {
   selectedMediaId?: string;
   effects: Effect[];
   regions: Region[];
+  overlays: Overlay[];
   resolution: Resolution;
   currentTime: number;
   duration: number;
@@ -38,7 +40,7 @@ interface ProjectState {
   removeMedia: (id: string) => void;
   selectMedia: (id: string) => void;
 
-  addEffect: (type: EffectType, regionId?: string) => void;
+  addEffect: (type: EffectType, regionId?: string, overlayId?: string) => void;
   updateEffect: (id: string, updates: Partial<Effect>) => void;
   removeEffect: (id: string) => void;
   reorderEffect: (id: string, newIndex: number) => void;
@@ -46,6 +48,10 @@ interface ProjectState {
   addRegion: (region: Region) => void;
   removeRegion: (id: string) => void;
   updateRegion: (id: string, updates: Partial<Region>) => void;
+
+  addOverlay: (overlay: Overlay) => void;
+  removeOverlay: (id: string) => void;
+  updateOverlay: (id: string, updates: Partial<Overlay>) => void;
 
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
@@ -64,16 +70,20 @@ interface ProjectState {
   addKeyframe: (trackId: string, keyframe: Keyframe) => void;
   updateKeyframe: (trackId: string, keyframeId: string, updates: Partial<Keyframe>) => void;
   removeKeyframe: (trackId: string, keyframeId: string) => void;
+
+  saveProject: () => Promise<void>;
+  loadProject: () => Promise<void>;
 }
 
 let effectIdCounter = 0;
 
-export const useProjectStore = create<ProjectState>((set) => ({
+export const useProjectStore = create<ProjectState>((set, get) => ({
   projectName: "Untitled Project",
   media: [],
   selectedMediaId: undefined,
   effects: [],
   regions: [],
+  overlays: [],
   resolution: DEFAULT_RESOLUTION,
   currentTime: 0,
   duration: 10,
@@ -91,22 +101,29 @@ export const useProjectStore = create<ProjectState>((set) => ({
     })),
 
   removeMedia: (id) =>
-    set((state) => ({
-      media: state.media.filter((m) => m.id !== id),
-      selectedMediaId:
-        state.selectedMediaId === id ? undefined : state.selectedMediaId,
-      clips: state.clips.filter((c) => c.mediaId !== id),
-    })),
+    set((state) => {
+      const item = state.media.find((m) => m.id === id);
+      if (item?.path.startsWith("blob:")) {
+        URL.revokeObjectURL(item.path);
+      }
+      return {
+        media: state.media.filter((m) => m.id !== id),
+        selectedMediaId:
+          state.selectedMediaId === id ? undefined : state.selectedMediaId,
+        clips: state.clips.filter((c) => c.mediaId !== id),
+      };
+    }),
 
   selectMedia: (id) => set({ selectedMediaId: id }),
 
-  addEffect: (type, regionId) => {
-    const newEffect = {
+  addEffect: (type, regionId, overlayId) => {
+    const newEffect: Effect = {
       id: `effect-${effectIdCounter++}`,
       type,
       active: true,
       params: getDefaultParams(type),
       regionId,
+      overlayId,
     };
 
     set((state) => ({
@@ -203,6 +220,24 @@ export const useProjectStore = create<ProjectState>((set) => ({
       ),
     })),
 
+  addOverlay: (overlay) =>
+    set((state) => ({
+      overlays: [...state.overlays, overlay],
+    })),
+
+  removeOverlay: (id) =>
+    set((state) => ({
+      overlays: state.overlays.filter((o) => o.id !== id),
+      effects: state.effects.filter((e) => e.overlayId !== id),
+    })),
+
+  updateOverlay: (id, updates) =>
+    set((state) => ({
+      overlays: state.overlays.map((o) =>
+        o.id === id ? { ...o, ...updates } : o,
+      ),
+    })),
+
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration }),
   play: () => set({ isPlaying: true }),
@@ -258,4 +293,97 @@ export const useProjectStore = create<ProjectState>((set) => ({
           : t,
       ),
     })),
+
+  saveProject: async () => {
+    const state = get();
+    const result = await window.electron.saveFile({
+      title: "Save Project",
+      defaultPath: `${state.projectName || "project"}.eron`,
+      filters: [{ name: "Erosion Project", extensions: ["eron"] }],
+    });
+    if (result.canceled || !result.filePath) return;
+
+    const projectData = {
+      version: 1,
+      projectName: state.projectName,
+      resolution: state.resolution,
+      duration: state.duration,
+      media: state.media,
+      effects: state.effects,
+      regions: state.regions,
+      overlays: state.overlays,
+      clips: state.clips,
+      effectParamTracks: state.effectParamTracks,
+    };
+
+    const res = await window.electron.file.writeText(
+      result.filePath,
+      JSON.stringify(projectData, null, 2),
+    );
+    if (!res.success) {
+      console.error("Failed to save project:", res.error);
+    }
+  },
+
+  loadProject: async () => {
+    const result = await window.electron.openFile({
+      title: "Open Project",
+      filters: [{ name: "Erosion Project", extensions: ["eron"] }],
+    });
+    if (result.canceled || !result.filePaths.length) return;
+
+    const res = await window.electron.file.readText(result.filePaths[0]);
+    if (!res.success || !res.data) {
+      console.error("Failed to load project:", res.error);
+      return;
+    }
+
+    try {
+      const projectData = JSON.parse(res.data);
+      const currentState = get();
+      for (const m of currentState.media) {
+        if (m.path.startsWith("blob:")) {
+          URL.revokeObjectURL(m.path);
+        }
+      }
+
+      set({
+        projectName: projectData.projectName || "Untitled Project",
+        resolution: projectData.resolution || DEFAULT_RESOLUTION,
+        duration: projectData.duration || 10,
+        media: projectData.media || [],
+        effects: projectData.effects || [],
+        regions: projectData.regions || [],
+        overlays: projectData.overlays || [],
+        clips: projectData.clips || [],
+        effectParamTracks: projectData.effectParamTracks || [],
+
+        currentTime: 0,
+        isPlaying: false,
+        selectedMediaId: undefined,
+      });
+
+      const effects = projectData.effects || [];
+      for (const effect of effects) {
+        if (effect.type === "emoji") {
+          try {
+            const { initializeEmojiPalette } = await import(
+              "../lib/effects/effects-renderer"
+            );
+            const { PALETTES } = await import("../lib/effects/palettes");
+            const palette = (effect.params?.palette as string) || "standard";
+            if (palette in PALETTES) {
+              await initializeEmojiPalette(palette as any);
+            } else {
+              await initializeEmojiPalette("standard");
+            }
+          } catch (e) {
+            console.error("Failed to re-initialize emoji palette:", e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to parse project file:", e);
+    }
+  },
 }));

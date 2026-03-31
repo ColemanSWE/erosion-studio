@@ -6,6 +6,22 @@
   background-color: variables.$bg-surface;
 }
 
+.paramGroup {
+  margin-top: variables.$spacing-sm;
+  margin-bottom: variables.$spacing-xs;
+  padding-bottom: variables.$spacing-xs;
+  border-bottom: 1px solid variables.$border-secondary;
+  font-family: variables.$font-mono;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: variables.$text-tertiary;
+
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
 .param {
   margin-bottom: variables.$spacing-sm;
 

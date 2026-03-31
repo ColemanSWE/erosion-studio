@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { renderWithEffects } from "../lib/effects/effects-renderer";
-import type { Effect, Region } from "../lib/effects/types";
+import { renderWithEffects, type GLPipeline } from "../lib/effects/effects-renderer";
+import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 
@@ -13,29 +13,49 @@ interface UsePhotoEditorOptions {
   canvas: HTMLCanvasElement | null;
   effects: Effect[];
   activeImages: ActiveImage[];
+  overlayImages?: ActiveImage[];
   regions?: Region[];
+  overlays?: Overlay[];
 }
 
 export function usePhotoEditor({
   canvas,
   effects,
   activeImages,
+  overlayImages = [],
   regions = [],
+  overlays = [],
 }: UsePhotoEditorOptions) {
   const imagesMapRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
   const faceBoundsRef = useRef<FaceBounds[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
-  
-  // Buffer canvas for effects processing
+
   const bufferRef = useRef<HTMLCanvasElement | null>(null);
   const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const glPipelineRef = useRef<GLPipeline | null>(null);
 
   useEffect(() => {
     const buffer = document.createElement("canvas");
     bufferRef.current = buffer;
     bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
+
+    // Lazy GL pipeline — falls back gracefully if WebGL2 is unavailable
+    import("../lib/effects/gl/pipeline").then(({ GLPipeline }) => {
+      glPipelineRef.current = GLPipeline.tryCreate();
+    });
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+      }
+      glPipelineRef.current?.dispose();
+      glPipelineRef.current = null;
+      bufferRef.current = null;
+      bufferCtxRef.current = null;
+    };
   }, []);
 
   // Check if any effects need animation
@@ -50,7 +70,7 @@ export function usePhotoEditor({
     setIsAnimating(needsAnimation);
   }, [effects]);
 
-  const renderFrame = useCallback((tick: number) => {
+  const renderFrame = useCallback(async (tick: number) => {
     if (!canvas || activeImages.length === 0 || !bufferRef.current || !bufferCtxRef.current) return;
 
     const ctx = canvas.getContext("2d");
@@ -73,7 +93,7 @@ export function usePhotoEditor({
         }
     }
 
-    renderWithEffects(
+    await renderWithEffects(
       {
         ctx,
         buffer: bufferRef.current,
@@ -86,13 +106,19 @@ export function usePhotoEditor({
         tick,
         faceBounds: faceBoundsRef.current,
         timelineFrames: secondaryFrames,
+        glPipeline: glPipelineRef.current ?? undefined,
+        overlays,
+        getOverlaySource: (mediaId) => {
+          return imagesMapRef.current.get(mediaId) || null;
+        }
       },
       effects.filter((e) => e.active),
-      regions
+      regions,
+      overlays
     );
-  }, [canvas, effects, regions, activeImages]);
+  }, [canvas, effects, regions, overlays, activeImages]);
 
-  const render = useCallback(() => {
+  const render = useCallback(async () => {
     if (!canvas || activeImages.length === 0) return;
 
     const ctx = canvas.getContext("2d");
@@ -116,18 +142,20 @@ export function usePhotoEditor({
        canvas.height = primaryImage.naturalHeight || primaryImage.height;
     }
 
-    renderFrame(tickRef.current);
+    await renderFrame(tickRef.current);
 
     tickRef.current++;
     
     if (isAnimating) {
       animationFrameRef.current = requestAnimationFrame(render);
     }
+  // ── Image elements lifecycle ───────────────────────────────────────────────
   }, [canvas, renderFrame, isAnimating]);
 
   useEffect(() => {
     const map = imagesMapRef.current;
-    const currentIds = new Set(activeImages.map(img => img.id));
+    const allImages = [...activeImages, ...overlayImages];
+    const currentIds = new Set(allImages.map((img) => img.id));
 
     // Remove old images
     for (const [id] of map.entries()) {
@@ -137,7 +165,7 @@ export function usePhotoEditor({
     }
 
     // Load new images
-    for (const imgDef of activeImages) {
+    for (const imgDef of allImages) {
         if (!map.has(imgDef.id)) {
             const img = new Image();
             if (!imgDef.path.startsWith("blob:") && !imgDef.path.startsWith("data:")) {
@@ -175,14 +203,14 @@ export function usePhotoEditor({
         }
     }
 
-    if (activeImages.length === 0) {
+    if (allImages.length === 0) {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     }
 
     return () => {
       // Don't cancel here if just adding an image, let it run
     };
-  }, [activeImages, render]);
+  }, [activeImages, overlayImages, render]);
 
   useEffect(() => {
     if (imagesMapRef.current.size > 0 && canvas) {
@@ -238,12 +266,12 @@ export function usePhotoEditor({
         if (!ctx) throw new Error("Canvas context not available");
         
         // Generate a shared palette from the first frame
-        renderFrame(0);
+        await renderFrame(0);
         const firstFrameData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const sharedPalette = quantize(firstFrameData.data, 256);
         
         for (let i = 0; i < numFrames; i++) {
-          renderFrame(i);
+          await renderFrame(i);
           
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const index = applyPalette(imageData.data, sharedPalette);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { renderWithEffects } from "../lib/effects/effects-renderer";
-import type { Effect, Region } from "../lib/effects/types";
+import { renderWithEffects, type GLPipeline } from "../lib/effects/effects-renderer";
+import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
 
 interface UseCameraPlayerOptions {
@@ -8,6 +8,7 @@ interface UseCameraPlayerOptions {
   effects: Effect[];
   isActive: boolean;
   regions?: Region[];
+  overlays?: Overlay[];
 }
 
 export function useCameraPlayer({
@@ -15,22 +16,33 @@ export function useCameraPlayer({
   effects,
   isActive,
   regions = [],
+  overlays = [],
 }: UseCameraPlayerOptions) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
-  const [faceBounds, setFaceBounds] = useState<FaceBounds[]>([]);
-  
   // Buffer for effects
   const bufferRef = useRef<HTMLCanvasElement | null>(null);
   const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
-  
+  const glPipelineRef = useRef<GLPipeline | null>(null);
+
+  const faceBoundsRef = useRef<FaceBounds[]>([]);
+
   const [stream, setStream] = useState<MediaStream | null>(null);
 
   useEffect(() => {
     const buffer = document.createElement("canvas");
     bufferRef.current = buffer;
     bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
+
+    import("../lib/effects/gl/pipeline").then(({ GLPipeline }) => {
+      glPipelineRef.current = GLPipeline.tryCreate();
+    });
+
+    return () => {
+      glPipelineRef.current?.dispose();
+      glPipelineRef.current = null;
+    };
   }, []);
 
   const render = useCallback(async () => {
@@ -59,8 +71,7 @@ export function useCameraPlayer({
     // Detect faces every 10 frames to reduce overhead
     if (tickRef.current % 10 === 0) {
       try {
-        const faces = await detectFaces(video);
-        setFaceBounds(faces);
+        faceBoundsRef.current = await detectFaces(video);
       } catch (error) {
         console.error("Face detection failed:", error);
       }
@@ -71,7 +82,7 @@ export function useCameraPlayer({
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
 
-    renderWithEffects(
+    await renderWithEffects(
       {
         ctx,
         buffer: bufferRef.current,
@@ -82,10 +93,14 @@ export function useCameraPlayer({
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         tick: tickRef.current,
-        faceBounds,
+        faceBounds: faceBoundsRef.current,
+        isFlipped: true,
+        glPipeline: glPipelineRef.current ?? undefined,
+        overlays,
       },
       effects.filter((e) => e.active),
-      regions
+      regions,
+      overlays
     );
 
     ctx.restore();
@@ -95,7 +110,7 @@ export function useCameraPlayer({
     if (isActive) {
       animationFrameRef.current = requestAnimationFrame(render);
     }
-  }, [canvas, effects, isActive, faceBounds, regions]);
+  }, [canvas, effects, isActive, regions, overlays]);
 
   useEffect(() => {
     let activeStream: MediaStream | null = null;
@@ -173,7 +188,7 @@ export function useCameraPlayer({
       }
       render();
     }
-  }, [effects, regions, render, canvas, isActive]);
+  }, [effects, regions, overlays, render, canvas, isActive]);
 
   return { stream, videoRef };
 }

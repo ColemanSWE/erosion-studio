@@ -1,4 +1,4 @@
->import { ipcMain, app } from "electron";
+import { ipcMain, app } from "electron";
 import fs from "fs";
 import path from "path";
 import { promisify } from "util";

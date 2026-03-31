@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("ffmpeg:cleanupTempDir", dirPath),
   },
   file: {
+    readText: (filePath: string) =>
+      ipcRenderer.invoke("file:readText", filePath),
+    writeText: (filePath: string, data: string) =>
+      ipcRenderer.invoke("file:writeText", filePath, data),
     readBinary: (filePath: string) =>
       ipcRenderer.invoke("file:readBinary", filePath),
     writeBinary: (filePath: string, data: number[]) =>
@@ -75,6 +79,18 @@ export interface ElectronAPI {
     }>;
   };
   file: {
+    readText: (filePath: string) => Promise<{
+      success: boolean;
+      data?: string;
+      error?: string;
+    }>;
+    writeText: (
+      filePath: string,
+      data: string
+    ) => Promise<{
+      success: boolean;
+      error?: string;
+    }>;
     readBinary: (filePath: string) => Promise<{
       success: boolean;
       data?: number[];

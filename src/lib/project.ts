@@ -1,4 +1,4 @@
-import type { Effect, Region } from "./effects/types";
+import type { Effect, Region, Overlay } from "./effects/types";
 
 export interface MediaItem {
   id: string;
@@ -29,6 +29,7 @@ export interface Project {
   media: MediaItem[];
   effects: Effect[];
   regions: Region[];
+  overlays: Overlay[];
   resolution: Resolution;
   duration: number;
   currentTime: number;
@@ -41,6 +42,7 @@ export function createEmptyProject(): Project {
     media: [],
     effects: [],
     regions: [],
+    overlays: [],
     resolution: DEFAULT_RESOLUTION,
     duration: 60,
     currentTime: 0,
@@ -60,6 +62,7 @@ export function deserializeProject(json: string): Project {
     media: data.media || [],
     effects: data.effects || [],
     regions: data.regions || [],
+    overlays: data.overlays || [],
     resolution: data.resolution || DEFAULT_RESOLUTION,
     duration: data.duration || 60,
     currentTime: data.currentTime || 0,
