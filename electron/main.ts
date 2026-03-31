@@ -4,6 +4,19 @@ import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import { setupFFmpegHandlers } from "./ffmpeg";
 
+/** Reject paths that escape the user's home directory or look suspicious. */
+function isAllowedPath(filePath: string): boolean {
+  const normalized = path.normalize(filePath);
+  const home = app.getPath("home");
+  const temp = app.getPath("temp");
+  return (
+    normalized.startsWith(home) ||
+    normalized.startsWith(temp) ||
+    normalized.startsWith("/Volumes/") ||
+    normalized.startsWith("/tmp/")
+  );
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
@@ -64,20 +77,26 @@ ipcMain.handle("dialog:saveFile", async (_, options) => {
   return dialog.showSaveDialog(mainWindow, options);
 });
 
-ipcMain.handle("file:readText", async (_, filePath) => {
+ipcMain.handle("file:readText", async (_, filePath: string) => {
+  if (!isAllowedPath(filePath)) {
+    return { success: false, error: "Access denied: path outside allowed directories" };
+  }
   try {
     const data = await fs.readFile(filePath, "utf-8");
     return { success: true, data };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message };
   }
 });
 
-ipcMain.handle("file:writeText", async (_, filePath, data) => {
+ipcMain.handle("file:writeText", async (_, filePath: string, data: string) => {
+  if (!isAllowedPath(filePath)) {
+    return { success: false, error: "Access denied: path outside allowed directories" };
+  }
   try {
     await fs.writeFile(filePath, data, "utf-8");
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message };
   }
 });

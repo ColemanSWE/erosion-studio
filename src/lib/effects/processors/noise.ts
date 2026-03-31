@@ -22,7 +22,7 @@ void main() {
     uniforms: { intensity: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 30;
+    const intensity = (params.intensity as number) ?? 30;
     if (intensity === 0) return;
 
     const strength = intensity * 2.55;
@@ -70,8 +70,8 @@ void main() {
     uniforms: { intensity: "float", colored: "bool" },
   },
   processor: (data, { time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 20;
-    const colored = (params.colored as boolean) || false;
+    const intensity = (params.intensity as number) ?? 20;
+    const colored = (params.colored as boolean) ?? false;
     if (intensity === 0) return;
 
     const noiseAmount = intensity / 100;

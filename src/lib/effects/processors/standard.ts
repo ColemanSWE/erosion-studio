@@ -21,7 +21,7 @@ void main() {
     uniforms: { value: "float" },
   },
   processor: (data, _, params) => {
-    const contrast = (params.value as number) || 100;
+    const contrast = (params.value as number) ?? 100;
     const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
     for (let i = 0; i < data.length; i += 4) {
       data[i] = clamp255(factor * (data[i] - 128) + 128);
@@ -47,7 +47,7 @@ void main() {
     uniforms: { value: "float" },
   },
   processor: (data, _, params) => {
-    const brightness = (params.value as number) || 0;
+    const brightness = (params.value as number) ?? 0;
     for (let i = 0; i < data.length; i += 4) {
       data[i] = clamp255(data[i] + brightness);
       data[i + 1] = clamp255(data[i + 1] + brightness);
@@ -74,7 +74,7 @@ void main() {
     uniforms: { value: "float" },
   },
   processor: (data, _, params) => {
-    const saturation = (params.value as number) || 100;
+    const saturation = (params.value as number) ?? 100;
     const s = saturation / 100;
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i];
@@ -105,7 +105,7 @@ void main() {
     uniforms: { value: "float" },
   },
   processor: (data, _, params) => {
-    const exposure = (params.value as number) || 0;
+    const exposure = (params.value as number) ?? 0;
     const factor = Math.pow(2, exposure / 100);
     for (let i = 0; i < data.length; i += 4) {
       data[i] = clamp255(data[i] * factor);
@@ -133,7 +133,7 @@ void main() {
     uniforms: { value: "float" },
   },
   processor: (data, _, params) => {
-    const intensity = (params.value as number) || 100;
+    const intensity = (params.value as number) ?? 100;
     const factor = intensity / 100;
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i];
@@ -170,7 +170,7 @@ void main() {
     uniforms: { value: "float" },
   },
   processor: (data, _, params) => {
-    const intensity = (params.value as number) || 100;
+    const intensity = (params.value as number) ?? 100;
     const factor = intensity / 100;
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i];
@@ -203,7 +203,7 @@ void main() {
     uniforms: { value: "float" },
   },
   processor: (data, _, params) => {
-    const temp = (params.value as number) || 0;
+    const temp = (params.value as number) ?? 0;
     for (let i = 0; i < data.length; i += 4) {
       data[i] = clamp255(data[i] + temp);
       data[i + 2] = clamp255(data[i + 2] - temp);
@@ -228,7 +228,7 @@ void main() {
     uniforms: { value: "float" },
   },
   processor: (data, _, params) => {
-    const tint = (params.value as number) || 0;
+    const tint = (params.value as number) ?? 0;
     for (let i = 0; i < data.length; i += 4) {
       data[i + 1] = clamp255(data[i + 1] + tint);
     }

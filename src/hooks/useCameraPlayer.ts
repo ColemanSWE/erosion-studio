@@ -1,7 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { renderWithEffects, type GLPipeline } from "../lib/effects/effects-renderer";
+import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
+import { useRenderContext } from "./useRenderContext";
 
 interface UseCameraPlayerOptions {
   canvas: HTMLCanvasElement | null;
@@ -21,29 +22,10 @@ export function useCameraPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
-  // Buffer for effects
-  const bufferRef = useRef<HTMLCanvasElement | null>(null);
-  const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
-  const glPipelineRef = useRef<GLPipeline | null>(null);
-
+  const { bufferRef, bufferCtxRef, glPipelineRef } = useRenderContext();
   const faceBoundsRef = useRef<FaceBounds[]>([]);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
-
-  useEffect(() => {
-    const buffer = document.createElement("canvas");
-    bufferRef.current = buffer;
-    bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
-
-    import("../lib/effects/gl/pipeline").then(({ GLPipeline }) => {
-      glPipelineRef.current = GLPipeline.tryCreate();
-    });
-
-    return () => {
-      glPipelineRef.current?.dispose();
-      glPipelineRef.current = null;
-    };
-  }, []);
 
   const render = useCallback(async () => {
     if (!canvas || !videoRef.current || !isActive) return;
@@ -62,11 +44,10 @@ export function useCameraPlayer({
         return;
     }
 
-    // Update dimensions
-    if (canvas.width !== (video.videoWidth || 1920)) {
-       canvas.width = video.videoWidth || 1920;
-       canvas.height = video.videoHeight || 1080;
-    }
+    // Use the camera's native dimensions for source processing; canvas dimensions
+    // are controlled by the selected resolution.
+    const videoW = video.videoWidth || canvas.width;
+    const videoH = video.videoHeight || canvas.height;
 
     // Detect faces every 10 frames to reduce overhead
     if (tickRef.current % 10 === 0) {
@@ -88,8 +69,8 @@ export function useCameraPlayer({
         buffer: bufferRef.current,
         bufferCtx: bufferCtxRef.current,
         source: video,
-        sourceWidth: canvas.width,
-        sourceHeight: canvas.height,
+        sourceWidth: videoW,
+        sourceHeight: videoH,
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         tick: tickRef.current,

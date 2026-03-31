@@ -138,8 +138,8 @@ registerEffect({
     const showFaces = (params.showFaces as boolean) ?? true;
     const showHands = (params.showHands as boolean) ?? true;
     const showPose = (params.showPose as boolean) ?? true;
-    const boxThickness = (params.boxThickness as number) || 2;
-    const labelSize = (params.labelSize as number) || 14;
+    const boxThickness = (params.boxThickness as number) ?? 2;
+    const labelSize = (params.labelSize as number) ?? 14;
 
     const tempCanvas = document.createElement("canvas");
     tempCanvas.width = width;
@@ -287,17 +287,17 @@ registerEffect({
     const flashRate = (params.flashRate as number) ?? 5;
     const boxLineWidth = (params.lineWidth as number) ?? 1.5;
     const connectionLineWidth = (params.connectionWidth as number) ?? 1.0;
-    const style = (params.style as string) || "box";
-    const connections = (params.connections as string) || "none";
-    const labelStyle = (params.labelStyle as string) || "minimal";
+    const style = (params.style as string) ?? "box";
+    const connections = (params.connections as string) ?? "none";
+    const labelStyle = (params.labelStyle as string) ?? "minimal";
     const invertBlobs = (params.invert as boolean) ?? false;
     const forceSquare = (params.forceSquare as boolean) ?? false;
     const showScanlines = (params.showScanlines as boolean) ?? true;
-    const boxPaletteName = (params.boxPalette as string) || "custom";
-    const connPaletteName = (params.connectionPalette as string) || "custom";
-    const innerEffect = (params.innerEffect as string) || "none";
-    const boxColor = (params.boxColor as string) || (params.color as string) || "#00ff88";
-    const connectionColor = (params.connectionColor as string) || "#00aaff";
+    const boxPaletteName = (params.boxPalette as string) ?? "custom";
+    const connPaletteName = (params.connectionPalette as string) ?? "custom";
+    const innerEffect = (params.innerEffect as string) ?? "none";
+    const boxColor = (params.boxColor as string) ?? (params.color as string) ?? "#00ff88";
+    const connectionColor = (params.connectionColor as string) ?? "#00aaff";
 
     // Pseudo-random function seeded by time for erratic behavior
     const seed = Math.floor(time / Math.max(1, 11 - flashRate));
@@ -494,7 +494,7 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
     for (let i = 0; i < blobsToDraw.length; i++) {
       const blob = blobsToDraw[i];
       let bx = blob.minX, by = blob.minY, bw = blob.maxX - blob.minX, bh = blob.maxY - blob.minY;
-      let cx = bx + bw / 2, cy = by + bh / 2;
+      const cx = bx + bw / 2, cy = by + bh / 2;
 
       if (forceSquare) {
         const side = Math.max(bw, bh);

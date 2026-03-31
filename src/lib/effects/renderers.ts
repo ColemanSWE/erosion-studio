@@ -56,7 +56,7 @@ export function renderFrame(
 
   // Native Mode: Draw pixels at full resolution without character mapping
   if (mode === "native") {
-    const imageData = new ImageData(pixelData as any, width, height);
+    const imageData = new ImageData(new Uint8ClampedArray(pixelData), width, height);
     const tempCanvas = document.createElement("canvas");
     tempCanvas.width = width;
     tempCanvas.height = height;
@@ -70,7 +70,7 @@ export function renderFrame(
 
   // Standard Mode: Just draw the modified pixels directly
   if (mode === "standard") {
-    const imageData = new ImageData(pixelData as any, width, height);
+    const imageData = new ImageData(new Uint8ClampedArray(pixelData), width, height);
     // We might need to scale it up if the canvas is larger than the grid?
     // Yes, usually width/height are the 'cols/rows' (small), but canvas is 720p or similar.
     // So we can draw the tiny ImageData to a temp canvas and drawImage(scale) it?

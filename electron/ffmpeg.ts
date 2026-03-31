@@ -9,13 +9,12 @@ const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
 const unlink = promisify(fs.unlink);
 const readdir = promisify(fs.readdir);
-const stat = promisify(fs.stat);
 
 /** Resolve the path to the bundled ffmpeg binary from ffmpeg-static. */
 function getFFmpegPath(): string {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   let ffmpegPath: string;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     ffmpegPath = require("ffmpeg-static") as string;
   } catch {
     ffmpegPath = "ffmpeg"; // fallback to system ffmpeg
@@ -28,6 +27,39 @@ function getFFmpegPath(): string {
 }
 
 export function setupFFmpegHandlers() {
+  // ── Extract video frames as PNG files ─────────────────────────────────────
+  ipcMain.handle(
+    "ffmpeg:extractFrames",
+    async (_, videoPath: string, outputDir: string, fps = 30) => {
+      try {
+        const ffmpegPath = getFFmpegPath();
+        await mkdir(outputDir, { recursive: true });
+
+        const args = [
+          "-y",
+          "-i", videoPath,
+          "-vf", `fps=${fps}`,
+          path.join(outputDir, "frame_%06d.png"),
+        ];
+
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "pipe", "pipe"] });
+          let stderr = "";
+          proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+          proc.on("close", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-500)}`));
+          });
+          proc.on("error", reject);
+        });
+
+        return { success: true, outputDir };
+      } catch (error) {
+        return { success: false, error: String(error) };
+      }
+    }
+  );
+
   // ── Get real video info via ffprobe-style probing ─────────────────────────
   ipcMain.handle("ffmpeg:getVideoInfo", async (_, videoPath: string) => {
     try {

@@ -59,8 +59,8 @@ void main() {
     uniforms: { intensity: "float", speed: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const speed = (params.speed as number) || 10;
+    const intensity = (params.intensity as number) ?? 50;
+    const speed = (params.speed as number) ?? 10;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -134,7 +134,7 @@ registerEffect({
     defaultParams: { mode: "melt", intensity: 70, momentum: 0.92, mediaSources: [] },
   paramsConfig: [],
   processor: (data, { width, height, time = 0, timelineFrames }, params) => {
-    const mode = (params.mode as string) || "melt";
+    const mode = (params.mode as string) ?? "melt";
     const intensity = (params.intensity as number) ?? 70;
     const momentum = (params.momentum as number) ?? 0.92;
     if (intensity === 0) return;
@@ -299,11 +299,11 @@ registerEffect({
       },
   paramsConfig: [],
   processor: (data, { width, height }, params) => {
-    const style = (params.style as string) || "block";
+    const style = (params.style as string) ?? "block";
     const intensity = (params.intensity as number) ?? 50;
-    const blockSize = (params.blockSize as number) || 16;
+    const blockSize = (params.blockSize as number) ?? 16;
     const activeSource = (params.activeSource as number) ?? -1;
-    const lastUpdate = (params.lastUpdate as number) || 0;
+    const lastUpdate = (params.lastUpdate as number) ?? 0;
     const mediaSources = (params.mediaSources as ImageData[]) || [];
 
     if (intensity === 0) return;
@@ -522,7 +522,7 @@ registerEffect({
   processor: (data, { width, height }, params) => {
     const intensity = (params.intensity as number) ?? 50;
     const activeSource = (params.activeSource as number) ?? -1;
-    const lastUpdate = (params.lastUpdate as number) || 0;
+    const lastUpdate = (params.lastUpdate as number) ?? 0;
     const mediaSources = (params.mediaSources as ImageData[]) || [];
 
     if (intensity === 0) return;
@@ -661,8 +661,8 @@ void main() {
     uniforms: { intensity: "float", blockSize: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 30;
-    const blockSize = (params.blockSize as number) || 16;
+    const intensity = (params.intensity as number) ?? 30;
+    const blockSize = (params.blockSize as number) ?? 16;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -923,9 +923,9 @@ void main() {
     uniforms: { rOffset: "float", gOffset: "float", bOffset: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const rOffset = (params.rOffset as number) || 5;
-    const gOffset = (params.gOffset as number) || 0;
-    const bOffset = (params.bOffset as number) || -5;
+    const rOffset = (params.rOffset as number) ?? 5;
+    const gOffset = (params.gOffset as number) ?? 0;
+    const bOffset = (params.bOffset as number) ?? -5;
 
     const source = new Uint8ClampedArray(data);
 
@@ -977,9 +977,9 @@ void main() {
     uniforms: { intensity: "float", count: "float", offset: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const count = (params.count as number) || 3;
-    const offset = (params.offset as number) || 20;
+    const intensity = (params.intensity as number) ?? 50;
+    const count = (params.count as number) ?? 3;
+    const offset = (params.offset as number) ?? 20;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -1075,8 +1075,8 @@ void main() {
     uniforms: { bits: "float", intensity: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const bits = (params.bits as number) || 4;
-    const intensity = (params.intensity as number) || 50;
+    const bits = (params.bits as number) ?? 4;
+    const intensity = (params.intensity as number) ?? 50;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -1170,8 +1170,8 @@ void main() {
     uniforms: { intensity: "float", fragmentSize: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const fragmentSize = (params.fragmentSize as number) || 8;
+    const intensity = (params.intensity as number) ?? 50;
+    const fragmentSize = (params.fragmentSize as number) ?? 8;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -1315,8 +1315,8 @@ void main() {
     uniforms: { intensity: "float", corruption: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const corruption = (params.corruption as number) || 30;
+    const intensity = (params.intensity as number) ?? 50;
+    const corruption = (params.corruption as number) ?? 30;
     if (intensity === 0) return;
 
     const byteCorruptChance = corruption / 1000;
@@ -1463,8 +1463,8 @@ void main() {
     uniforms: { intensity: "float", layers: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const layers = (params.layers as number) || 3;
+    const intensity = (params.intensity as number) ?? 50;
+    const layers = (params.layers as number) ?? 3;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -1685,10 +1685,10 @@ void main() {
   processor: (data, { width, height }, params) => {
     const quality = Math.max(
       1,
-      Math.min(100, (params.quality as number) || 30)
+      Math.min(100, (params.quality as number) ?? 30)
     );
-    const blockiness = (params.blockiness as number) || 50;
-    const colorBanding = (params.colorBanding as number) || 50;
+    const blockiness = (params.blockiness as number) ?? 50;
+    const colorBanding = (params.colorBanding as number) ?? 50;
 
     const source = new Uint8ClampedArray(data);
     const blockSize = 8;
@@ -1853,9 +1853,9 @@ void main() {
     uniforms: { intensity: "float", blockSize: "float", colorBleed: "float", temporal: "bool" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const blockSize = (params.blockSize as number) || 16;
-    const colorBleed = (params.colorBleed as number) || 50;
+    const intensity = (params.intensity as number) ?? 50;
+    const blockSize = (params.blockSize as number) ?? 16;
+    const colorBleed = (params.colorBleed as number) ?? 50;
     const temporal = (params.temporal as boolean) ?? true;
 
     if (intensity === 0) return;
@@ -2064,8 +2064,8 @@ registerEffect({
       },
   paramsConfig: [],
   processor: (data, { width, height }, params) => {
-    const intensity = (params.intensity as number) || 0.5;
-    const frameHistory = (params.frameHistory as number) || 1;
+    const intensity = (params.intensity as number) ?? 0.5;
+    const frameHistory = (params.frameHistory as number) ?? 1;
 
     storeFrame(data, width, height);
     const prevFrame = getFrameFromHistory(frameHistory);
@@ -2108,8 +2108,8 @@ void main() {
     uniforms: { speed: "float", amplitude: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const speed = (params.speed as number) || 2;
-    const amplitude = (params.amplitude as number) || 1.0;
+    const speed = (params.speed as number) ?? 2;
+    const amplitude = (params.amplitude as number) ?? 1.0;
 
     const source = new Uint8ClampedArray(data);
     const t = time * speed * 0.1;
@@ -2149,9 +2149,9 @@ registerEffect({
       },
   paramsConfig: [],
   processor: (data, { width, height }, params) => {
-    const intensity = (params.intensity as number) || 0.7;
-    const decay = (params.decay as number) || 0.9;
-    const maxFrames = (params.maxFrames as number) || 8;
+    const intensity = (params.intensity as number) ?? 0.7;
+    const decay = (params.decay as number) ?? 0.9;
+    const maxFrames = (params.maxFrames as number) ?? 8;
 
     storeFrame(data, width, height);
 
@@ -2163,7 +2163,7 @@ registerEffect({
       let g = data[i + 1] * (1 - intensity);
       let b = data[i + 2] * (1 - intensity);
 
-      let weight = intensity;
+      const weight = intensity;
       for (let f = 0; f < numFrames; f++) {
         const frame = frameHistoryStore.frames[f];
         const frameWeight = weight * Math.pow(decay, f);
@@ -2192,10 +2192,10 @@ registerEffect({
       },
   paramsConfig: [],
   processor: (data, { width, height }, params) => {
-    const rDecay = (params.rDecay as number) || 0.95;
-    const gDecay = (params.gDecay as number) || 0.9;
-    const bDecay = (params.bDecay as number) || 0.85;
-    const maxFrames = (params.maxFrames as number) || 6;
+    const rDecay = (params.rDecay as number) ?? 0.95;
+    const gDecay = (params.gDecay as number) ?? 0.9;
+    const bDecay = (params.bDecay as number) ?? 0.85;
+    const maxFrames = (params.maxFrames as number) ?? 6;
 
     storeFrame(data, width, height);
 
@@ -2232,9 +2232,9 @@ registerEffect({
       },
   paramsConfig: [],
   processor: (data, { width, height }, params) => {
-    const delay = (params.delay as number) || 2;
-    const feedback = (params.feedback as number) || 0.8;
-    const scale = (params.scale as number) || 0.95;
+    const delay = (params.delay as number) ?? 2;
+    const feedback = (params.feedback as number) ?? 0.8;
+    const scale = (params.scale as number) ?? 0.95;
 
     storeFrame(data, width, height);
     const prevFrame = getFrameFromHistory(delay);
@@ -2276,8 +2276,8 @@ registerEffect({
       },
   paramsConfig: [],
   processor: (data, { width, height }, params) => {
-    const delay = (params.delay as number) || 5;
-    const blendMode = (params.blendMode as string) || "replace";
+    const delay = (params.delay as number) ?? 5;
+    const blendMode = (params.blendMode as string) ?? "replace";
 
     storeFrame(data, width, height);
     const delayedFrame = getFrameFromHistory(delay);
@@ -2313,8 +2313,8 @@ registerEffect({
       },
   paramsConfig: [],
   processor: (data, { width, height }, params) => {
-    const alpha = (params.alpha as number) || 0.3;
-    const maxFrames = (params.maxFrames as number) || 10;
+    const alpha = (params.alpha as number) ?? 0.3;
+    const maxFrames = (params.maxFrames as number) ?? 10;
 
     storeFrame(data, width, height);
 
@@ -2380,8 +2380,8 @@ void main() {
     }),
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const gridSize = (params.gridSize as number) || 4;
-    const swapPattern = (params.swapPattern as string) || "random";
+    const gridSize = (params.gridSize as number) ?? 4;
+    const swapPattern = (params.swapPattern as string) ?? "random";
     const animated = (params.animated as boolean) !== false;
 
     const source = new Uint8ClampedArray(data);
@@ -2503,7 +2503,7 @@ registerEffect({
   ],
   processor: (data, { width, height, timelineFrames }, params) => {
     const intensity = (params.intensity as number) ?? 70;
-    const blockSize = (params.blockSize as number) || 16;
+    const blockSize = (params.blockSize as number) ?? 16;
     const decay = (params.decay as number) ?? 60;
     const bleed = (params.bleed as number) ?? 40;
 
@@ -2725,9 +2725,9 @@ void main() {
     }),
   },
   processor: (data, { width, height }, params) => {
-    const strideOffset = (params.strideOffset as number) || 30;
-    const channelSplit = (params.channelSplit as number) || 40;
-    const wrapMode = (params.wrapMode as string) || "repeat";
+    const strideOffset = (params.strideOffset as number) ?? 30;
+    const channelSplit = (params.channelSplit as number) ?? 40;
+    const wrapMode = (params.wrapMode as string) ?? "repeat";
     if (strideOffset === 0 && channelSplit === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -2816,9 +2816,9 @@ void main() {
     uniforms: { bits: "float", saturationBoost: "float", ditherAmount: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const bits = Math.round((params.bits as number) || 1);
-    const saturationBoost = (params.saturationBoost as number) || 80;
-    const ditherAmount = (params.ditherAmount as number) || 20;
+    const bits = Math.round((params.bits as number) ?? 1);
+    const saturationBoost = (params.saturationBoost as number) ?? 80;
+    const ditherAmount = (params.ditherAmount as number) ?? 20;
 
     const BAYER = [
        0/16,  8/16,  2/16, 10/16,
@@ -2906,9 +2906,9 @@ void main() {
     uniforms: { intensity: "float", colorFill: "float", speed: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 60;
-    const colorFill = (params.colorFill as number) || 30;
-    const speed = (params.speed as number) || 5;
+    const intensity = (params.intensity as number) ?? 60;
+    const colorFill = (params.colorFill as number) ?? 30;
+    const speed = (params.speed as number) ?? 5;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -3001,10 +3001,10 @@ void main() {
     uniforms: { barCount: "float", barWidth: "float", opacity: "float", speed: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const barCount = Math.round((params.barCount as number) || 12);
-    const barWidth = (params.barWidth as number) || 20;
+    const barCount = Math.round((params.barCount as number) ?? 12);
+    const barWidth = (params.barWidth as number) ?? 20;
     const opacity = (params.opacity as number) / 100 || 0.8;
-    const speed = (params.speed as number) || 4;
+    const speed = (params.speed as number) ?? 4;
 
     const neonColors = [
       [255, 0, 0], [0, 255, 0], [0, 0, 255],
@@ -3190,12 +3190,12 @@ void main() {
   },
   processor: (data, { width, height, time = 0 }, params) => {
     const destruction = (params.destruction as number) / 100 || 0.75;
-    const strideCorruption = (params.strideCorruption as number) || 60;
-    const colorCrushParam = (params.colorCrush as number) || 80;
-    const lineDisplacement = (params.lineDisplacement as number) || 70;
-    const syncBars = (params.syncBars as number) || 60;
-    const gridDensity = (params.gridDensity as number) || 16;
-    const speed = (params.speed as number) || 6;
+    const strideCorruption = (params.strideCorruption as number) ?? 60;
+    const colorCrushParam = (params.colorCrush as number) ?? 80;
+    const lineDisplacement = (params.lineDisplacement as number) ?? 70;
+    const syncBars = (params.syncBars as number) ?? 60;
+    const gridDensity = (params.gridDensity as number) ?? 16;
+    const speed = (params.speed as number) ?? 6;
 
     const source = new Uint8ClampedArray(data);
     const seed = Math.floor(time * speed);

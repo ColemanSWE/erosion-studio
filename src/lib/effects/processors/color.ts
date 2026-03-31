@@ -46,8 +46,8 @@ void main() {
     uniforms: { intensity: "float", radius: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const intensity = (params.intensity as number) || 0.5;
-    const radius = (params.radius as number) || 0.8;
+    const intensity = (params.intensity as number) ?? 0.5;
+    const radius = (params.radius as number) ?? 0.8;
 
     const cx = width / 2;
     const cy = height / 2;
@@ -101,8 +101,8 @@ void main() {
     uniforms: { threshold: "float", invert: "bool" },
   },
   processor: (data, { width, height }, params) => {
-    const threshold = (params.threshold as number) || 50;
-    const invert = (params.invert as boolean) || false;
+    const threshold = (params.threshold as number) ?? 50;
+    const invert = (params.invert as boolean) ?? false;
 
     const source = new Uint8ClampedArray(data);
     const sobelX = [
@@ -186,7 +186,7 @@ void main() {
     }),
   },
   processor: (data, config, params) => {
-    const palette = (params.palette as string) || "thermal";
+    const palette = (params.palette as string) ?? "thermal";
     const gradients: Record<string, number[][]> = {
       thermal: [
         [0, 0, 0],
@@ -276,9 +276,9 @@ void main() {
     uniforms: { threshold: "float", intensity: "float", radius: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const threshold = (params.threshold as number) || 200;
-    const intensity = (params.intensity as number) || 0.5;
-    const radius = (params.radius as number) || 3;
+    const threshold = (params.threshold as number) ?? 200;
+    const intensity = (params.intensity as number) ?? 0.5;
+    const radius = (params.radius as number) ?? 3;
 
     const brightPixels = new Float32Array(width * height * 3);
 
@@ -355,7 +355,7 @@ void main() {
     uniforms: { levels: "float" },
   },
   processor: (data, config, params) => {
-    const levels = (params.levels as number) || 8;
+    const levels = (params.levels as number) ?? 8;
     const step = 255 / (levels - 1);
 
     for (let i = 0; i < data.length; i += 4) {
@@ -430,8 +430,8 @@ void main() {
     },
   },
   processor: (data, config, params) => {
-    const color1 = hexToRgb((params.color1 as string) || "#000000");
-    const color2 = hexToRgb((params.color2 as string) || "#ffffff");
+    const color1 = hexToRgb((params.color1 as string) ?? "#000000");
+    const color2 = hexToRgb((params.color2 as string) ?? "#ffffff");
 
     for (let i = 0; i < data.length; i += 4) {
       const lum = (data[i] + data[i + 1] + data[i + 2]) / 3 / 255;
@@ -461,7 +461,7 @@ void main() {
     uniforms: { speed: "float" },
   },
   processor: (data, { time = 0 }, params) => {
-    const speed = (params.speed as number) || 1;
+    const speed = (params.speed as number) ?? 1;
     const hueShift = (time * speed) % 360;
 
     for (let i = 0; i < data.length; i += 4) {
@@ -499,7 +499,7 @@ void main() {
     }),
   },
   processor: (data, config, params) => {
-    const swap = (params.swap as string) || "rg";
+    const swap = (params.swap as string) ?? "rg";
 
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i],
@@ -557,9 +557,9 @@ void main() {
     }),
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const speed = (params.speed as number) || 1;
-    const intensity = (params.intensity as number) || 0.5;
-    const direction = (params.direction as string) || "horizontal";
+    const speed = (params.speed as number) ?? 1;
+    const intensity = (params.intensity as number) ?? 0.5;
+    const direction = (params.direction as string) ?? "horizontal";
 
     const t = time * speed * 0.01;
 
@@ -622,9 +622,9 @@ void main() {
     uniforms: { speed: "float", intensity: "float", flashRate: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const speed = (params.speed as number) || 2;
-    const intensity = (params.intensity as number) || 0.7;
-    const flashRate = (params.flashRate as number) || 4;
+    const speed = (params.speed as number) ?? 2;
+    const intensity = (params.intensity as number) ?? 0.7;
+    const flashRate = (params.flashRate as number) ?? 4;
 
     const t = time * speed * 0.02;
     const flash = Math.abs(Math.sin(t * flashRate));

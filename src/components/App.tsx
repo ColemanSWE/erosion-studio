@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   Panel,
   Group as PanelGroup,
@@ -12,16 +12,16 @@ import EffectsPanel from "./EffectsPanel/EffectsPanel";
 import { Timeline } from "./Timeline/Timeline";
 import ExportDialog from "./ExportDialog/ExportDialog";
 import type { ExportSettings } from "./ExportDialog/ExportDialog";
-import { useProjectStore } from "../stores/projectStore";
+import { useProjectStore, selectCanUndo, selectCanRedo } from "../stores/projectStore";
 import { useUIStore } from "../stores/uiStore";
 import { usePhotoEditor } from "../hooks/usePhotoEditor";
 import { useVideoPlayer } from "../hooks/useVideoPlayer";
 import { useCameraPlayer } from "../hooks/useCameraPlayer";
 import { useCameraCapture } from "../hooks/useCameraCapture";
 import { useExport } from "../hooks/useExport";
-import { useHistory } from "../hooks/useHistory";
+import { usePlayback } from "../hooks/usePlayback";
+import { useFileImport } from "../hooks/useFileImport";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import type { Project } from "../lib/project";
 import type { Region } from "../lib/effects/types";
 import styles from "./App.module.scss";
 import previewStyles from "./Preview/Preview.module.scss";
@@ -73,7 +73,12 @@ function App() {
     removeKeyframe,
     saveProject,
     loadProject,
+    undo,
+    redo,
   } = useProjectStore();
+
+  const canUndo = useProjectStore(selectCanUndo);
+  const canRedo = useProjectStore(selectCanRedo);
 
   const {
     showMediaBrowser,
@@ -100,87 +105,33 @@ function App() {
   const effectsPanelRef = useRef<PanelImperativeHandle | null>(null);
   const timelinePanelRef = useRef<PanelImperativeHandle | null>(null);
 
-  // Sync toolbar toggle → panel imperative collapse/expand
   const handleToggleMediaBrowser = useCallback(() => {
     const panel = mediaBrowserRef.current;
     if (!panel) return;
-    if (showMediaBrowser) {
-      panel.collapse();
-    } else {
-      panel.expand();
-    }
+    if (showMediaBrowser) panel.collapse();
+    else panel.expand();
   }, [showMediaBrowser]);
 
   const handleToggleEffectsPanel = useCallback(() => {
     const panel = effectsPanelRef.current;
     if (!panel) return;
-    if (showEffectsPanel) {
-      panel.collapse();
-    } else {
-      panel.expand();
-    }
+    if (showEffectsPanel) panel.collapse();
+    else panel.expand();
   }, [showEffectsPanel]);
 
   const handleToggleTimeline = useCallback(() => {
     const panel = timelinePanelRef.current;
     if (!panel) return;
-    if (showTimeline) {
-      panel.collapse();
-    } else {
-      panel.expand();
-    }
+    if (showTimeline) panel.collapse();
+    else panel.expand();
   }, [showTimeline]);
 
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
 
-  const projectSnapshot: Project = {
-    name: projectName,
-    media,
-    effects,
-    regions,
-    overlays,
-    resolution,
-    duration,
-    currentTime,
-    version: "1.0",
-  };
+  // ─── Playback heartbeat ───────────────────────────────────────────────────
+  usePlayback({ isPlaying, currentTime, duration, setCurrentTime, pause });
 
-  const { undo, redo, canUndo, canRedo } = useHistory(projectSnapshot);
-
-  const { exportOffline, exportRealtime, exportImage: exportImageFile, isExporting, exportProgress } = useExport();
-  const [showExportDialog, setShowExportDialog] = useState(false);
-
-  // ─── Playback Heartbeat ──────────────────────────────────────────────────
-  const currentTimeRef = useRef(currentTime);
-  currentTimeRef.current = currentTime;
-  const durationRef = useRef(duration);
-  durationRef.current = duration;
-
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    let rafId: number;
-    let lastTime = performance.now();
-
-    const tick = (now: number) => {
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-
-      const next = currentTimeRef.current + dt;
-      if (next >= durationRef.current) {
-        setCurrentTime(durationRef.current);
-        pause();
-      } else {
-        setCurrentTime(next);
-        rafId = requestAnimationFrame(tick);
-      }
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, setCurrentTime, pause]);
-
-  // ─── Timeline Rendering logic ─────────────────────────────────────────────
+  // ─── Timeline rendering logic ─────────────────────────────────────────────
   const activeClips = clips
     .filter((c) => currentTime >= c.startTime && currentTime <= c.endTime)
     .sort((a, b) => a.startTime - b.startTime);
@@ -191,7 +142,10 @@ function App() {
       media: media.find((m) => m.id === c.mediaId),
       isFallback: false,
     }))
-    .filter((m) => m.media != null) as { clip: any; media: any; isFallback: boolean }[];
+    .filter(
+      (m): m is { clip: (typeof activeClips)[number]; media: NonNullable<ReturnType<typeof media.find>>; isFallback: boolean } =>
+        m.media != null,
+    );
 
   const selectedMedia = media.find((m) => m.id === selectedMediaId);
 
@@ -223,7 +177,7 @@ function App() {
     }));
 
   const activeOverlays = overlays.filter(
-    (o) => currentTime >= o.startTime && currentTime <= o.endTime
+    (o) => currentTime >= o.startTime && currentTime <= o.endTime,
   );
 
   const overlayVideos = activeOverlays
@@ -242,7 +196,7 @@ function App() {
     })
     .filter((o) => o.path);
 
-  // ─── Rendering Hooks ─────────────────────────────────────────────────────
+  // ─── Rendering hooks ─────────────────────────────────────────────────────
   const { exportImage } = usePhotoEditor({
     canvas,
     effects: resolvedEffects,
@@ -252,11 +206,14 @@ function App() {
     overlays,
   });
 
+  // Suppress unused warning — exportImage is used internally by usePhotoEditor
+  void exportImage;
+
   const handleVideoDurationChange = useCallback(
     (dur: number) => {
-      if (dur > durationRef.current) setDuration(dur);
+      if (dur > duration) setDuration(dur);
     },
-    [setDuration]
+    [duration, setDuration],
   );
 
   useVideoPlayer({
@@ -283,13 +240,13 @@ function App() {
   const [recSeconds, setRecSeconds] = useState(0);
 
   const handleMediaCaptured = useCallback(
-    (item: { id: string; type: "image" | "video"; name: string; path: string; duration?: number }) => {
-      addMedia(item as any);
+    ({ blob: _blob, ...item }: { id: string; type: "image" | "video"; name: string; path: string; duration?: number; blob?: Blob }) => {
+      addMedia(item);
       if (item.type === "video" && item.duration) {
         if (item.duration > duration) setDuration(item.duration);
       }
     },
-    [addMedia, duration, setDuration]
+    [addMedia, duration, setDuration],
   );
 
   const { captureMode, snapPhoto, startRecording, stopRecording } = useCameraCapture({
@@ -318,92 +275,19 @@ function App() {
     setCanvas(newCanvas);
   }, []);
 
-  const handleImport = async () => {
-    if (!window.electron) {
-      alert("File dialog only available in Electron");
-      return;
-    }
+  // ─── File import ──────────────────────────────────────────────────────────
+  const { handleImport, handleAddCamera, handleDropFiles } = useFileImport({
+    addMedia,
+    selectMedia,
+    duration,
+    setDuration,
+  });
 
-    const result = await window.electron.openFile({
-      properties: ["openFile"],
-      filters: [
-        {
-          name: "All Supported Media",
-          extensions: ["mp4", "mov", "webm", "avi", "mkv", "m4v", "jpg", "jpeg", "png", "gif", "webp"],
-        },
-        { name: "Videos", extensions: ["mp4", "mov", "webm", "avi", "mkv", "m4v"] },
-        { name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp"] },
-      ],
-    });
+  // ─── Export ───────────────────────────────────────────────────────────────
+  const { exportOffline, exportRealtime, exportImage: exportImageFile, isExporting, exportProgress } = useExport();
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
-    if (!result.canceled && result.filePaths.length > 0) {
-      const filePath = result.filePaths[0];
-      const fileName = filePath.split("/").pop() || "Unknown";
-      const isVideoFile = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(fileName);
-
-      let videoDuration: number | undefined;
-      if (isVideoFile && window.electron?.ffmpeg) {
-        const info = await window.electron.ffmpeg.getVideoInfo(filePath);
-        if (info.success && info.duration && isFinite(info.duration)) {
-          videoDuration = info.duration;
-          if (info.duration > duration) setDuration(info.duration);
-        }
-      }
-
-      addMedia({
-        id: `media-${Date.now()}`,
-        type: isVideoFile ? "video" : "image",
-        name: fileName,
-        path: filePath,
-        duration: videoDuration,
-      } as const);
-    }
-  };
-
-  const handleAddCamera = () => {
-    const newMedia = {
-      id: `camera-${Date.now()}`,
-      type: "camera" as const,
-      name: `Live Camera`,
-      path: "",
-    };
-    addMedia(newMedia);
-    selectMedia(newMedia.id);
-  };
-
-  const handleDropFiles = useCallback(
-    async (files: FileList) => {
-      for (const file of Array.from(files)) {
-        const isVideoFile = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(file.name);
-        const isImageFile = /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
-        if (!isVideoFile && !isImageFile) continue;
-
-        const filePath = (file as any).path || file.name;
-
-        let videoDuration: number | undefined;
-        if (isVideoFile && window.electron?.ffmpeg && filePath.startsWith("/")) {
-          try {
-            const info = await window.electron.ffmpeg.getVideoInfo(filePath);
-            if (info.success && info.duration && isFinite(info.duration)) {
-              videoDuration = info.duration;
-              if (info.duration > duration) setDuration(info.duration);
-            }
-          } catch {}
-        }
-
-        addMedia({
-          id: `media-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          type: isVideoFile ? "video" : "image",
-          name: file.name,
-          path: filePath.startsWith("/") ? filePath : URL.createObjectURL(file),
-          duration: videoDuration,
-        } as const);
-      }
-    },
-    [addMedia, duration, setDuration]
-  );
-
-  const handleExport = () => setShowExportDialog(true);
+  const handleExport = useCallback(() => setShowExportDialog(true), []);
 
   const handleExportConfirm = async (settings: ExportSettings) => {
     if (!canvas) {
@@ -454,6 +338,7 @@ function App() {
     }
   };
 
+  // ─── Actions ──────────────────────────────────────────────────────────────
   const handleUndo = useCallback(() => undo(), [undo]);
   const handleRedo = useCallback(() => redo(), [redo]);
   const handleSave = useCallback(async () => saveProject(), [saveProject]);
@@ -476,7 +361,7 @@ function App() {
       setActiveRegionId(newRegion.id);
       setIsDrawingRegion(false);
     },
-    [regions, addRegion, setActiveRegionId, setIsDrawingRegion]
+    [regions, addRegion, setActiveRegionId, setIsDrawingRegion],
   );
 
   const handleRemoveRegion = useCallback(
@@ -484,7 +369,7 @@ function App() {
       removeRegion(id);
       if (activeRegionId === id) setActiveRegionId(null);
     },
-    [removeRegion, activeRegionId, setActiveRegionId]
+    [removeRegion, activeRegionId, setActiveRegionId],
   );
 
   const handleStartDrawingRegion = useCallback(() => {
@@ -509,18 +394,20 @@ function App() {
     });
   }, [addOverlay, duration]);
 
-  useKeyboardShortcuts({
-    undo: handleUndo,
-    redo: handleRedo,
-    save: handleSave,
-    export: handleExport,
-    playPause: handlePlayPause,
-    canUndo,
-    canRedo,
-  });
+  const shortcuts = useMemo(
+    () => ({
+      undo: handleUndo,
+      redo: handleRedo,
+      save: handleSave,
+      export: handleExport,
+      playPause: handlePlayPause,
+      canUndo,
+      canRedo,
+    }),
+    [handleUndo, handleRedo, handleSave, handleExport, handlePlayPause, canUndo, canRedo],
+  );
 
-  // Suppress unused warning — exportImage is used indirectly by usePhotoEditor
-  void exportImage;
+  useKeyboardShortcuts(shortcuts);
 
   return (
     <div className={styles.app}>

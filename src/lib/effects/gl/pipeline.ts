@@ -8,6 +8,7 @@ import {
   createProgram,
   bindUniforms,
   getUniformLocation,
+  clearUniformCache,
   type UniformType,
 } from "./shaders";
 export type { UniformType };
@@ -24,7 +25,8 @@ interface FBOPair {
 }
 
 function makeFBO(gl: WebGL2RenderingContext, width: number, height: number): FBOPair {
-  const tex = gl.createTexture()!;
+  const tex = gl.createTexture();
+  if (!tex) throw new Error("WebGL: failed to create texture");
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -33,10 +35,15 @@ function makeFBO(gl: WebGL2RenderingContext, width: number, height: number): FBO
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_2D, null);
 
-  const fbo = gl.createFramebuffer()!;
+  const fbo = gl.createFramebuffer();
+  if (!fbo) throw new Error("WebGL: failed to create framebuffer");
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  if (status !== gl.FRAMEBUFFER_COMPLETE) {
+    throw new Error(`WebGL: incomplete framebuffer (status 0x${status.toString(16)})`);
+  }
   return { fbo, tex };
 }
 
@@ -393,6 +400,7 @@ export class GLPipeline {
     freeFBO(gl, this.fbo[1]);
     gl.deleteVertexArray(this.vao);
     for (const prog of this.programCache.values()) {
+      clearUniformCache(prog);
       gl.deleteProgram(prog);
     }
     this.programCache.clear();

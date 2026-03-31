@@ -154,14 +154,18 @@ export function getUniformLocation(
     programCache = new Map();
     uniformLocationCache.set(program, programCache);
   }
-  
+
   if (programCache.has(name)) {
     return programCache.get(name)!;
   }
-  
+
   const loc = gl.getUniformLocation(program, name);
   programCache.set(name, loc);
   return loc;
+}
+
+export function clearUniformCache(program: WebGLProgram): void {
+  uniformLocationCache.delete(program);
 }
 
 export function bindUniforms(

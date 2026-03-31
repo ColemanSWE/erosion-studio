@@ -31,7 +31,7 @@ void main() {
     uniforms: { depth: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const depth = (params.depth as number) || 4;
+    const depth = (params.depth as number) ?? 4;
     const step = 255 / (depth - 1);
 
     for (let y = 0; y < height; y++) {
@@ -75,8 +75,8 @@ void main() {
     uniforms: { spacing: "float", opacity: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const spacing = (params.spacing as number) || 3;
-    const opacity = (params.opacity as number) || 0.4;
+    const spacing = (params.spacing as number) ?? 3;
+    const opacity = (params.opacity as number) ?? 0.4;
     const darken = 1 - opacity;
 
     for (let y = 0; y < height; y++) {
@@ -133,7 +133,7 @@ void main() {
     uniforms: { intensity: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 50;
+    const intensity = (params.intensity as number) ?? 50;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -225,8 +225,8 @@ void main() {
     uniforms: { curvature: "float", scanlines: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const curvature = (params.curvature as number) || 0.2;
-    const scanlineIntensity = (params.scanlines as number) || 0.3;
+    const curvature = (params.curvature as number) ?? 0.2;
+    const scanlineIntensity = (params.scanlines as number) ?? 0.3;
 
     const source = new Uint8ClampedArray(data);
     const cx = width / 2;
@@ -298,10 +298,10 @@ void main() {
     }),
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const speed = (params.speed as number) || 2;
-    const count = (params.count as number) || 3;
-    const thickness = (params.thickness as number) || 2;
-    const direction = (params.direction as string) || "vertical";
+    const speed = (params.speed as number) ?? 2;
+    const count = (params.count as number) ?? 3;
+    const thickness = (params.thickness as number) ?? 2;
+    const direction = (params.direction as string) ?? "vertical";
 
     const isVertical = direction === "vertical";
     const dimension = isVertical ? width : height;
@@ -366,7 +366,7 @@ registerEffect({
     defaultParams: { fps: 12 },
   paramsConfig: [],
   processor: (data, { width, height, time = 0 }, params) => {
-    const fps = (params.fps as number) || 12;
+    const fps = (params.fps as number) ?? 12;
     const cacheKey = `${width}x${height}`;
 
     if (!posterizeTimeCache.has(cacheKey)) {
@@ -418,9 +418,9 @@ void main() {
     }),
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const frequency = (params.frequency as number) || 8;
-    const intensity = (params.intensity as number) || 1.0;
-    const pattern = (params.pattern as string) || "pulse";
+    const frequency = (params.frequency as number) ?? 8;
+    const intensity = (params.intensity as number) ?? 1.0;
+    const pattern = (params.pattern as string) ?? "pulse";
 
     const t = time * 0.1;
     let strobe: number;
@@ -470,10 +470,10 @@ void main() {
     uniforms: { rFreq: "float", gFreq: "float", bFreq: "float", intensity: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const rFreq = (params.rFreq as number) || 8;
-    const gFreq = (params.gFreq as number) || 6;
-    const bFreq = (params.bFreq as number) || 10;
-    const intensity = (params.intensity as number) || 0.8;
+    const rFreq = (params.rFreq as number) ?? 8;
+    const gFreq = (params.gFreq as number) ?? 6;
+    const bFreq = (params.bFreq as number) ?? 10;
+    const intensity = (params.intensity as number) ?? 0.8;
 
     const t = time * 0.1;
 

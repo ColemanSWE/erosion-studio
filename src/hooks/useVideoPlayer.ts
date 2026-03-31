@@ -1,7 +1,8 @@
 import { useEffect, useRef, useCallback } from "react";
-import { renderWithEffects, type GLPipeline } from "../lib/effects/effects-renderer";
+import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
+import { useRenderContext } from "./useRenderContext";
 
 interface ActiveVideo {
   id: string;
@@ -59,28 +60,14 @@ export function useVideoPlayer({
   const lastFrameTimeRef = useRef(0);
   const skipEffectsRef = useRef(false);
 
-  const bufferRef = useRef<HTMLCanvasElement | null>(null);
-  const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
-  const glPipelineRef = useRef<GLPipeline | null>(null);
+  const { bufferRef, bufferCtxRef, glPipelineRef } = useRenderContext();
 
   useEffect(() => {
-    const buffer = document.createElement("canvas");
-    bufferRef.current = buffer;
-    bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
-
-    import("../lib/effects/gl/pipeline").then(({ GLPipeline }) => {
-      glPipelineRef.current = GLPipeline.tryCreate();
-    });
-
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
       }
-      glPipelineRef.current?.dispose();
-      glPipelineRef.current = null;
-      bufferRef.current = null;
-      bufferCtxRef.current = null;
     };
   }, []);
 
@@ -108,24 +95,24 @@ export function useVideoPlayer({
       return;
     }
 
+    // Use the video's native dimensions for source processing; the canvas dimensions
+    // are controlled by the selected resolution (set via JSX props) and should not
+    // be overridden here — renderWithEffects letterboxes the source into the canvas.
+    const videoW = primaryVideo.videoWidth || canvas.width;
+    const videoH = primaryVideo.videoHeight || canvas.height;
+
     // Secondary videos for transitions/composition
     const secondaryFrames: ImageData[] = [];
     for (let i = 1; i < activeVideos.length; i++) {
       const secDef = activeVideos[i];
       const secVideo = videosMapRef.current.get(secDef.id);
       if (secVideo && secVideo.readyState >= 2) {
-        // Draw secondary video to buffer to extract ImageData
-        bufferCtxRef.current.drawImage(secVideo, 0, 0, canvas.width, canvas.height);
+        // Draw secondary video to buffer to extract ImageData at source dimensions
+        bufferCtxRef.current.drawImage(secVideo, 0, 0, videoW, videoH);
         secondaryFrames.push(
-          bufferCtxRef.current.getImageData(0, 0, canvas.width, canvas.height)
+          bufferCtxRef.current.getImageData(0, 0, videoW, videoH)
         );
       }
-    }
-
-    // Update dimensions based on primary
-    if (canvas.width !== (primaryVideo.videoWidth || 1920)) {
-      canvas.width = primaryVideo.videoWidth || 1920;
-      canvas.height = primaryVideo.videoHeight || 1080;
     }
 
     const frameStart = performance.now();
@@ -150,8 +137,8 @@ export function useVideoPlayer({
         buffer: bufferRef.current,
         bufferCtx: bufferCtxRef.current,
         source: primaryVideo,
-        sourceWidth: canvas.width,
-        sourceHeight: canvas.height,
+        sourceWidth: videoW,
+        sourceHeight: videoH,
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         tick: tickRef.current,

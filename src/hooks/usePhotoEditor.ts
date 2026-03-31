@@ -1,9 +1,10 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { renderWithEffects, type GLPipeline } from "../lib/effects/effects-renderer";
+import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import { GifDecoder } from "../lib/gif-decoder";
+import { useRenderContext } from "./useRenderContext";
 
 type ImageSource = HTMLImageElement | ImageBitmap;
 
@@ -66,28 +67,14 @@ export function usePhotoEditor({
   const isAnimatingRef = useRef(false);
   const renderRef = useRef<(() => Promise<void>) | null>(null);
 
-  const bufferRef = useRef<HTMLCanvasElement | null>(null);
-  const bufferCtxRef = useRef<CanvasRenderingContext2D | null>(null);
-  const glPipelineRef = useRef<GLPipeline | null>(null);
+  const { bufferRef, bufferCtxRef, glPipelineRef } = useRenderContext();
 
   useEffect(() => {
-    const buffer = document.createElement("canvas");
-    bufferRef.current = buffer;
-    bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
-
-    import("../lib/effects/gl/pipeline").then(({ GLPipeline }) => {
-      glPipelineRef.current = GLPipeline.tryCreate();
-    });
-
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
       }
-      glPipelineRef.current?.dispose();
-      glPipelineRef.current = null;
-      bufferRef.current = null;
-      bufferCtxRef.current = null;
       for (const decoder of gifDecodersRef.current.values()) decoder.dispose();
       gifDecodersRef.current.clear();
     };
@@ -133,15 +120,20 @@ export function usePhotoEditor({
       const primarySource = imagesMapRef.current.get(primaryImageDef.id);
       if (!primarySource) return;
 
+      // Use the source's native dimensions for processing; the canvas dimensions are
+      // controlled by the selected resolution and should not be overridden here.
+      const { w: sourceW, h: sourceH } = getSourceDimensions(primarySource);
+      if (sourceW === 0 || sourceH === 0) return;
+
       // Secondary images for transitions
       const secondaryFrames: ImageData[] = [];
       for (let i = 1; i < activeImages.length; i++) {
         const secDef = activeImages[i];
         const secSource = imagesMapRef.current.get(secDef.id);
         if (secSource) {
-          bufferCtxRef.current.drawImage(secSource, 0, 0, canvas.width, canvas.height);
+          bufferCtxRef.current.drawImage(secSource, 0, 0, sourceW, sourceH);
           secondaryFrames.push(
-            bufferCtxRef.current.getImageData(0, 0, canvas.width, canvas.height),
+            bufferCtxRef.current.getImageData(0, 0, sourceW, sourceH),
           );
         }
       }
@@ -152,8 +144,8 @@ export function usePhotoEditor({
           buffer: bufferRef.current,
           bufferCtx: bufferCtxRef.current,
           source: primarySource,
-          sourceWidth: canvas.width,
-          sourceHeight: canvas.height,
+          sourceWidth: sourceW,
+          sourceHeight: sourceH,
           canvasWidth: canvas.width,
           canvasHeight: canvas.height,
           tick,
@@ -194,14 +186,6 @@ export function usePhotoEditor({
       bufferCtxRef.current = buffer.getContext("2d", { willReadFrequently: true });
     }
     if (!bufferCtxRef.current) return;
-
-    // Resize canvas to match the primary source (only once dimensions are known)
-    const { w: sourceW, h: sourceH } = getSourceDimensions(primarySource);
-    if (sourceW > 0 && sourceH > 0 && (canvas.width !== sourceW || canvas.height !== sourceH)) {
-      canvas.width = sourceW;
-      canvas.height = sourceH;
-    }
-    if (canvas.width === 0 || canvas.height === 0) return;
 
     await renderFrame(tickRef.current);
     tickRef.current++;

@@ -41,10 +41,10 @@ registerEffect({
   processor: (data, { width, height }, params) => {
     const threshold = (params.threshold as number) ?? 80;
     const density = (params.density as number) ?? 8;
-    const charsetKey = (params.charset as string) || "standard";
-    const color = (params.color as string) || "#00ff88";
+    const charsetKey = (params.charset as string) ?? "standard";
+    const color = (params.color as string) ?? "#00ff88";
     const opacity = (params.opacity as number) ?? 0.85;
-    const edgeMode = (params.edgeMode as string) || "sobel";
+    const edgeMode = (params.edgeMode as string) ?? "sobel";
     const fontSize = (params.fontSize as number) ?? 10;
     const bgDarken = (params.bgDarken as number) ?? 0.4;
 
@@ -78,6 +78,7 @@ registerEffect({
             // Non-maximum suppression approximation
             const angle = Math.atan2(gy, gx);
             const dir = ((angle + Math.PI) / Math.PI * 4) & 3;
+            // eslint-disable-next-line no-useless-assignment
             let n1 = 0, n2 = 0;
             if (dir === 0) { n1 = edges[pos - 1] || 0; n2 = edges[pos + 1] || 0; }
             else if (dir === 1) { n1 = edges[pos - width + 1] || 0; n2 = edges[pos + width - 1] || 0; }
@@ -176,7 +177,7 @@ registerEffect({
   processor: (data, { width, height }, params) => {
     const cellCount = (params.cellCount as number) ?? 200;
     const strokeWidth = (params.strokeWidth as number) ?? 1.5;
-    const strokeColor = (params.strokeColor as string) || "#000000";
+    const strokeColor = (params.strokeColor as string) ?? "#000000";
     const randomness = (params.randomness as number) ?? 0.8;
     const colorBlend = (params.colorBlend as number) ?? 0.7;
 
@@ -338,7 +339,7 @@ registerEffect({
   processor: (data, { width, height }, params) => {
     const levels = (params.levels as number) ?? 10;
     const lineWidth = (params.lineWidth as number) ?? 1.5;
-    const lineColor = (params.lineColor as string) || "#ffffff";
+    const lineColor = (params.lineColor as string) ?? "#ffffff";
     const fillBands = (params.fillBands as boolean) ?? false;
     const opacity = (params.opacity as number) ?? 0.9;
     const smooth = (params.smooth as number) ?? 2;
@@ -510,7 +511,7 @@ void main() {
     const intensity = (params.intensity as number) ?? 30;
     const iterations = (params.iterations as number) ?? 2;
     const channelSeparate = (params.channelSeparate as boolean) ?? true;
-    const direction = (params.direction as string) || "horizontal";
+    const direction = (params.direction as string) ?? "horizontal";
     const animated = (params.animated as boolean) ?? true;
 
     const cx = width / 2;
@@ -799,8 +800,8 @@ registerEffect({
   processor: (data, { width, height }, params) => {
     const spacing = (params.spacing as number) ?? 40;
     const lineWidth = (params.lineWidth as number) ?? 1;
-    const color = (params.color as string) || "#00ff88";
-    const gridStyle = (params.style as string) || "lines";
+    const color = (params.color as string) ?? "#00ff88";
+    const gridStyle = (params.style as string) ?? "lines";
     const opacity = (params.opacity as number) ?? 0.6;
     const showCoordinates = (params.showCoordinates as boolean) ?? false;
 

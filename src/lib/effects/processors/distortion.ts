@@ -23,7 +23,7 @@ void main() {
     uniforms: { offset: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const offset = (params.offset as number) || 5;
+    const offset = (params.offset as number) ?? 5;
     if (offset === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -78,7 +78,7 @@ void main() {
     }),
   },
   processor: (data, { width, height }, params) => {
-    const mode = (params.mode as string) || "horizontal";
+    const mode = (params.mode as string) ?? "horizontal";
     const source = new Uint8ClampedArray(data);
     const cx = width / 2;
     const cy = height / 2;
@@ -137,7 +137,7 @@ void main() {
     uniforms: { scale: "float", animated: "bool" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const scale = (params.scale as number) || 20;
+    const scale = (params.scale as number) ?? 20;
     const animated = (params.animated as boolean) ?? true;
 
     const source = new Uint8ClampedArray(data);
@@ -195,9 +195,9 @@ void main() {
     }),
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const amplitude = (params.amplitude as number) || 10;
-    const frequency = (params.frequency as number) || 0.1;
-    const direction = (params.direction as string) || "horizontal";
+    const amplitude = (params.amplitude as number) ?? 10;
+    const frequency = (params.frequency as number) ?? 0.1;
+    const direction = (params.direction as string) ?? "horizontal";
     const animated = (params.animated as boolean) ?? true;
 
     const source = new Uint8ClampedArray(data);
@@ -255,8 +255,8 @@ void main() {
     uniforms: { angle: "float", radius: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const angle = (params.angle as number) || 0.5;
-    const radius = (params.radius as number) || 0.5;
+    const angle = (params.angle as number) ?? 0.5;
+    const radius = (params.radius as number) ?? 0.5;
 
     const source = new Uint8ClampedArray(data);
     const cx = width / 2;
@@ -317,10 +317,10 @@ void main() {
     uniforms: { amplitude: "float", frequency: "float", centerX: "float", centerY: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const amplitude = (params.amplitude as number) || 20;
-    const frequency = (params.frequency as number) || 0.05;
-    const centerX = (params.centerX as number) || 0.5;
-    const centerY = (params.centerY as number) || 0.5;
+    const amplitude = (params.amplitude as number) ?? 20;
+    const frequency = (params.frequency as number) ?? 0.05;
+    const centerX = (params.centerX as number) ?? 0.5;
+    const centerY = (params.centerY as number) ?? 0.5;
 
     const source = new Uint8ClampedArray(data);
     const cx = centerX * width;
@@ -381,9 +381,9 @@ void main() {
     uniforms: { intensity: "float", frequency: "float", speed: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const frequency = (params.frequency as number) || 0.15;
-    const speed = (params.speed as number) || 2;
+    const intensity = (params.intensity as number) ?? 50;
+    const frequency = (params.frequency as number) ?? 0.15;
+    const speed = (params.speed as number) ?? 2;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -454,8 +454,8 @@ registerEffect({
     defaultParams: { intensity: 50, direction: "down" },
   paramsConfig: [],
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const direction = (params.direction as string) || "down";
+    const intensity = (params.intensity as number) ?? 50;
+    const direction = (params.direction as string) ?? "down";
     if (intensity === 0) return;
 
     const key = `${width}x${height}`;
@@ -568,9 +568,9 @@ void main() {
     uniforms: { intensity: "float", scale: "float", speed: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const scale = (params.scale as number) || 0.01;
-    const speed = (params.speed as number) || 1;
+    const intensity = (params.intensity as number) ?? 50;
+    const scale = (params.scale as number) ?? 0.01;
+    const speed = (params.speed as number) ?? 1;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -628,8 +628,8 @@ void main() {
     uniforms: { segments: "float", angle: "float", animated: "bool" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const segments = (params.segments as number) || 6;
-    const angle = (params.angle as number) || 0;
+    const segments = (params.segments as number) ?? 6;
+    const angle = (params.angle as number) ?? 0;
     const animated = (params.animated as boolean) !== false;
 
     const source = new Uint8ClampedArray(data);
@@ -699,8 +699,8 @@ void main() {
     }),
   },
   processor: (data, { width, height }, params) => {
-    const mode = (params.mode as string) || "quadrant";
-    const blendAmount = (params.blendAmount as number) || 0.5;
+    const mode = (params.mode as string) ?? "quadrant";
+    const blendAmount = (params.blendAmount as number) ?? 0.5;
 
     const source = new Uint8ClampedArray(data);
 

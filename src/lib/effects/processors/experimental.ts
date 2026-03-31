@@ -36,7 +36,7 @@ registerEffect({
     const lineLength = (params.lineLength as number) ?? 25;
     const speed = (params.speed as number) ?? 2;
     const opacity = (params.opacity as number) ?? 0.7;
-    const color = (params.color as string) || "#00ff88";
+    const color = (params.color as string) ?? "#00ff88";
     const colorFromImage = (params.colorFromImage as boolean) ?? true;
     const lineWidth = (params.lineWidth as number) ?? 1.5;
     const fadeAmount = (params.fadeAmount as number) ?? 0.15;
@@ -157,8 +157,8 @@ registerEffect({
     const threshold = (params.threshold as number) ?? 40;
     const glowRadius = (params.glowRadius as number) ?? 8;
     const glowIntensity = (params.glowIntensity as number) ?? 2.0;
-    const color = (params.color as string) || "#00ffff";
-    const secondaryColor = (params.secondaryColor as string) || "#ff00ff";
+    const color = (params.color as string) ?? "#00ffff";
+    const secondaryColor = (params.secondaryColor as string) ?? "#ff00ff";
     const dualTone = (params.dualTone as boolean) ?? true;
     const lineBoost = (params.lineBoost as number) ?? 2.5;
 
@@ -201,7 +201,7 @@ registerEffect({
     }
 
     // Multi-pass box blur for glow effect
-    let glowBuffer = new Float32Array(edgeMask);
+    const glowBuffer = new Float32Array(edgeMask);
     const passes = 3;
     for (let pass = 0; pass < passes; pass++) {
       const temp = new Float32Array(glowBuffer.length);
@@ -424,8 +424,8 @@ registerEffect({
     const dB = (params.diffuseB as number) ?? 0.5;
     const stepsPerFrame = (params.stepsPerFrame as number) ?? 8;
     const scale = (params.scale as number) ?? 2;
-    const colorA = (params.colorA as string) || "#000000";
-    const colorB = (params.colorB as string) || "#00ff88";
+    const colorA = (params.colorA as string) ?? "#000000";
+    const colorB = (params.colorB as string) ?? "#00ff88";
     const seedFromImage = (params.seedFromImage as boolean) ?? true;
 
     const parseHex = (hex: string) => {
@@ -695,7 +695,7 @@ registerEffect({
     { key: "mirror", label: "Mirror", type: "checkbox" },
   ],
   processor: (data, { width, height, time = 0 }, params) => {
-    const direction = (params.direction as string) || "vertical";
+    const direction = (params.direction as string) ?? "vertical";
     const timeDepth = (params.timeDepth as number) ?? 60;
     const speed = (params.speed as number) ?? 1;
     const waveAmount = (params.waveAmount as number) ?? 0;

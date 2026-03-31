@@ -1,5 +1,4 @@
 import { registerEffect, ProcessConfig } from "../effect-registry";
-import { EffectType, EffectParamConfig } from "../types";
 import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
 import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
 
@@ -15,24 +14,13 @@ registerEffect({
   ],
   // Face effects stay CPU: they require landmark computation + array uniforms for face rects
   processor: (data, { width, height, faceBounds = [] }, params) => {
-    const style = (params.style as string) || "solid";
-    const color = (params.color as string) || "#000000";
-    const thickness = (params.thickness as number) || 1.5;
+    const style = (params.style as string) ?? "solid";
+    const color = (params.color as string) ?? "#000000";
+    const thickness = (params.thickness as number) ?? 1.5;
 
     if (faceBounds.length === 0) return;
 
-    const hexToRgb = (hex: string): [number, number, number] => {
-      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      return result
-        ? [
-            parseInt(result[1], 16),
-            parseInt(result[2], 16),
-            parseInt(result[3], 16),
-          ]
-        : [0, 0, 0];
-    };
-
-    const [r, g, b] = hexToRgb(color);
+    const { r, g, b } = hexToRgb(color);
     const source = new Uint8ClampedArray(data);
 
     for (const face of faceBounds) {
@@ -216,24 +204,13 @@ registerEffect({
     { key: "thickness", label: "Thickness", type: "slider", min: 0.5, max: 4.0, step: 0.1 }
   ],
   processor: (data, { width, height, faceBounds = [] }, params) => {
-    const style = (params.style as string) || "solid";
-    const color = (params.color as string) || "#000000";
-    const thickness = (params.thickness as number) || 1.2;
+    const style = (params.style as string) ?? "solid";
+    const color = (params.color as string) ?? "#000000";
+    const thickness = (params.thickness as number) ?? 1.2;
 
     if (faceBounds.length === 0) return;
 
-    const hexToRgb = (hex: string): [number, number, number] => {
-      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      return result
-        ? [
-            parseInt(result[1], 16),
-            parseInt(result[2], 16),
-            parseInt(result[3], 16),
-          ]
-        : [0, 0, 0];
-    };
-
-    const [r, g, b] = hexToRgb(color);
+    const { r, g, b } = hexToRgb(color);
     const source = new Uint8ClampedArray(data);
 
     for (const face of faceBounds) {
@@ -389,24 +366,13 @@ registerEffect({
     { key: "color", label: "Color", type: "color" }
   ],
   processor: (data, { width, height, faceBounds = [], time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 50;
-    const lineCount = (params.lineCount as number) || 15;
-    const color = (params.color as string) || "#00ff88";
+    const intensity = (params.intensity as number) ?? 50;
+    const lineCount = (params.lineCount as number) ?? 15;
+    const color = (params.color as string) ?? "#00ff88";
 
     if (faceBounds.length === 0) return;
 
-    const hexToRgb = (hex: string): [number, number, number] => {
-      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      return result
-        ? [
-            parseInt(result[1], 16),
-            parseInt(result[2], 16),
-            parseInt(result[3], 16),
-          ]
-        : [0, 255, 136];
-    };
-
-    const [r, g, b] = hexToRgb(color);
+    const { r, g, b } = hexToRgb(color);
     const seed = Math.floor(time / 3);
 
     const pseudoRandom = (s: number): number => {
@@ -503,7 +469,7 @@ registerEffect({
     { key: "blockSize", label: "Block Size", type: "slider", min: 4, max: 100, step: 1 }
   ],
   processor: (data, { width, height, faceBounds = [] }, params) => {
-    const blockSize = (params.blockSize as number) || 16;
+    const blockSize = (params.blockSize as number) ?? 16;
     if (faceBounds.length === 0) return;
     const source = new Uint8ClampedArray(data);
 
@@ -567,7 +533,7 @@ registerEffect({
     { key: "radius", label: "Blur Radius", type: "slider", min: 1, max: 100, step: 1 }
   ],
   processor: (data, { width, height, faceBounds = [] }, params) => {
-    const radius = (params.radius as number) || 20;
+    const radius = (params.radius as number) ?? 20;
     if (faceBounds.length === 0 || radius <= 0) return;
 
     const source = new Uint8ClampedArray(data);
@@ -591,8 +557,8 @@ registerEffect({
       if (regionW <= 0 || regionH <= 0) continue;
 
       const regionSize = regionW * regionH * 4;
-      let current = new Uint8ClampedArray(regionSize);
-      let temp = new Uint8ClampedArray(regionSize);
+      const current = new Uint8ClampedArray(regionSize);
+      const temp = new Uint8ClampedArray(regionSize);
 
       for (let y = 0; y < regionH; y++) {
         for (let x = 0; x < regionW; x++) {
@@ -664,13 +630,11 @@ registerEffect({
     { key: "color", label: "Color", type: "color" }
   ],
   processor: (data, { width, height, faceBounds = [] }, params) => {
-    const mode = (params.mode as string) || "solid";
-    const color = (params.color as string) || "#ff00ff";
+    const mode = (params.mode as string) ?? "solid";
+    const color = (params.color as string) ?? "#ff00ff";
     if (faceBounds.length === 0) return;
 
-    const [r, g, b] = hexToRgb(color).r !== undefined 
-      ? [hexToRgb(color).r, hexToRgb(color).g, hexToRgb(color).b]
-      : [255, 0, 255];
+    const { r, g, b } = hexToRgb(color);
 
     for (const face of faceBounds) {
       const faceX = Math.floor(face.x * width);
