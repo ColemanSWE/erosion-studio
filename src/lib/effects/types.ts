@@ -94,7 +94,17 @@ export type EffectType =
   | "line-massacre"
   | "vsync-destroy"
   | "nerve-damage"
-  | "vhs-degrade";
+  | "vhs-degrade"
+  | "holographic"
+  | "light-leak"
+  | "chrome"
+  | "photocopy"
+  | "cctv"
+  | "prism"
+  | "3d-sphere"
+  | "3d-shatter"
+  | "3d-ribbon"
+  | "3d-crystal";
 
 export interface Region {
   id: string;

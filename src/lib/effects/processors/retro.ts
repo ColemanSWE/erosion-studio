@@ -861,3 +861,246 @@ registerEffect({
     }
   },
 });
+
+// ─── Photocopy ─────────────────────────────────────────────────────────────────
+// Dirty xerox / risograph print simulation: threshold to high-contrast B&W,
+// halftone grain, registration offset, optional riso tint
+
+registerEffect({
+  type: "photocopy",
+  label: "Photocopy",
+  category: "retro",
+  defaultParams: { threshold: 128, darkness: 0.7, grain: 25, misalign: 2, tint: "black", mode: "xerox" },
+  paramsConfig: [
+    { key: "threshold", label: "Threshold", type: "slider", min: 40, max: 220, step: 1 },
+    { key: "darkness", label: "Darkness", type: "slider", min: 0, max: 1, step: 0.05 },
+    { key: "grain", label: "Grain", type: "slider", min: 0, max: 80, step: 1 },
+    { key: "misalign", label: "Misalign", type: "slider", min: 0, max: 8, step: 0.5 },
+    { key: "tint", label: "Tint", type: "select", options: ["black", "blue", "red", "green", "purple"] },
+    { key: "mode", label: "Mode", type: "select", options: ["xerox", "riso"] },
+  ],
+  processor: (data, { width, height, time = 0 }, params) => {
+    const threshold = (params.threshold as number) ?? 128;
+    const darkness = (params.darkness as number) ?? 0.7;
+    const grain = (params.grain as number) ?? 25;
+    const misalign = (params.misalign as number) ?? 2;
+    const tint = (params.tint as string) ?? "black";
+    const mode = (params.mode as string) ?? "xerox";
+
+    const tintColors: Record<string, [number, number, number]> = {
+      black: [20, 20, 20],
+      blue: [30, 60, 180],
+      red: [200, 30, 40],
+      green: [30, 150, 60],
+      purple: [100, 20, 160],
+    };
+    const [tr, tg, tb] = tintColors[tint] || tintColors.black;
+
+    const seed = Math.floor(time * 5);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+
+        // Halftone dot pattern
+        const bx = x % 4;
+        const by = y % 4;
+        const bayerDot = BAYER_MATRIX_4x4[by][bx] / 16;
+        const dotGrain = grain > 0 ? bayerDot * grain : 0;
+
+        // Threshold + grain to binary
+        const val = lum + dotGrain + (pseudoRandom(seed + x * 7 + y * 13) - 0.5) * grain * 0.5;
+        const isInk = val < threshold;
+
+        if (isInk) {
+          const inkDarkness = darkness * (0.85 + pseudoRandom(seed + i) * 0.15);
+          data[i] = tr * inkDarkness;
+          data[i + 1] = tg * inkDarkness;
+          data[i + 2] = tb * inkDarkness;
+        } else {
+          const paperTone = mode === "riso" ? 245 + pseudoRandom(seed + i * 3) * 10 : 240 + pseudoRandom(seed + i * 3) * 15;
+          data[i] = paperTone;
+          data[i + 1] = paperTone * (mode === "riso" ? 0.97 : 1);
+          data[i + 2] = paperTone * (mode === "riso" ? 0.93 : 1);
+        }
+      }
+    }
+
+    // Registration misalignment: draw an offset ghost layer in secondary color
+    if (misalign > 0) {
+      const shiftX = Math.round(misalign);
+      const shiftY = Math.round(misalign * 0.5);
+      const [gr, gg, gb] = tint === "black" ? [tr + 80, tg + 80, tb + 80] as [number,number,number] : [tr, tg, tb] as [number,number,number];
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const srcX = clamp(x + shiftX, 0, width - 1);
+          const srcY = clamp(y + shiftY, 0, height - 1);
+          const srcI = (srcY * width + srcX) * 4;
+          const dstI = (y * width + x) * 4;
+
+          const srcLum = data[srcI] * 0.299 + data[srcI + 1] * 0.587 + data[srcI + 2] * 0.114;
+          if (srcLum < 80) {
+            const alpha = 0.25 * (mode === "riso" ? 1 : 0.5);
+            data[dstI] = data[dstI] * (1 - alpha) + gr * alpha;
+            data[dstI + 1] = data[dstI + 1] * (1 - alpha) + gg * alpha;
+            data[dstI + 2] = data[dstI + 2] * (1 - alpha) + gb * alpha;
+          }
+        }
+      }
+    }
+  },
+});
+
+// ─── CCTV ──────────────────────────────────────────────────────────────────────
+// Surveillance camera composite: fisheye distortion, resolution reduction,
+// green/gray tint, interlace artifacts, noise, and timestamp overlay
+
+registerEffect({
+  type: "cctv",
+  label: "CCTV",
+  category: "retro",
+  defaultParams: { resolution: "low", tint: "green", noise: 0.15, distortion: 0.3, showTimestamp: true, cameraId: "CAM-01" },
+  paramsConfig: [
+    { key: "resolution", label: "Resolution", type: "select", options: ["low", "medium"] },
+    { key: "tint", label: "Tint", type: "select", options: ["green", "gray", "none"] },
+    { key: "noise", label: "Noise", type: "slider", min: 0, max: 0.5, step: 0.01 },
+    { key: "distortion", label: "Distortion", type: "slider", min: 0, max: 1, step: 0.05 },
+    { key: "showTimestamp", label: "Show Timestamp", type: "checkbox" },
+    { key: "cameraId", label: "Camera ID", type: "select", options: ["CAM-01", "CAM-02", "CAM-03", "CAM-04", "EXT-01", "INT-02"] },
+  ],
+  processor: (data, { width, height, time = 0 }, params) => {
+    const resolution = (params.resolution as string) ?? "low";
+    const tint = (params.tint as string) ?? "green";
+    const noiseLevel = (params.noise as number) ?? 0.15;
+    const distortion = (params.distortion as number) ?? 0.3;
+    const showTimestamp = (params.showTimestamp as boolean) ?? true;
+    const cameraId = (params.cameraId as string) ?? "CAM-01";
+
+    const scale = resolution === "low" ? 0.25 : 0.5;
+
+    // Barrel distort + pixelate via canvas
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const ctx = tempCanvas.getContext("2d");
+    if (!ctx) return;
+
+    // Put original into canvas
+    const srcImage = ctx.createImageData(width, height);
+    srcImage.data.set(data);
+    ctx.putImageData(srcImage, 0, 0);
+
+    // Reduce resolution (nearest neighbor)
+    const lowW = Math.max(1, Math.round(width * scale));
+    const lowH = Math.max(1, Math.round(height * scale));
+    const lowCanvas = document.createElement("canvas");
+    lowCanvas.width = lowW;
+    lowCanvas.height = lowH;
+    const lowCtx = lowCanvas.getContext("2d");
+    if (!lowCtx) return;
+    lowCtx.imageSmoothingEnabled = false;
+    lowCtx.drawImage(tempCanvas, 0, 0, lowW, lowH);
+
+    // Scale back up without smoothing
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(lowCanvas, 0, 0, width, height);
+
+    const pixelated = ctx.getImageData(0, 0, width, height);
+
+    // Apply barrel distortion + tint + noise to pixel buffer
+    const src = new Uint8ClampedArray(pixelated.data);
+    const cx = width / 2;
+    const cy = height / 2;
+    const maxR = Math.sqrt(cx * cx + cy * cy);
+    const seed = Math.floor(time * 30);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+
+        let sx = x, sy = y;
+        if (distortion > 0) {
+          const dx = (x - cx) / cx;
+          const dy = (y - cy) / cy;
+          const r2 = dx * dx + dy * dy;
+          const barrel = 1 + distortion * r2;
+          sx = cx + dx * barrel * cx;
+          sy = cy + dy * barrel * cy;
+        }
+
+        const sx0 = clamp(Math.round(sx), 0, width - 1);
+        const sy0 = clamp(Math.round(sy), 0, height - 1);
+        const si = (sy0 * width + sx0) * 4;
+
+        let r = src[si];
+        let g = src[si + 1];
+        let b = src[si + 2];
+
+        // Tint
+        const lum = r * 0.299 + g * 0.587 + b * 0.114;
+        if (tint === "green") {
+          r = lum * 0.4;
+          g = lum * 1.0;
+          b = lum * 0.4;
+        } else if (tint === "gray") {
+          r = g = b = lum;
+        }
+
+        // Noise
+        if (noiseLevel > 0) {
+          const n = (pseudoRandom(seed + x * 7 + y * 13) - 0.5) * noiseLevel * 255 * 2;
+          r = clamp(r + n, 0, 255);
+          g = clamp(g + n, 0, 255);
+          b = clamp(b + n, 0, 255);
+        }
+
+        // Interlace: darken odd rows slightly
+        if (y % 2 === 1) {
+          r *= 0.75;
+          g *= 0.75;
+          b *= 0.75;
+        }
+
+        data[i] = r;
+        data[i + 1] = g;
+        data[i + 2] = b;
+        data[i + 3] = 255;
+      }
+    }
+
+    // Draw timestamp overlay via canvas
+    if (showTimestamp) {
+      const overlayCanvas = document.createElement("canvas");
+      overlayCanvas.width = width;
+      overlayCanvas.height = height;
+      const octx = overlayCanvas.getContext("2d");
+      if (!octx) return;
+
+      const plainBuf = new ArrayBuffer(data.length);
+      const dataCopy = new Uint8ClampedArray(plainBuf);
+      dataCopy.set(data);
+      octx.putImageData(new ImageData(dataCopy, width, height), 0, 0);
+
+      const fontSize = Math.max(10, Math.round(height * 0.04));
+      octx.font = `${fontSize}px monospace`;
+      octx.fillStyle = tint === "green" ? "#00ff40" : tint === "gray" ? "#cccccc" : "#ffffff";
+
+      // Fake timestamp
+      const totalSecs = Math.floor(time);
+      const hh = String(Math.floor(totalSecs / 3600) % 24).padStart(2, "0");
+      const mm = String(Math.floor(totalSecs / 60) % 60).padStart(2, "0");
+      const ss = String(totalSecs % 60).padStart(2, "0");
+      const dateStr = "1993/08/17";
+      const timeStr = `${hh}:${mm}:${ss}`;
+
+      const pad = Math.round(width * 0.02);
+      octx.fillText(`${cameraId}  ${dateStr} ${timeStr}`, pad, height - pad - fontSize);
+
+      const result = octx.getImageData(0, 0, width, height);
+      data.set(result.data);
+    }
+  },
+});

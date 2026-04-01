@@ -4,6 +4,10 @@ import { renderFrame, RenderMode } from "./renderers";
 import { emojiMap } from "./emoji-map";
 import { PALETTES, PaletteKey } from "./palettes";
 import { renderMesh } from "./mesh-renderer";
+import { renderSphere } from "./sphere-renderer";
+import { renderShatter } from "./shatter-renderer";
+import { renderRibbon } from "./ribbon-renderer";
+import { renderCrystal } from "./crystal-renderer";
 import { GLPipeline, type GLRegion } from "./gl/pipeline";
 import { processEffectsInWorker } from "./worker-pool";
 
@@ -36,6 +40,7 @@ interface RenderContext {
 // Style effects that have a dedicated render mode (not pixel processors)
 const RENDER_MODE_STYLE_EFFECTS = new Set([
   "pixelate", "emoji", "ascii", "matrix", "halftone", "3d-mesh",
+  "3d-sphere", "3d-shatter", "3d-ribbon", "3d-crystal",
 ]);
 
 export function getActiveStyleEffect(effects: Effect[]): Effect | null {
@@ -61,6 +66,10 @@ function styleEffectToRenderMode(type: string): RenderMode | "halftone" {
     case "halftone":
       return "halftone";
     case "3d-mesh":
+    case "3d-sphere":
+    case "3d-shatter":
+    case "3d-ribbon":
+    case "3d-crystal":
       return "native";
     default:
       return "native";
@@ -542,16 +551,37 @@ export async function renderWithEffects(
       bufferCtx.putImageData(imageData, 0, 0);
     }
 
-    // Render 3D mesh
-    const meshCanvas = renderMesh(
-      buffer,
-      activeStyle.params,
-      canvasWidth,
-      canvasHeight,
-    );
+    // For shape effects (not mesh), draw the processed image as background first.
+    // The WebGL renderers use a transparent clear so the geometry composites on top.
+    if (activeStyle.type !== "3d-mesh") {
+      const bgScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+      const bgW = sourceWidth * bgScale;
+      const bgH = sourceHeight * bgScale;
+      const bgX = (canvasWidth - bgW) / 2;
+      const bgY = (canvasHeight - bgH) / 2;
+      ctx.drawImage(buffer, bgX, bgY, bgW, bgH);
+    }
 
-    // Draw mesh to output canvas
-    ctx.drawImage(meshCanvas, 0, 0, canvasWidth, canvasHeight);
+    // Dispatch to correct 3D renderer based on effect type
+    let nativeCanvas: HTMLCanvasElement;
+    switch (activeStyle.type) {
+      case "3d-sphere":
+        nativeCanvas = renderSphere(buffer, activeStyle.params, canvasWidth, canvasHeight);
+        break;
+      case "3d-shatter":
+        nativeCanvas = renderShatter(buffer, activeStyle.params, canvasWidth, canvasHeight);
+        break;
+      case "3d-ribbon":
+        nativeCanvas = renderRibbon(buffer, activeStyle.params, canvasWidth, canvasHeight);
+        break;
+      case "3d-crystal":
+        nativeCanvas = renderCrystal(buffer, activeStyle.params, canvasWidth, canvasHeight);
+        break;
+      default:
+        nativeCanvas = renderMesh(buffer, activeStyle.params, canvasWidth, canvasHeight);
+    }
+
+    ctx.drawImage(nativeCanvas, 0, 0, canvasWidth, canvasHeight);
 
     if (postStyleEffects.length > 0) {
       const canvasImageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);

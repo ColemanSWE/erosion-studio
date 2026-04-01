@@ -109,6 +109,73 @@ registerEffect({
   processor: () => {},
 });
 
+registerEffect({
+  type: "3d-sphere",
+  label: "3D Sphere",
+  category: "style",
+  defaultParams: { zoom: 1.0, rotationSpeed: 0.5, tilt: 15, mode: "solid", roughness: 0.4, metalness: 0.1 },
+  paramsConfig: [
+    { key: "zoom", label: "Zoom", type: "slider", min: 0.3, max: 3, step: 0.05 },
+    { key: "rotationSpeed", label: "Rotation Speed", type: "slider", min: 0, max: 3, step: 0.05 },
+    { key: "tilt", label: "Tilt", type: "slider", min: -45, max: 45, step: 1 },
+    { key: "mode", label: "Mode", type: "select", options: ["solid", "wireframe", "points"] },
+    { key: "roughness", label: "Roughness", type: "slider", min: 0, max: 1, step: 0.01 },
+    { key: "metalness", label: "Metalness", type: "slider", min: 0, max: 1, step: 0.01 },
+  ],
+  processor: () => {},
+});
+
+registerEffect({
+  type: "3d-shatter",
+  label: "3D Shatter",
+  category: "style",
+  defaultParams: { fragments: 6, force: 1.0, progress: 0.5, rotateShards: true, mode: "explode", roughness: 0.3, metalness: 0.5 },
+  paramsConfig: [
+    { key: "fragments", label: "Fragments", type: "slider", min: 2, max: 12, step: 1 },
+    { key: "force", label: "Force", type: "slider", min: 0, max: 3, step: 0.1 },
+    { key: "progress", label: "Progress", type: "slider", min: 0, max: 1, step: 0.01 },
+    { key: "rotateShards", label: "Rotate Shards", type: "checkbox" },
+    { key: "mode", label: "Mode", type: "select", options: ["explode", "implode", "float"] },
+    { key: "roughness", label: "Roughness", type: "slider", min: 0, max: 1, step: 0.01 },
+    { key: "metalness", label: "Metalness", type: "slider", min: 0, max: 1, step: 0.01 },
+  ],
+  processor: () => {},
+});
+
+registerEffect({
+  type: "3d-ribbon",
+  label: "3D Ribbon",
+  category: "style",
+  defaultParams: { twist: 1.0, amplitude: 1.0, speed: 1.0, segments: 120, mode: "ribbon", roughness: 0.3, metalness: 0.2 },
+  paramsConfig: [
+    { key: "twist", label: "Twist", type: "slider", min: 0, max: 4, step: 0.1 },
+    { key: "amplitude", label: "Amplitude", type: "slider", min: 0, max: 3, step: 0.1 },
+    { key: "speed", label: "Speed", type: "slider", min: 0, max: 4, step: 0.1 },
+    { key: "segments", label: "Segments", type: "slider", min: 30, max: 200, step: 10 },
+    { key: "mode", label: "Mode", type: "select", options: ["ribbon", "helix", "wave"] },
+    { key: "roughness", label: "Roughness", type: "slider", min: 0, max: 1, step: 0.01 },
+    { key: "metalness", label: "Metalness", type: "slider", min: 0, max: 1, step: 0.01 },
+  ],
+  processor: () => {},
+});
+
+registerEffect({
+  type: "3d-crystal",
+  label: "3D Crystal",
+  category: "style",
+  defaultParams: { facets: 1, rotationSpeed: 0.5, scale: 1.0, mode: "solid", geometry: "icosahedron", roughness: 0.05, metalness: 0.1 },
+  paramsConfig: [
+    { key: "facets", label: "Detail", type: "slider", min: 0, max: 3, step: 1 },
+    { key: "rotationSpeed", label: "Rotation Speed", type: "slider", min: 0, max: 3, step: 0.05 },
+    { key: "scale", label: "Scale", type: "slider", min: 0.3, max: 2, step: 0.05 },
+    { key: "mode", label: "Mode", type: "select", options: ["solid", "wireframe", "points"] },
+    { key: "geometry", label: "Shape", type: "select", options: ["icosahedron", "dodecahedron", "octahedron", "tetrahedron"] },
+    { key: "roughness", label: "Roughness", type: "slider", min: 0, max: 1, step: 0.01 },
+    { key: "metalness", label: "Metalness", type: "slider", min: 0, max: 1, step: 0.01 },
+  ],
+  processor: () => {},
+});
+
 // ─── Detection / tracking style effects with real processors ───────────────
 
 registerEffect({

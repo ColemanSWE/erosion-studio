@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
-import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
+import { detectFaces, requiresFaceDetection, type FaceBounds } from "../lib/effects/face-detector";
 import { useRenderContext } from "./useRenderContext";
 
 interface ActiveVideo {
@@ -122,10 +122,9 @@ export function useVideoPlayer({
     if (skipEffects) {
       skipEffectsRef.current = false;
     } else {
-    if (tickRef.current % 10 === 0) {
+    if (tickRef.current % 10 === 0 && requiresFaceDetection(effects)) {
       try {
-        const faces = await detectFaces(primaryVideo);
-        faceBoundsRef.current = faces;
+        faceBoundsRef.current = await detectFaces(primaryVideo);
       } catch {
         faceBoundsRef.current = [];
       }
@@ -168,7 +167,7 @@ export function useVideoPlayer({
     tickRef.current++;
 
     if (isPlayingRef.current && !primaryVideo.paused) {
-      animationFrameRef.current = requestAnimationFrame(render);
+      animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
     }
   }, [canvas, effects, onTimeUpdate, regions, overlays, activeVideos]);
 

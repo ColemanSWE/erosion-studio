@@ -599,6 +599,172 @@ void main() {
 });
 
 registerEffect({
+  type: "holographic",
+  label: "Holographic",
+  category: "color",
+  defaultParams: { intensity: 0.8, speed: 1.0, angle: 45, bands: 10, blend: "screen" },
+  paramsConfig: [
+    { key: "intensity", label: "Intensity", type: "slider", min: 0, max: 1, step: 0.05 },
+    { key: "speed", label: "Speed", type: "slider", min: 0, max: 5, step: 0.1 },
+    { key: "angle", label: "Angle", type: "slider", min: 0, max: 360, step: 5 },
+    { key: "bands", label: "Band Density", type: "slider", min: 1, max: 30, step: 1 },
+    { key: "blend", label: "Blend Mode", type: "select", options: ["screen", "overlay", "add"] },
+  ],
+  processor: (data, { width, height, time = 0 }, params) => {
+    const intensity = (params.intensity as number) ?? 0.8;
+    const speed = (params.speed as number) ?? 1.0;
+    const angle = ((params.angle as number) ?? 45) * (Math.PI / 180);
+    const bands = (params.bands as number) ?? 10;
+    const blend = (params.blend as string) ?? "screen";
+
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const t = time * speed * 0.04;
+
+    // Build luma map once — used for both the surface-normal warp and the intensity mask
+    const luma = new Float32Array(width * height);
+    for (let k = 0; k < width * height; k++) {
+      luma[k] = (data[k * 4] * 0.299 + data[k * 4 + 1] * 0.587 + data[k * 4 + 2] * 0.114) / 255;
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const lum = luma[y * width + x];
+
+        // Sobel gradient: proxy for the surface normal at this pixel.
+        // The gradient direction and magnitude determine how the band positions warp,
+        // so colors "follow" the image's contours — the key visual property of
+        // holographic foil vs a plain rainbow gradient.
+        let gx = 0, gy = 0;
+        if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+          gx = luma[y * width + x + 1] - luma[y * width + x - 1];
+          gy = luma[(y + 1) * width + x] - luma[(y - 1) * width + x];
+        }
+
+        // Signed position along the light-direction axis (−0.5 → +0.5)
+        const nx = x / width - 0.5;
+        const ny = y / height - 0.5;
+        const posAlong = nx * cosA + ny * sinA;
+
+        // Gradient component along the same axis — displaces band positions so they
+        // track image structure rather than sitting as a flat overlay
+        const gradAlong = gx * cosA + gy * sinA;
+
+        // Phase = many tight band cycles + gradient warp + time tilt
+        const phase = posAlong * bands + gradAlong * bands * 0.8 + t;
+        const hue = ((phase % 1) + 1) % 1;
+
+        const [hr, hg, hb] = hslToRgb(hue * 360, 1.0, 0.58);
+
+        // Luminance mask: highlights catch more foil shimmer; pure black reflects nothing
+        const eff = intensity * (0.15 + lum * 0.85);
+
+        let fr: number, fg: number, fb: number;
+
+        if (blend === "overlay") {
+          const ov = (base: number, top: number) => {
+            const b = base / 255;
+            const tp = top / 255;
+            return (b < 0.5 ? 2 * b * tp : 1 - 2 * (1 - b) * (1 - tp)) * 255;
+          };
+          fr = ov(data[i], hr);
+          fg = ov(data[i + 1], hg);
+          fb = ov(data[i + 2], hb);
+        } else if (blend === "add") {
+          fr = Math.min(255, data[i] + hr);
+          fg = Math.min(255, data[i + 1] + hg);
+          fb = Math.min(255, data[i + 2] + hb);
+        } else {
+          fr = 255 - ((255 - data[i]) * (255 - hr)) / 255;
+          fg = 255 - ((255 - data[i + 1]) * (255 - hg)) / 255;
+          fb = 255 - ((255 - data[i + 2]) * (255 - hb)) / 255;
+        }
+
+        data[i] = data[i] * (1 - eff) + fr * eff;
+        data[i + 1] = data[i + 1] * (1 - eff) + fg * eff;
+        data[i + 2] = data[i + 2] * (1 - eff) + fb * eff;
+      }
+    }
+  },
+});
+
+registerEffect({
+  type: "light-leak",
+  label: "Light Leak",
+  category: "color",
+  defaultParams: { intensity: 0.7, speed: 0.5, warmth: 0.7, style: "subtle", count: 2 },
+  paramsConfig: [
+    { key: "intensity", label: "Intensity", type: "slider", min: 0, max: 1, step: 0.05 },
+    { key: "speed", label: "Speed", type: "slider", min: 0, max: 3, step: 0.1 },
+    { key: "warmth", label: "Warmth", type: "slider", min: 0, max: 1, step: 0.05 },
+    { key: "style", label: "Style", type: "select", options: ["subtle", "burn", "flare", "edge"] },
+    { key: "count", label: "Leak Count", type: "slider", min: 1, max: 4, step: 1 },
+  ],
+  processor: (data, { width, height, time = 0 }, params) => {
+    const intensity = (params.intensity as number) ?? 0.7;
+    const speed = (params.speed as number) ?? 0.5;
+    const warmth = (params.warmth as number) ?? 0.7;
+    const style = (params.style as string) ?? "subtle";
+    const count = Math.round((params.count as number) ?? 2);
+
+    const t = time * speed;
+
+    // Warm film colors: amber, magenta, cyan, orange, rose
+    const leakColors = [
+      [255, 160, 50],   // amber
+      [255, 80, 140],   // magenta
+      [80, 200, 255],   // cyan
+      [255, 120, 20],   // orange
+      [220, 60, 100],   // rose
+    ];
+
+    for (let li = 0; li < count; li++) {
+      const seed = li * 7.3 + 1.0;
+      const colorIdx = li % leakColors.length;
+      const [lr, lg, lb] = leakColors[colorIdx];
+
+      const cx = (0.5 + Math.sin(seed * 2.1 + t * 0.3) * 0.4) * width;
+      const cy = (0.5 + Math.cos(seed * 1.7 + t * 0.2) * 0.4) * height;
+
+      const baseRadius = (style === "edge" ? 1.2 : style === "flare" ? 0.6 : 0.5) * Math.max(width, height);
+      const radius = baseRadius * (0.4 + 0.3 * Math.sin(seed + t * 0.15));
+      const leakIntensity = intensity * (0.5 + 0.5 * Math.sin(seed * 3.1 + t * 0.4));
+
+      // Blend warm tint into color
+      const tr = lr * warmth + 255 * (1 - warmth);
+      const tg = lg * warmth + 200 * (1 - warmth);
+      const tb = lb * warmth + 150 * (1 - warmth);
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          let alpha = 0;
+
+          if (style === "edge") {
+            const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y) / Math.max(width, height);
+            alpha = Math.max(0, 1 - edgeDist * 8) * leakIntensity;
+          } else {
+            const dx = x - cx;
+            const dy = y - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const falloff = style === "flare" ? 2.5 : 1.5;
+            alpha = Math.max(0, 1 - Math.pow(dist / radius, falloff)) * leakIntensity;
+          }
+
+          if (alpha <= 0) continue;
+
+          // Screen blend for light leak look
+          data[i] = Math.min(255, data[i] + (255 - data[i]) * (tr / 255) * alpha);
+          data[i + 1] = Math.min(255, data[i + 1] + (255 - data[i + 1]) * (tg / 255) * alpha);
+          data[i + 2] = Math.min(255, data[i + 2] + (255 - data[i + 2]) * (tb / 255) * alpha);
+        }
+      }
+    }
+  },
+});
+
+registerEffect({
   type: "gradient-flash",
   label: "Gradient Flash",
   category: "color",

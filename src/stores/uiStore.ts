@@ -41,9 +41,9 @@ export const useUIStore = create<UIState>()(
       activeOverlayId: null,
       isDrawingRegion: false,
 
-      mediaBrowserSize: 16,
-      effectsPanelSize: 20,
-      timelineSize: 25,
+      mediaBrowserSize: 22,
+      effectsPanelSize: 30,
+      timelineSize: 35,
 
       toggleMediaBrowser: () =>
         set((state) => ({ showMediaBrowser: !state.showMediaBrowser })),
@@ -66,6 +66,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "erosion-ui-state",
+      version: 2,
       partialize: (state) => ({
         mediaBrowserSize: state.mediaBrowserSize,
         effectsPanelSize: state.effectsPanelSize,

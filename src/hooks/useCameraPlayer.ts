@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
-import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
+import { detectFaces, requiresFaceDetection, type FaceBounds } from "../lib/effects/face-detector";
 import { useRenderContext } from "./useRenderContext";
 
 interface UseCameraPlayerOptions {
@@ -21,6 +21,7 @@ export function useCameraPlayer({
 }: UseCameraPlayerOptions) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number>();
+  const renderRef = useRef<(() => Promise<void>) | null>(null);
   const tickRef = useRef(0);
   const { bufferRef, bufferCtxRef, glPipelineRef } = useRenderContext();
   const faceBoundsRef = useRef<FaceBounds[]>([]);
@@ -49,8 +50,7 @@ export function useCameraPlayer({
     const videoW = video.videoWidth || canvas.width;
     const videoH = video.videoHeight || canvas.height;
 
-    // Detect faces every 10 frames to reduce overhead
-    if (tickRef.current % 10 === 0) {
+    if (tickRef.current % 10 === 0 && requiresFaceDetection(effects)) {
       try {
         faceBoundsRef.current = await detectFaces(video);
       } catch (error) {
@@ -89,9 +89,13 @@ export function useCameraPlayer({
     tickRef.current++;
 
     if (isActive) {
-      animationFrameRef.current = requestAnimationFrame(render);
+      animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
     }
   }, [canvas, effects, isActive, regions, overlays]);
+
+  useEffect(() => {
+    renderRef.current = render;
+  }, [render]);
 
   useEffect(() => {
     let activeStream: MediaStream | null = null;
