@@ -154,6 +154,7 @@ const FACE_DETECTION_EFFECT_TYPES = new Set([
   "face-eye-censor",
   "face-mouth-censor",
   "face-landmark-glitch",
+  "face-forehead-text",
   "detection-labels",
 ]);
 

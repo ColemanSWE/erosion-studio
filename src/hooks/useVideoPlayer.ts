@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, requiresFaceDetection, type FaceBounds } from "../lib/effects/face-detector";
+import type { SourceTransform } from "../lib/project";
 import { useRenderContext } from "./useRenderContext";
 
 interface ActiveVideo {
@@ -21,6 +22,7 @@ interface UseVideoPlayerOptions {
   overlays?: Overlay[];
   onTimeUpdate?: (time: number) => void;
   onDurationChange?: (duration: number) => void;
+  sourceTransform?: SourceTransform;
 }
 
 /** Resolve a video path to a URL the HTML video element can load.
@@ -52,6 +54,7 @@ export function useVideoPlayer({
   overlays = [],
   onTimeUpdate,
   onDurationChange,
+  sourceTransform,
 }: UseVideoPlayerOptions) {
   const videosMapRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const animationFrameRef = useRef<number>();
@@ -147,7 +150,8 @@ export function useVideoPlayer({
         overlays,
         getOverlaySource: (mediaId) => {
           return videosMapRef.current.get(mediaId) || null;
-        }
+        },
+        sourceTransform,
       },
       effects.filter((e) => e.active),
       regions,
@@ -169,7 +173,7 @@ export function useVideoPlayer({
     if (isPlayingRef.current && !primaryVideo.paused) {
       animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
     }
-  }, [canvas, effects, onTimeUpdate, regions, overlays, activeVideos]);
+  }, [canvas, effects, onTimeUpdate, regions, overlays, activeVideos, sourceTransform]);
 
   // Keep renderRef updated
   useEffect(() => {

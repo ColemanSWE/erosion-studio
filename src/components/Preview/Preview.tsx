@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
+import { Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import styles from "./Preview.module.scss";
 import type { Region, Overlay } from "../../lib/effects/types";
+import type { SourceTransform } from "../../lib/project";
 
 interface PreviewProps {
   width?: number;
@@ -16,6 +18,8 @@ interface PreviewProps {
   onOverlaySelect?: (id: string | null) => void;
   onOverlayUpdate?: (id: string, updates: Partial<Overlay>) => void;
   captureHud?: React.ReactNode;
+  sourceTransform?: SourceTransform;
+  onSourceTransformChange?: (transform: SourceTransform) => void;
 }
 
 interface CanvasBounds {
@@ -78,12 +82,15 @@ function Preview({
   onOverlaySelect,
   onOverlayUpdate,
   captureHud,
+  sourceTransform,
+  onSourceTransformChange,
 }: PreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [drawingRect, setDrawingRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
   const [canvasBounds, setCanvasBounds] = useState<CanvasBounds | null>(null);
+  const panDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
 
   const [dragState, setDragState] = useState<{
     id: string;
@@ -174,10 +181,19 @@ function Preview({
     // If we click on the canvas background directly (not on an overlay), we deselect overlays
     if ((e.target as HTMLElement).className === styles.overlay) {
       onOverlaySelect?.(null);
-      // Wait, let's keep region drawing priority
       if (!isDrawingRegion) {
         onRegionSelect?.(null);
       }
+    }
+
+    if (sourceTransform?.mode === "fill" && !isDrawingRegion && onSourceTransformChange && canvasBounds) {
+      panDragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startPanX: sourceTransform.panX,
+        startPanY: sourceTransform.panY,
+      };
+      return;
     }
 
     if (!isDrawingRegion) return;
@@ -190,6 +206,19 @@ function Preview({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (panDragRef.current && sourceTransform && onSourceTransformChange && canvasBounds) {
+      const dxCss = e.clientX - panDragRef.current.startX;
+      const dyCss = e.clientY - panDragRef.current.startY;
+      const scaleX = width / canvasBounds.width;
+      const scaleY = height / canvasBounds.height;
+      onSourceTransformChange({
+        ...sourceTransform,
+        panX: panDragRef.current.startPanX + dxCss * scaleX,
+        panY: panDragRef.current.startPanY + dyCss * scaleY,
+      });
+      return;
+    }
+
     const normalized = mouseToNormalized(e.clientX, e.clientY);
     if (!normalized) return;
 
@@ -238,6 +267,11 @@ function Preview({
   };
 
   const handleMouseUp = () => {
+    if (panDragRef.current) {
+      panDragRef.current = null;
+      return;
+    }
+
     if (dragState) {
       setDragState(null);
       return;
@@ -284,6 +318,14 @@ function Preview({
     }
   };
 
+  const isFillMode = sourceTransform?.mode === "fill";
+
+  const overlayInteractionClass = isDrawingRegion
+    ? styles.drawing
+    : isFillMode
+      ? styles.panning
+      : "";
+
   return (
     <main className={styles.preview}>
       <div className={styles.canvasContainer} ref={canvasContainerRef}>
@@ -294,10 +336,11 @@ function Preview({
           className={styles.canvas}
         />
         <div 
-          className={`${styles.overlay} ${isDrawingRegion ? styles.drawing : ''}`}
+          className={`${styles.overlay} ${overlayInteractionClass}`}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
           style={canvasBounds ? {
             left: canvasBounds.left,
             top: canvasBounds.top,
@@ -364,6 +407,32 @@ function Preview({
             />
           )}
         </div>
+        {onSourceTransformChange && canvasBounds && (
+          <div
+            className={styles.transformControls}
+            style={{
+              left: canvasBounds.left + 8,
+              top: canvasBounds.top + canvasBounds.height - 40,
+            }}
+          >
+            <button
+              className={`${styles.transformBtn} ${isFillMode ? styles.active : ""}`}
+              onClick={() => onSourceTransformChange({ ...sourceTransform ?? { mode: "fit", panX: 0, panY: 0 }, mode: isFillMode ? "fit" : "fill" })}
+              title={isFillMode ? "Switch to Fit mode" : "Switch to Fill mode (pan enabled)"}
+            >
+              {isFillMode ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+            </button>
+            {isFillMode && (sourceTransform!.panX !== 0 || sourceTransform!.panY !== 0) && (
+              <button
+                className={styles.transformBtn}
+                onClick={() => onSourceTransformChange({ ...sourceTransform!, panX: 0, panY: 0 })}
+                title="Reset pan to center"
+              >
+                <RotateCcw size={12} />
+              </button>
+            )}
+          </div>
+        )}
         {captureHud}
       </div>
     </main>

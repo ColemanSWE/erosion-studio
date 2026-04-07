@@ -1,5 +1,6 @@
 import { Effect, Region, Overlay } from "./types";
 import { applyEffects, isStyleEffect } from "./effect-registry";
+import type { SourceTransform } from "../project";
 import { renderFrame, RenderMode } from "./renderers";
 import { emojiMap } from "./emoji-map";
 import { PALETTES, PaletteKey } from "./palettes";
@@ -35,6 +36,7 @@ interface RenderContext {
   glPipeline?: GLPipeline;
   overlays?: Overlay[];
   getOverlaySource?: (overlayId: string, type: "image" | "video") => CanvasImageSource | null;
+  sourceTransform?: SourceTransform;
 }
 
 // Style effects that have a dedicated render mode (not pixel processors)
@@ -119,6 +121,33 @@ function getOrCreateRegionEffectsCanvas(): { canvas: HTMLCanvasElement; ctx: Can
     throw new Error("Failed to get 2D context for region effects temp canvas");
   }
   return { canvas: regionEffectsTempCanvas, ctx: regionEffectsTempCtx };
+}
+
+function computeDrawRect(
+  sourceWidth: number,
+  sourceHeight: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  transform?: SourceTransform,
+): { drawX: number; drawY: number; drawWidth: number; drawHeight: number } {
+  if (transform?.mode === "fill") {
+    const scale = Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+    const centerX = (canvasWidth - drawWidth) / 2;
+    const centerY = (canvasHeight - drawHeight) / 2;
+    const maxPanX = Math.max(0, (drawWidth - canvasWidth) / 2);
+    const maxPanY = Math.max(0, (drawHeight - canvasHeight) / 2);
+    const drawX = centerX + Math.max(-maxPanX, Math.min(maxPanX, transform.panX));
+    const drawY = centerY + Math.max(-maxPanY, Math.min(maxPanY, transform.panY));
+    return { drawX, drawY, drawWidth, drawHeight };
+  }
+  const scale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+  const drawWidth = sourceWidth * scale;
+  const drawHeight = sourceHeight * scale;
+  const drawX = (canvasWidth - drawWidth) / 2;
+  const drawY = (canvasHeight - drawHeight) / 2;
+  return { drawX, drawY, drawWidth, drawHeight };
 }
 
 function applyRegionEffects(
@@ -373,14 +402,10 @@ export async function renderWithEffects(
     const regionEffects = effects.filter((e) => e.active && (e.regionId || e.overlayId));
     const hasOverlayMasks = regionEffects.some(e => e.overlayId);
 
-    const scale = Math.min(
-      canvasWidth / sourceWidth,
-      canvasHeight / sourceHeight,
+    const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
+      sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
     );
-    const drawWidth = sourceWidth * scale;
-    const drawHeight = sourceHeight * scale;
-    const drawX = (canvasWidth - drawWidth) / 2;
-    const drawY = (canvasHeight - drawHeight) / 2;
+    const scale = drawWidth / sourceWidth;
 
     const processConfig = {
       width: sourceWidth,
@@ -554,11 +579,9 @@ export async function renderWithEffects(
     // For shape effects (not mesh), draw the processed image as background first.
     // The WebGL renderers use a transparent clear so the geometry composites on top.
     if (activeStyle.type !== "3d-mesh") {
-      const bgScale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
-      const bgW = sourceWidth * bgScale;
-      const bgH = sourceHeight * bgScale;
-      const bgX = (canvasWidth - bgW) / 2;
-      const bgY = (canvasHeight - bgH) / 2;
+      const { drawX: bgX, drawY: bgY, drawWidth: bgW, drawHeight: bgH } = computeDrawRect(
+        sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
+      );
       ctx.drawImage(buffer, bgX, bgY, bgW, bgH);
     }
 
@@ -606,14 +629,9 @@ export async function renderWithEffects(
 
   if (rows < 1 || cols < 1) {
     console.warn("Calculated dimensions too small for style effect, skipping");
-    const scale = Math.min(
-      canvasWidth / sourceWidth,
-      canvasHeight / sourceHeight,
+    const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
+      sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
     );
-    const drawWidth = sourceWidth * scale;
-    const drawHeight = sourceHeight * scale;
-    const drawX = (canvasWidth - drawWidth) / 2;
-    const drawY = (canvasHeight - drawHeight) / 2;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
@@ -694,11 +712,9 @@ export async function renderWithEffects(
 
   ctx.drawImage(renderCanvas, 0, 0);
 
-  const scale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
-  const drawWidth = sourceWidth * scale;
-  const drawHeight = sourceHeight * scale;
-  const drawX = (canvasWidth - drawWidth) / 2;
-  const drawY = (canvasHeight - drawHeight) / 2;
+  const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
+    sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
+  );
 
   // Draw active overlays that are not effect zones
   for (const overlay of overlays) {

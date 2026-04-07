@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createStudioEnvMap } from "./renderer-utils";
 
 interface SphereRendererState {
   renderer: THREE.WebGLRenderer | null;
@@ -7,6 +8,7 @@ interface SphereRendererState {
   mesh: THREE.Mesh | THREE.Points | null;
   texture: THREE.CanvasTexture | null;
   canvas: HTMLCanvasElement | null;
+  envMap: THREE.Texture | null;
   lastMode: string;
   rotation: number;
   lastRoughness: number;
@@ -20,6 +22,7 @@ const state: SphereRendererState = {
   mesh: null,
   texture: null,
   canvas: null,
+  envMap: null,
   lastMode: "",
   rotation: 0,
   lastRoughness: -1,
@@ -48,6 +51,9 @@ function initializeRenderer(width: number, height: number): void {
   const rim = new THREE.DirectionalLight(0xffffff, 0.25);
   rim.position.set(0, -3, -2);
   state.scene.add(ambient, key, fill, rim);
+
+  state.envMap = createStudioEnvMap(state.renderer);
+  state.scene.environment = state.envMap;
 
   const aspect = width / height;
   state.camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 1000);
@@ -161,6 +167,7 @@ export function disposeSphereRenderer(): void {
       (state.mesh.material as THREE.Material).dispose();
     }
   }
+  if (state.envMap) state.envMap.dispose();
   if (state.texture) state.texture.dispose();
   if (state.renderer) state.renderer.dispose();
 
@@ -170,6 +177,7 @@ export function disposeSphereRenderer(): void {
   state.mesh = null;
   state.texture = null;
   state.canvas = null;
+  state.envMap = null;
   state.lastMode = "";
   state.rotation = 0;
   state.lastRoughness = -1;

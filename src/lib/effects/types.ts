@@ -88,7 +88,6 @@ export type EffectType =
   | "reaction-diffusion"
   | "droste"
   | "slit-scan"
-  | "datamosh-transition"
   | "buffer-corrupt"
   | "neon-crush"
   | "line-massacre"
@@ -104,7 +103,8 @@ export type EffectType =
   | "3d-sphere"
   | "3d-shatter"
   | "3d-ribbon"
-  | "3d-crystal";
+  | "3d-crystal"
+  | "face-forehead-text";
 
 export interface Region {
   id: string;
@@ -181,11 +181,12 @@ export interface TimelineTrack {
 export interface EffectParamConfig {
   key: string;
   label: string;
-  type: "slider" | "checkbox" | "select" | "color";
+  type: "slider" | "checkbox" | "select" | "color" | "text";
   min?: number;
   max?: number;
   step?: number;
   default?: unknown;
   options?: string[];
   group?: string;
+  placeholder?: string;
 }

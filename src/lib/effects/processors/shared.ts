@@ -23,40 +23,22 @@ export const motionSmearState: {
   width: 0,
   height: 0,
 };
-export const datamoshState: {
-  prevInput: Uint8ClampedArray | null;
-  moshBuffer: Uint8ClampedArray | null;
-  width: number;
-  height: number;
-  lastUpdate: number;
-  mvXBuffer: Float32Array | null;
-  mvYBuffer: Float32Array | null;
-} = {
-  prevInput: null,
-  moshBuffer: null,
-  width: 0,
-  height: 0,
-  lastUpdate: 0,
-  mvXBuffer: null,
-  mvYBuffer: null,
-};
-
 export const blockShovingState: {
   prevInput: Uint8ClampedArray | null;
   moshBuffer: Uint8ClampedArray | null;
   width: number;
   height: number;
-  lastUpdate: number;
   mvXBuffer: Float32Array | null;
   mvYBuffer: Float32Array | null;
+  lastResetMs: number;
 } = {
   prevInput: null,
   moshBuffer: null,
   width: 0,
   height: 0,
-  lastUpdate: 0,
   mvXBuffer: null,
   mvYBuffer: null,
+  lastResetMs: 0,
 };
 
 export function bilinearSample(

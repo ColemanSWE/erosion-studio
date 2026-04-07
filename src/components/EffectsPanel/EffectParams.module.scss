@@ -106,3 +106,20 @@
     background: none;
   }
 }
+
+.textInput {
+  width: 100%;
+  font-size: 11px;
+  padding: variables.$spacing-xs;
+  font-family: variables.$font-mono;
+  background: variables.$bg-elevated;
+  border: 1px solid variables.$border-primary;
+  color: variables.$text-primary;
+  border-radius: variables.$radius-sm;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: variables.$accent-primary;
+  }
+}

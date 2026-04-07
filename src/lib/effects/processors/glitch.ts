@@ -1,7 +1,7 @@
 import { registerEffect, ProcessConfig } from "../effect-registry";
 import { EffectType, EffectParamConfig } from "../types";
 import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { BAYER_MATRIX_4x4, motionSmearState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
 
 let pixelSortBuffer: Uint8ClampedArray | null = null;
 
@@ -289,22 +289,23 @@ registerEffect({
   type: "block-shoving",
   label: "Block Shoving",
   category: "glitch",
-    defaultParams: {
-        style: "block",
-        intensity: 50,
-        blockSize: 16,
-        mediaSources: [],
-        lastUpdate: 0,
-        activeSource: -1,
-      },
-  paramsConfig: [],
+  defaultParams: {
+    style: "block",
+    intensity: 50,
+    blockSize: 16,
+    resetInterval: 0,
+  },
+  paramsConfig: [
+    { key: "intensity", label: "Intensity", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "blockSize", label: "Block Size", type: "slider", min: 4, max: 64, step: 4 },
+    { key: "style", label: "Style", type: "select", options: ["block", "fluid"] },
+    { key: "resetInterval", label: "Reset Interval (s, 0=off)", type: "slider", min: 0, max: 30, step: 0.5 },
+  ],
   processor: (data, { width, height }, params) => {
     const style = (params.style as string) ?? "block";
     const intensity = (params.intensity as number) ?? 50;
     const blockSize = (params.blockSize as number) ?? 16;
-    const activeSource = (params.activeSource as number) ?? -1;
-    const lastUpdate = (params.lastUpdate as number) ?? 0;
-    const mediaSources = (params.mediaSources as ImageData[]) || [];
+    const resetInterval = (params.resetInterval as number) ?? 0;
 
     if (intensity === 0) return;
 
@@ -325,9 +326,9 @@ registerEffect({
       blockShovingState.moshBuffer = new Uint8ClampedArray(data);
       blockShovingState.width = width;
       blockShovingState.height = height;
-      blockShovingState.lastUpdate = lastUpdate;
       blockShovingState.mvXBuffer = new Float32Array(totalBlocks);
       blockShovingState.mvYBuffer = new Float32Array(totalBlocks);
+      blockShovingState.lastResetMs = Date.now();
       return;
     }
 
@@ -344,33 +345,9 @@ registerEffect({
     const mvX = blockShovingState.mvXBuffer!;
     const mvY = blockShovingState.mvYBuffer!;
 
-    if (lastUpdate > blockShovingState.lastUpdate) {
-      blockShovingState.lastUpdate = lastUpdate;
-
-      if (activeSource === -1) {
-        for (let i = 0; i < data.length; i++) {
-          moshBuffer[i] = currentInput[i];
-        }
-      } else if (mediaSources[activeSource]) {
-        const source = mediaSources[activeSource];
-        const srcData = source.data;
-        const sw = source.width;
-        const sh = source.height;
-
-        for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-            const sx = Math.floor(x * (sw / width));
-            const sy = Math.floor(y * (sh / height));
-            const si = (sy * sw + sx) * 4;
-            const di = (y * width + x) * 4;
-
-            moshBuffer[di] = srcData[si];
-            moshBuffer[di + 1] = srcData[si + 1];
-            moshBuffer[di + 2] = srcData[si + 2];
-            moshBuffer[di + 3] = 255;
-          }
-        }
-      }
+    if (resetInterval > 0 && Date.now() - blockShovingState.lastResetMs >= resetInterval * 1000) {
+      moshBuffer.set(currentInput);
+      blockShovingState.lastResetMs = Date.now();
     }
 
     for (let by = 0; by < blocksY; by++) {
@@ -508,103 +485,6 @@ registerEffect({
   },
 });
 
-registerEffect({
-  type: "datamosh",
-  label: "Datamosh",
-  category: "glitch",
-    defaultParams: {
-        intensity: 50,
-        mediaSources: [],
-        lastUpdate: 0,
-        activeSource: -1,
-      },
-  paramsConfig: [],
-  processor: (data, { width, height }, params) => {
-    const intensity = (params.intensity as number) ?? 50;
-    const activeSource = (params.activeSource as number) ?? -1;
-    const lastUpdate = (params.lastUpdate as number) ?? 0;
-    const mediaSources = (params.mediaSources as ImageData[]) || [];
-
-    if (intensity === 0) return;
-
-    const needsInit =
-      datamoshState.width !== width ||
-      datamoshState.height !== height ||
-      !datamoshState.prevInput;
-
-    const currentInput = new Uint8ClampedArray(data);
-
-    if (needsInit) {
-      datamoshState.prevInput = currentInput;
-      datamoshState.moshBuffer = new Uint8ClampedArray(data);
-      datamoshState.width = width;
-      datamoshState.height = height;
-      datamoshState.lastUpdate = lastUpdate;
-      datamoshState.mvXBuffer = null;
-      datamoshState.mvYBuffer = null;
-      return;
-    }
-
-    const prevInput = datamoshState.prevInput!;
-    const moshBuffer = datamoshState.moshBuffer!;
-
-    if (lastUpdate > datamoshState.lastUpdate) {
-      datamoshState.lastUpdate = lastUpdate;
-
-      if (activeSource === -1) {
-        for (let i = 0; i < data.length; i++) {
-          moshBuffer[i] = currentInput[i];
-        }
-      } else if (mediaSources[activeSource]) {
-        const source = mediaSources[activeSource];
-        const srcData = source.data;
-        const sw = source.width;
-        const sh = source.height;
-
-        for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-            const sx = Math.floor(x * (sw / width));
-            const sy = Math.floor(y * (sh / height));
-            const si = (sy * sw + sx) * 4;
-            const di = (y * width + x) * 4;
-
-            moshBuffer[di] = srcData[si];
-            moshBuffer[di + 1] = srcData[si + 1];
-            moshBuffer[di + 2] = srcData[si + 2];
-            moshBuffer[di + 3] = 255;
-          }
-        }
-      }
-    }
-
-    const factor = intensity / 100;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const deltaR = currentInput[i] - prevInput[i];
-      const deltaG = currentInput[i + 1] - prevInput[i + 1];
-      const deltaB = currentInput[i + 2] - prevInput[i + 2];
-
-      moshBuffer[i] = Math.max(
-        0,
-        Math.min(255, moshBuffer[i] + deltaR * factor)
-      );
-      moshBuffer[i + 1] = Math.max(
-        0,
-        Math.min(255, moshBuffer[i + 1] + deltaG * factor)
-      );
-      moshBuffer[i + 2] = Math.max(
-        0,
-        Math.min(255, moshBuffer[i + 2] + deltaB * factor)
-      );
-
-      data[i] = moshBuffer[i];
-      data[i + 1] = moshBuffer[i + 1];
-      data[i + 2] = moshBuffer[i + 2];
-    }
-
-    datamoshState.prevInput = currentInput;
-  },
-});
 
 registerEffect({
   type: "block-corrupt",
@@ -2430,233 +2310,6 @@ void main() {
         }
       }
     }
-  },
-});
-
-interface DatamoshTransitionState {
-  iFrame: Uint8ClampedArray | null;   // frozen primary I-frame
-  moshBuffer: Uint8ClampedArray | null; // accumulates smear over time
-  prevSecondary: Uint8ClampedArray | null;
-  mvXBuffer: Float32Array | null;
-  mvYBuffer: Float32Array | null;
-  width: number;
-  height: number;
-  inTransition: boolean;
-  frameCount: number; // how many frames we've been in transition
-}
-
-const datamoshTransitState: DatamoshTransitionState = {
-  iFrame: null,
-  moshBuffer: null,
-  prevSecondary: null,
-  mvXBuffer: null,
-  mvYBuffer: null,
-  width: 0,
-  height: 0,
-  inTransition: false,
-  frameCount: 0,
-};
-
-registerEffect({
-  type: "datamosh-transition",
-  label: "Datamosh Transition",
-  category: "glitch",
-  defaultParams: {
-    intensity: 70,
-    blockSize: 16,
-    decay: 60,
-    bleed: 40,
-  },
-  paramsConfig: [
-    {
-      key: "intensity",
-      label: "Smear Intensity",
-      type: "slider",
-      min: 0,
-      max: 100,
-      step: 1,
-    },
-    {
-      key: "blockSize",
-      label: "Block Size",
-      type: "slider",
-      min: 8,
-      max: 64,
-      step: 8,
-    },
-    {
-      key: "decay",
-      label: "I-frame Decay",
-      type: "slider",
-      min: 0,
-      max: 100,
-      step: 1,
-    },
-    {
-      key: "bleed",
-      label: "New Clip Bleed-in",
-      type: "slider",
-      min: 0,
-      max: 100,
-      step: 1,
-    },
-  ],
-  processor: (data, { width, height, timelineFrames }, params) => {
-    const intensity = (params.intensity as number) ?? 70;
-    const blockSize = (params.blockSize as number) ?? 16;
-    const decay = (params.decay as number) ?? 60;
-    const bleed = (params.bleed as number) ?? 40;
-
-    if (intensity === 0) return;
-
-    const blocksX = Math.ceil(width / blockSize);
-    const blocksY = Math.ceil(height / blockSize);
-    const totalBlocks = blocksX * blocksY;
-
-    const needsInit =
-      datamoshTransitState.width !== width ||
-      datamoshTransitState.height !== height;
-
-    if (needsInit) {
-      datamoshTransitState.iFrame = new Uint8ClampedArray(data);
-      datamoshTransitState.moshBuffer = new Uint8ClampedArray(data);
-      datamoshTransitState.prevSecondary = null;
-      datamoshTransitState.width = width;
-      datamoshTransitState.height = height;
-      datamoshTransitState.mvXBuffer = new Float32Array(totalBlocks);
-      datamoshTransitState.mvYBuffer = new Float32Array(totalBlocks);
-      datamoshTransitState.inTransition = false;
-      datamoshTransitState.frameCount = 0;
-    }
-
-    const secondarySource =
-      timelineFrames && timelineFrames.length > 0 ? timelineFrames[0] : null;
-
-    if (!secondarySource) {
-      // Not in a transition — keep updating I-frame and moshBuffer with live primary
-      datamoshTransitState.iFrame!.set(data);
-      datamoshTransitState.moshBuffer!.set(data);
-      datamoshTransitState.inTransition = false;
-      datamoshTransitState.prevSecondary = null;
-      datamoshTransitState.frameCount = 0;
-      return;
-    }
-
-    // --- We are IN a transition ---
-    const secData = secondarySource.data;
-    if (secData.length !== data.length) return;
-
-    if (!datamoshTransitState.inTransition || !datamoshTransitState.prevSecondary) {
-      // First frame of transition — freeze the I-frame
-      datamoshTransitState.prevSecondary = new Uint8ClampedArray(secData);
-      datamoshTransitState.inTransition = true;
-      datamoshTransitState.frameCount = 0;
-      if (datamoshTransitState.mvXBuffer) datamoshTransitState.mvXBuffer.fill(0);
-      if (datamoshTransitState.mvYBuffer) datamoshTransitState.mvYBuffer.fill(0);
-      // Output: frozen I-frame untouched on frame 0
-      data.set(datamoshTransitState.iFrame!);
-      return;
-    }
-
-    datamoshTransitState.frameCount++;
-
-    const moshBuffer = datamoshTransitState.moshBuffer!;
-    const prevSecondary = datamoshTransitState.prevSecondary!;
-    const mvX = datamoshTransitState.mvXBuffer!;
-    const mvY = datamoshTransitState.mvYBuffer!;
-
-    // ── Step 1: Compute motion vectors from secondary clip (new scene moving) ──
-    for (let by = 0; by < blocksY; by++) {
-      for (let bx = 0; bx < blocksX; bx++) {
-        const bi = by * blocksX + bx;
-        const startX = bx * blockSize;
-        const startY = by * blockSize;
-        const endX = Math.min(startX + blockSize, width);
-        const endY = Math.min(startY + blockSize, height);
-
-        let bestDx = 0, bestDy = 0, bestScore = Infinity;
-        const search = Math.round(intensity / 100 * 24) + 4; // ±4..28px search
-
-        for (let dy = -search; dy <= search; dy += 4) {
-          for (let dx = -search; dx <= search; dx += 4) {
-            let score = 0, samples = 0;
-            for (let py = startY; py < endY; py += 4) {
-              for (let px = startX; px < endX; px += 4) {
-                const sx = px + dx;
-                const sy = py + dy;
-                if (sx < 0 || sx >= width || sy < 0 || sy >= height) continue;
-                const ci = (py * width + px) * 4;
-                const si = (sy * width + sx) * 4;
-                const lumC = secData[ci] + secData[ci + 1] + secData[ci + 2];
-                const lumP = prevSecondary[si] + prevSecondary[si + 1] + prevSecondary[si + 2];
-                score += Math.abs(lumC - lumP);
-                samples++;
-              }
-            }
-            if (samples > 0) score /= samples;
-            if (score < bestScore) { bestScore = score; bestDx = dx; bestDy = dy; }
-          }
-        }
-
-        // Accumulate motion vectors — let them compound over time (key to true datamosh)
-        const momentum = 0.7;
-        mvX[bi] = mvX[bi] * momentum + bestDx * (1 - momentum);
-        mvY[bi] = mvY[bi] * momentum + bestDy * (1 - momentum);
-      }
-    }
-
-    // ── Step 2: Apply accumulated motion vectors to moshBuffer (IN-PLACE) ────
-    // This is the heart: we read from moshBuffer and WRITE BACK to it,
-    // so errors compound — the smear builds up over many frames.
-    const tempBuffer = new Uint8ClampedArray(moshBuffer);
-    const mvScale = (intensity / 50); // 0..2
-
-    const decayAlpha = decay / 100;      // how much old mosh bleeds through
-    const bleedAlpha = bleed / 500;       // how fast new clip bleeds in (slow)
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const bx = Math.min(blocksX - 1, Math.floor(x / blockSize));
-        const by = Math.min(blocksY - 1, Math.floor(y / blockSize));
-        const bi = by * blocksX + bx;
-
-        const dx = mvX[bi] * mvScale;
-        const dy = mvY[bi] * mvScale;
-
-        const srcX = x + dx;
-        const srcY = y + dy;
-
-        const r = bilinearSample(tempBuffer, width, height, srcX, srcY, 0);
-        const g = bilinearSample(tempBuffer, width, height, srcX, srcY, 1);
-        const b = bilinearSample(tempBuffer, width, height, srcX, srcY, 2);
-
-        const di = (y * width + x) * 4;
-
-        // Decay: blend slightly toward I-frame to prevent total collapse, controlled by param
-        const ir = datamoshTransitState.iFrame![di];
-        const ig = datamoshTransitState.iFrame![di + 1];
-        const ib = datamoshTransitState.iFrame![di + 2];
-
-        // New clip bleed-in from secondary
-        const sr = secData[di];
-        const sg = secData[di + 1];
-        const sb = secData[di + 2];
-
-        const iDecay = decayAlpha * 0.05; // tiny pull back toward i-frame
-        const sBleed = bleedAlpha;          // slow bleed of new scene
-
-        moshBuffer[di]     = Math.round(r * (1 - iDecay - sBleed) + ir * iDecay + sr * sBleed);
-        moshBuffer[di + 1] = Math.round(g * (1 - iDecay - sBleed) + ig * iDecay + sg * sBleed);
-        moshBuffer[di + 2] = Math.round(b * (1 - iDecay - sBleed) + ib * iDecay + sb * sBleed);
-        moshBuffer[di + 3] = 255;
-      }
-    }
-
-    // ── Step 3: Output is the accumulated mosh buffer ──────────────────────
-    data.set(moshBuffer);
-
-    // Update previous secondary frame for next iteration's motion estimation
-    datamoshTransitState.prevSecondary!.set(secData);
   },
 });
 

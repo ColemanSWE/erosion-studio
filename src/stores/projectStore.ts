@@ -9,8 +9,8 @@ import type {
   EffectParamTrack,
   Keyframe,
 } from "../lib/effects/types";
-import type { MediaItem, Resolution } from "../lib/project";
-import { DEFAULT_RESOLUTION } from "../lib/project";
+import type { MediaItem, Resolution, SourceTransform } from "../lib/project";
+import { DEFAULT_RESOLUTION, DEFAULT_SOURCE_TRANSFORM } from "../lib/project";
 import { getEffectDefinition } from "../lib/effects/effect-registry";
 import type { PaletteKey } from "../lib/effects/palettes";
 
@@ -74,11 +74,14 @@ interface ProjectState {
   /** Named rows in the overlay section of the timeline */
   overlayTracks: TimelineTrack[];
 
+  sourceTransform: SourceTransform;
+
   _historyPast: HistoricalState[];
   _historyFuture: HistoricalState[];
 
   setProjectName: (name: string) => void;
   setResolution: (resolution: Resolution) => void;
+  setSourceTransform: (transform: SourceTransform) => void;
   addMedia: (item: MediaItem) => void;
   removeMedia: (id: string) => void;
   selectMedia: (id: string) => void;
@@ -159,11 +162,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   effectParamTracks: [],
   mediaTracks: [defaultMediaTrack()],
   overlayTracks: [defaultOverlayTrack()],
+  sourceTransform: DEFAULT_SOURCE_TRANSFORM,
   _historyPast: [],
   _historyFuture: [],
 
   setProjectName: (name) => set({ projectName: name }),
   setResolution: (resolution) => set({ resolution }),
+  setSourceTransform: (transform) => set({ sourceTransform: transform }),
 
   addMedia: (item) =>
     set((state) => ({
@@ -489,6 +494,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       effectParamTracks: state.effectParamTracks,
       mediaTracks: state.mediaTracks,
       overlayTracks: state.overlayTracks,
+      sourceTransform: state.sourceTransform,
     };
 
     const res = await window.electron.file.writeText(
@@ -559,6 +565,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         mediaTracks: loadedMediaTracks,
         overlayTracks: loadedOverlayTracks,
 
+        sourceTransform: (projectData.sourceTransform as SourceTransform) || DEFAULT_SOURCE_TRANSFORM,
         currentTime: 0,
         isPlaying: false,
         selectedMediaId: undefined,

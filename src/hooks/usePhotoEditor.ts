@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, type FaceBounds } from "../lib/effects/face-detector";
+import type { SourceTransform } from "../lib/project";
 import { GIFEncoder, quantize, applyPalette } from "gifenc";
 import { GifDecoder } from "../lib/gif-decoder";
 import { useRenderContext } from "./useRenderContext";
@@ -20,6 +21,7 @@ interface UsePhotoEditorOptions {
   overlayImages?: ActiveImage[];
   regions?: Region[];
   overlays?: Overlay[];
+  sourceTransform?: SourceTransform;
 }
 
 function isGifPath(path: string): boolean {
@@ -54,6 +56,7 @@ export function usePhotoEditor({
   overlayImages = [],
   regions = [],
   overlays = [],
+  sourceTransform,
 }: UsePhotoEditorOptions) {
   const imagesMapRef = useRef<Map<string, ImageSource>>(new Map());
   const gifDecodersRef = useRef<Map<string, GifDecoder>>(new Map());
@@ -92,6 +95,7 @@ export function usePhotoEditor({
           [
             "glitch",
             "datamosh",
+            "block-shoving",
             "vhs",
             "scanlines",
             "crt",
@@ -154,13 +158,14 @@ export function usePhotoEditor({
           glPipeline: glPipelineRef.current ?? undefined,
           overlays,
           getOverlaySource: (mediaId) => imagesMapRef.current.get(mediaId) ?? null,
+          sourceTransform,
         },
         effects.filter((e) => e.active),
         regions,
         overlays,
       );
     },
-    [canvas, effects, regions, overlays, activeImages],
+    [canvas, effects, regions, overlays, activeImages, sourceTransform],
   );
 
   const render = useCallback(async () => {

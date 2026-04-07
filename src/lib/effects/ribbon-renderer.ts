@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createStudioEnvMap } from "./renderer-utils";
 
 interface RibbonRendererState {
   renderer: THREE.WebGLRenderer | null;
@@ -7,6 +8,7 @@ interface RibbonRendererState {
   mesh: THREE.Mesh | null;
   texture: THREE.CanvasTexture | null;
   canvas: HTMLCanvasElement | null;
+  envMap: THREE.Texture | null;
   lastSegments: number;
   lastMode: string;
   geometry: THREE.BufferGeometry | null;
@@ -21,6 +23,7 @@ const state: RibbonRendererState = {
   mesh: null,
   texture: null,
   canvas: null,
+  envMap: null,
   lastSegments: -1,
   lastMode: "",
   geometry: null,
@@ -50,6 +53,9 @@ function initializeRenderer(width: number, height: number): void {
   const rim = new THREE.DirectionalLight(0xffffff, 0.25);
   rim.position.set(0, -3, -2);
   state.scene.add(ambient, key, fill, rim);
+
+  state.envMap = createStudioEnvMap(state.renderer);
+  state.scene.environment = state.envMap;
 
   const aspect = width / height;
   state.camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 1000);
@@ -233,6 +239,7 @@ export function disposeRibbonRenderer(): void {
     (state.mesh.material as THREE.Material).dispose();
   }
   if (state.geometry) state.geometry.dispose();
+  if (state.envMap) state.envMap.dispose();
   if (state.texture) state.texture.dispose();
   if (state.renderer) state.renderer.dispose();
 
@@ -242,6 +249,7 @@ export function disposeRibbonRenderer(): void {
   state.mesh = null;
   state.texture = null;
   state.canvas = null;
+  state.envMap = null;
   state.lastSegments = -1;
   state.lastMode = "";
   state.geometry = null;

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createStudioEnvMap } from "./renderer-utils";
 
 interface ShardData {
   vertices: [number, number, number, number, number, number];
@@ -17,6 +18,7 @@ interface ShatterRendererState {
   shards: ShardData[];
   meshGroup: THREE.Group | null;
   texture: THREE.CanvasTexture | null;
+  envMap: THREE.Texture | null;
   lastFragments: number;
   lastMode: string;
   lastRoughness: number;
@@ -31,6 +33,7 @@ const state: ShatterRendererState = {
   shards: [],
   meshGroup: null,
   texture: null,
+  envMap: null,
   lastFragments: -1,
   lastMode: "",
   lastRoughness: -1,
@@ -122,6 +125,9 @@ function initializeRenderer(width: number, height: number): void {
   const rim = new THREE.DirectionalLight(0xffffff, 0.25);
   rim.position.set(0, -3, -2);
   state.scene.add(ambient, key, fill, rim);
+
+  state.envMap = createStudioEnvMap(state.renderer);
+  state.scene.environment = state.envMap;
 
   const aspect = width / height;
   state.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
@@ -264,6 +270,7 @@ export function disposeShatterRenderer(): void {
     });
     state.scene?.remove(state.meshGroup);
   }
+  if (state.envMap) state.envMap.dispose();
   if (state.texture) state.texture.dispose();
   if (state.renderer) state.renderer.dispose();
 
@@ -274,6 +281,7 @@ export function disposeShatterRenderer(): void {
   state.shards = [];
   state.meshGroup = null;
   state.texture = null;
+  state.envMap = null;
   state.lastFragments = -1;
   state.lastMode = "";
   state.lastRoughness = -1;

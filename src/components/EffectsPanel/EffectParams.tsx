@@ -118,6 +118,25 @@ function EffectParams({ effect, onUpdate }: EffectParamsProps) {
               </div>
             );
 
+          case "text":
+            return (
+              <div key={param.key}>
+                {showGroup && <div className={styles.paramGroup}>{param.group}</div>}
+                <div className={styles.param}>
+                  <label>
+                    <span>{param.label}</span>
+                  </label>
+                  <input
+                    type="text"
+                    className={styles.textInput}
+                    value={value as string}
+                    placeholder={param.placeholder ?? ""}
+                    onChange={(e) => updateParam(param.key, e.target.value)}
+                  />
+                </div>
+              </div>
+            );
+
           default:
             return null;
         }

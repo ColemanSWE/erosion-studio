@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, requiresFaceDetection, type FaceBounds } from "../lib/effects/face-detector";
+import type { SourceTransform } from "../lib/project";
 import { useRenderContext } from "./useRenderContext";
 
 interface UseCameraPlayerOptions {
@@ -10,6 +11,7 @@ interface UseCameraPlayerOptions {
   isActive: boolean;
   regions?: Region[];
   overlays?: Overlay[];
+  sourceTransform?: SourceTransform;
 }
 
 export function useCameraPlayer({
@@ -18,6 +20,7 @@ export function useCameraPlayer({
   isActive,
   regions = [],
   overlays = [],
+  sourceTransform,
 }: UseCameraPlayerOptions) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number>();
@@ -78,6 +81,7 @@ export function useCameraPlayer({
         isFlipped: true,
         glPipeline: glPipelineRef.current ?? undefined,
         overlays,
+        sourceTransform,
       },
       effects.filter((e) => e.active),
       regions,
@@ -91,7 +95,7 @@ export function useCameraPlayer({
     if (isActive) {
       animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
     }
-  }, [canvas, effects, isActive, regions, overlays]);
+  }, [canvas, effects, isActive, regions, overlays, sourceTransform]);
 
   useEffect(() => {
     renderRef.current = render;

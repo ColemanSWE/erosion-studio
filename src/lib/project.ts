@@ -24,6 +24,18 @@ export const PREDEFINED_RESOLUTIONS: Resolution[] = [
 
 export const DEFAULT_RESOLUTION = PREDEFINED_RESOLUTIONS[0];
 
+export interface SourceTransform {
+  mode: "fit" | "fill";
+  panX: number;
+  panY: number;
+}
+
+export const DEFAULT_SOURCE_TRANSFORM: SourceTransform = {
+  mode: "fit",
+  panX: 0,
+  panY: 0,
+};
+
 export interface Project {
   name: string;
   media: MediaItem[];

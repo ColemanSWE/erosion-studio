@@ -75,6 +75,8 @@ function App() {
     loadProject,
     undo,
     redo,
+    sourceTransform,
+    setSourceTransform,
   } = useProjectStore();
 
   const canUndo = useProjectStore(selectCanUndo);
@@ -204,6 +206,7 @@ function App() {
     overlayImages,
     regions,
     overlays,
+    sourceTransform,
   });
 
   // Suppress unused warning — exportImage is used internally by usePhotoEditor
@@ -226,6 +229,7 @@ function App() {
     regions,
     overlays,
     onDurationChange: handleVideoDurationChange,
+    sourceTransform,
   });
 
   const { stream } = useCameraPlayer({
@@ -233,6 +237,7 @@ function App() {
     effects: resolvedEffects,
     isActive: isCamera,
     regions,
+    sourceTransform,
   });
 
   // ─── Camera capture ───────────────────────────────────────────────────────
@@ -468,6 +473,8 @@ function App() {
                 onRegionSelect={setActiveRegionId}
                 onOverlaySelect={setActiveOverlayId}
                 onOverlayUpdate={(id, updates) => updateOverlay(id, updates)}
+                sourceTransform={sourceTransform}
+                onSourceTransformChange={setSourceTransform}
                 captureHud={
                   isCamera ? (
                     <div className={previewStyles.captureHud}>
