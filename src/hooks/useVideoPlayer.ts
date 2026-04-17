@@ -8,7 +8,7 @@ import { useRenderContext } from "./useRenderContext";
 interface ActiveVideo {
   id: string;
   path: string;
-  localTime: number;
+  clipStartTime: number;
 }
 
 interface UseVideoPlayerOptions {
@@ -39,7 +39,6 @@ function resolveVideoSrc(videoPath: string): string {
   ) {
     return videoPath;
   }
-  // Absolute filesystem path (Electron only) — use file:// scheme
   return `file://${videoPath}`;
 }
 
@@ -60,8 +59,28 @@ export function useVideoPlayer({
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
   const faceBoundsRef = useRef<FaceBounds[]>([]);
-  const lastFrameTimeRef = useRef(0);
-  const skipEffectsRef = useRef(false);
+  const emaFrameTimeRef = useRef(0);
+
+  // Refs for all volatile props — keeps the render callback identity stable across frames.
+  // Without this, every re-render caused by setCurrentTime would create a new `render`
+  // function, which would cause the play/pause effect to cancel and restart the RAF loop.
+  const effectsRef = useRef(effects);
+  const activeVideosRef = useRef(activeVideos);
+  const overlayVideosRef = useRef(overlayVideos);
+  const regionsRef = useRef(regions);
+  const overlaysRef = useRef(overlays);
+  const onTimeUpdateRef = useRef(onTimeUpdate);
+  const sourceTransformRef = useRef(sourceTransform);
+  const currentTimeRef = useRef(currentTime);
+
+  effectsRef.current = effects;
+  activeVideosRef.current = activeVideos;
+  overlayVideosRef.current = overlayVideos;
+  regionsRef.current = regions;
+  overlaysRef.current = overlays;
+  onTimeUpdateRef.current = onTimeUpdate;
+  sourceTransformRef.current = sourceTransform;
+  currentTimeRef.current = currentTime;
 
   const { bufferRef, bufferCtxRef, glPipelineRef } = useRenderContext();
 
@@ -74,18 +93,22 @@ export function useVideoPlayer({
     };
   }, []);
 
-  // Stable refs so the video-loading effect doesn't re-run when these change
   const onDurationChangeRef = useRef(onDurationChange);
   onDurationChangeRef.current = onDurationChange;
   const isPlayingRef = useRef(isPlaying);
   isPlayingRef.current = isPlaying;
   const renderRef = useRef<(() => Promise<void>) | null>(null);
 
+  // `canvas` is the only dep — all other values are read from refs so this
+  // function keeps the same identity for the entire mount. This prevents the
+  // play/pause effect (which lists `render` as a dep) from canceling and
+  // restarting the RAF loop on every frame.
   const render = useCallback(async () => {
-    if (!canvas || activeVideos.length === 0) return;
+    const currentActiveVideos = activeVideosRef.current;
+    if (!canvas || currentActiveVideos.length === 0) return;
 
     const ctx = canvas.getContext("2d");
-    const primaryVideoDef = activeVideos[0];
+    const primaryVideoDef = currentActiveVideos[0];
     const primaryVideo = videosMapRef.current.get(primaryVideoDef.id);
 
     if (!ctx || !primaryVideo || primaryVideo.readyState < 2) {
@@ -98,74 +121,64 @@ export function useVideoPlayer({
       return;
     }
 
-    // Use the video's native dimensions for source processing; the canvas dimensions
-    // are controlled by the selected resolution (set via JSX props) and should not
-    // be overridden here — renderWithEffects letterboxes the source into the canvas.
     const videoW = primaryVideo.videoWidth || canvas.width;
     const videoH = primaryVideo.videoHeight || canvas.height;
 
-    // Secondary videos for transitions/composition
     const secondaryFrames: ImageData[] = [];
-    for (let i = 1; i < activeVideos.length; i++) {
-      const secDef = activeVideos[i];
+    for (let i = 1; i < currentActiveVideos.length; i++) {
+      const secDef = currentActiveVideos[i];
       const secVideo = videosMapRef.current.get(secDef.id);
       if (secVideo && secVideo.readyState >= 2) {
-        // Draw secondary video to buffer to extract ImageData at source dimensions
         bufferCtxRef.current.drawImage(secVideo, 0, 0, videoW, videoH);
-        secondaryFrames.push(
-          bufferCtxRef.current.getImageData(0, 0, videoW, videoH)
-        );
+        secondaryFrames.push(bufferCtxRef.current.getImageData(0, 0, videoW, videoH));
       }
     }
 
     const frameStart = performance.now();
     const FRAME_BUDGET_MS = 33;
-    const skipEffects = skipEffectsRef.current;
 
-    if (skipEffects) {
-      skipEffectsRef.current = false;
-    } else {
-    if (tickRef.current % 10 === 0 && requiresFaceDetection(effects)) {
-      try {
-        faceBoundsRef.current = await detectFaces(primaryVideo);
-      } catch {
-        faceBoundsRef.current = [];
+    const ema = emaFrameTimeRef.current;
+    const skipEffects = ema > FRAME_BUDGET_MS * 4;
+    const throttleEffects = !skipEffects && ema > FRAME_BUDGET_MS * 2 && tickRef.current % 2 !== 0;
+
+    if (!skipEffects && !throttleEffects) {
+      if (tickRef.current % 10 === 0 && requiresFaceDetection(effectsRef.current)) {
+        try {
+          faceBoundsRef.current = await detectFaces(primaryVideo);
+        } catch {
+          faceBoundsRef.current = [];
+        }
       }
-    }
 
-    await renderWithEffects(
-      {
-        ctx,
-        buffer: bufferRef.current,
-        bufferCtx: bufferCtxRef.current,
-        source: primaryVideo,
-        sourceWidth: videoW,
-        sourceHeight: videoH,
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height,
-        tick: tickRef.current,
-        faceBounds: faceBoundsRef.current,
-        timelineFrames: secondaryFrames,
-        glPipeline: glPipelineRef.current ?? undefined,
-        overlays,
-        getOverlaySource: (mediaId) => {
-          return videosMapRef.current.get(mediaId) || null;
+      await renderWithEffects(
+        {
+          ctx,
+          buffer: bufferRef.current,
+          bufferCtx: bufferCtxRef.current,
+          source: primaryVideo,
+          sourceWidth: videoW,
+          sourceHeight: videoH,
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+          tick: tickRef.current,
+          faceBounds: faceBoundsRef.current,
+          timelineFrames: secondaryFrames,
+          glPipeline: glPipelineRef.current ?? undefined,
+          overlays: overlaysRef.current,
+          getOverlaySource: (mediaId) => videosMapRef.current.get(mediaId) || null,
+          sourceTransform: sourceTransformRef.current,
         },
-        sourceTransform,
-      },
-      effects.filter((e) => e.active),
-      regions,
-      overlays
-    );
+        effectsRef.current.filter((e) => e.active),
+        regionsRef.current,
+        overlaysRef.current,
+      );
     }
 
-    lastFrameTimeRef.current = performance.now() - frameStart;
-    if (lastFrameTimeRef.current > FRAME_BUDGET_MS * 5) {
-      skipEffectsRef.current = true;
-    }
+    const elapsed = performance.now() - frameStart;
+    emaFrameTimeRef.current = emaFrameTimeRef.current * 0.8 + elapsed * 0.2;
 
-    if (onTimeUpdate) {
-      onTimeUpdate(primaryVideo.currentTime);
+    if (onTimeUpdateRef.current) {
+      onTimeUpdateRef.current(primaryVideo.currentTime);
     }
 
     tickRef.current++;
@@ -173,9 +186,8 @@ export function useVideoPlayer({
     if (isPlayingRef.current && !primaryVideo.paused) {
       animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
     }
-  }, [canvas, effects, onTimeUpdate, regions, overlays, activeVideos, sourceTransform]);
+  }, [canvas]);
 
-  // Keep renderRef updated
   useEffect(() => {
     renderRef.current = render;
   }, [render]);
@@ -186,7 +198,6 @@ export function useVideoPlayer({
     const allVideos = [...activeVideos, ...overlayVideos];
     const currentIds = new Set(allVideos.map((v) => v.id));
 
-    // Remove old videos
     for (const [id, video] of map.entries()) {
       if (!currentIds.has(id)) {
         video.onerror = null;
@@ -198,24 +209,22 @@ export function useVideoPlayer({
       }
     }
 
-    // Add new videos
     for (const vDef of allVideos) {
       if (!map.has(vDef.id)) {
         const video = document.createElement("video");
         video.preload = "auto";
         video.playsInline = true;
-        
+
         const src = resolveVideoSrc(vDef.path);
         const needsCrossOrigin = src.startsWith("http://") || src.startsWith("https://");
         if (needsCrossOrigin) video.crossOrigin = "anonymous";
-        
+
         video.onloadedmetadata = () => {
           const dur = video.duration;
           if (dur && isFinite(dur)) {
-             // Only report duration for the primary clip for simplicity
-             if (vDef.id === activeVideos[0]?.id) {
-                onDurationChangeRef.current?.(dur);
-             }
+            if (vDef.id === activeVideosRef.current[0]?.id) {
+              onDurationChangeRef.current?.(dur);
+            }
           }
         };
 
@@ -231,20 +240,21 @@ export function useVideoPlayer({
         };
 
         video.src = src;
-        video.currentTime = vDef.localTime;
+        video.currentTime = currentTimeRef.current - vDef.clipStartTime;
         video.load();
-        
+
         map.set(vDef.id, video);
       }
     }
 
-    // If no active videos and no overlay videos, clean up RAF
     if (allVideos.length === 0) {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     }
-  }, [activeVideos, overlayVideos]); // Runs when active media array shape changes
+  }, [activeVideos, overlayVideos]);
 
-  // ── Play / pause (isPlaying changes) ─────────────────────────────────────
+  // ── Play / pause ──────────────────────────────────────────────────────────
+  // `render` is stable (depends only on `canvas`), so this effect only fires
+  // when isPlaying actually changes — not on every frame.
   useEffect(() => {
     if (isPlaying) {
       for (const video of videosMapRef.current.values()) {
@@ -260,23 +270,29 @@ export function useVideoPlayer({
     }
   }, [isPlaying, render]);
 
-  // ── Seek (currentTime changes from outside) ────────────────────────────────
+  // ── Seek (scrubbing while paused) ─────────────────────────────────────────
+  // During playback, videos run natively — no manual seeking needed.
+  // The early return eliminates all per-frame work when this effect fires from
+  // a throttled store update while playing.
   useEffect(() => {
+    if (isPlaying) return;
+
     let seeked = false;
     const allVideos = [...activeVideos, ...overlayVideos];
     for (const vDef of allVideos) {
       const video = videosMapRef.current.get(vDef.id);
-      if (video && Math.abs(video.currentTime - vDef.localTime) > 0.1) {
-        video.currentTime = vDef.localTime;
+      const localTime = currentTimeRef.current - vDef.clipStartTime;
+      if (video && Math.abs(video.currentTime - localTime) > 0.1) {
+        video.currentTime = localTime;
         seeked = true;
       }
     }
-    
-    if (seeked && !isPlaying) {
+
+    if (seeked) {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       render();
     }
-  }, [currentTime, activeVideos, isPlaying, render]);
+  }, [currentTime, activeVideos, overlayVideos, isPlaying, render]);
 
   // ── Re-render on effects/regions change ──────────────────────────────────
   useEffect(() => {

@@ -28,7 +28,7 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("file:writeText", filePath, data),
     readBinary: (filePath: string) =>
       ipcRenderer.invoke("file:readBinary", filePath),
-    writeBinary: (filePath: string, data: number[]) =>
+    writeBinary: (filePath: string, data: Uint8Array | number[]) =>
       ipcRenderer.invoke("file:writeBinary", filePath, data),
   },
 });
@@ -98,7 +98,7 @@ export interface ElectronAPI {
     }>;
     writeBinary: (
       filePath: string,
-      data: number[]
+      data: Uint8Array | number[]
     ) => Promise<{
       success: boolean;
       filePath?: string;

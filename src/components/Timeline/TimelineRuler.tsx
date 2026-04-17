@@ -1,13 +1,15 @@
-import React, { useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import React, { useRef, useEffect, useCallback, useLayoutEffect, type MutableRefObject } from "react";
 import { formatTime } from "../../lib/timeline";
 import styles from "./Timeline.module.scss";
 
 interface TimelineRulerProps {
   duration: number;
   currentTime: number;
-  zoom: number; // pixels per second
+  zoom: number;
   onSeek: (time: number) => void;
   scrollLeft: number;
+  isPlaying?: boolean;
+  liveTimeRef?: MutableRefObject<number>;
 }
 
 export function TimelineRuler({
@@ -16,13 +18,21 @@ export function TimelineRuler({
   zoom,
   onSeek,
   scrollLeft,
+  isPlaying,
+  liveTimeRef,
 }: TimelineRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const playheadDivRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
 
-  // playheadX is viewport-relative: the ruler doesn't scroll horizontally,
-  // so we subtract scrollLeft to convert from timeline coords to ruler coords.
+  // Refs so the playhead RAF always reads the latest zoom/scrollLeft without
+  // being re-created on every prop change.
+  const zoomRef = useRef(zoom);
+  const scrollLeftRef = useRef(scrollLeft);
+  zoomRef.current = zoom;
+  scrollLeftRef.current = scrollLeft;
+
   const playheadX = currentTime * zoom - scrollLeft;
 
   // Draw tick marks
@@ -41,7 +51,6 @@ export function TimelineRuler({
 
     ctx.clearRect(0, 0, w, h);
 
-    // Determine tick spacing
     const minorInterval = zoom >= 60 ? 0.5 : zoom >= 20 ? 1 : 5;
     const majorInterval = minorInterval * 5;
     const startSec = Math.floor(scrollLeft / zoom / minorInterval) * minorInterval;
@@ -75,6 +84,23 @@ export function TimelineRuler({
     }
   }, [duration, zoom, scrollLeft]);
 
+  // Direct-DOM playhead during playback — reads liveTimeRef every RAF frame so
+  // the indicator moves at 60fps independently of React re-renders.
+  useEffect(() => {
+    if (!isPlaying || !liveTimeRef) return;
+
+    let rafId: number;
+    const tick = () => {
+      if (playheadDivRef.current) {
+        playheadDivRef.current.style.left = `${liveTimeRef.current * zoomRef.current - scrollLeftRef.current}px`;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, liveTimeRef]);
+
   const seekFromEvent = useCallback(
     (e: React.MouseEvent | MouseEvent) => {
       const container = containerRef.current;
@@ -87,9 +113,6 @@ export function TimelineRuler({
     [duration, zoom, onSeek, scrollLeft],
   );
 
-  // Keep a ref to seekFromEvent so that mousemove/mouseup handlers created on
-  // mousedown always call the latest version (avoids stale closures if zoom or
-  // scrollLeft change during a drag).
   const seekFromEventRef = useRef(seekFromEvent);
   useLayoutEffect(() => { seekFromEventRef.current = seekFromEvent; });
 
@@ -116,8 +139,9 @@ export function TimelineRuler({
       onMouseDown={handleMouseDown}
     >
       <canvas ref={canvasRef} className={styles.rulerCanvas} />
-      {/* Playhead indicator */}
+      {/* Playhead indicator — position driven by direct DOM during playback */}
       <div
+        ref={playheadDivRef}
         className={styles.playhead}
         style={{ left: playheadX }}
         onMouseDown={(e) => e.stopPropagation()}

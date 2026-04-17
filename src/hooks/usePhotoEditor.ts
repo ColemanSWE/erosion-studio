@@ -296,7 +296,7 @@ export function usePhotoEditor({
   const exportImage = useCallback(
     async (format: "png" | "jpeg" | "webp" | "gif" = "png", quality = 0.95) => {
       if (!canvas || !window.electron) {
-        throw new Error("Canvas or Electron API not available");
+        throw new Error("Export requires the Electron window — not a browser tab or IDE preview.");
       }
 
       const filters = [

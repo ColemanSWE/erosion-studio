@@ -29,7 +29,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: "#000000",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       // Allow loading local file:// resources (video/images from disk)

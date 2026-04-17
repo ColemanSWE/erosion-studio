@@ -3,6 +3,9 @@ import fs from "fs";
 import path from "path";
 import { promisify } from "util";
 import { spawn } from "child_process";
+import { createRequire } from "module";
+
+const _require = createRequire(import.meta.url);
 
 const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
@@ -14,13 +17,12 @@ const readdir = promisify(fs.readdir);
 function getFFmpegPath(): string {
   let ffmpegPath: string;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    ffmpegPath = require("ffmpeg-static") as string;
+    ffmpegPath = _require("ffmpeg-static") as string;
   } catch {
     ffmpegPath = "ffmpeg"; // fallback to system ffmpeg
   }
-  // In production builds, asar-unpacked path may be needed
-  if (ffmpegPath && ffmpegPath.includes("app.asar")) {
+  // In production builds the binary lives outside the asar archive
+  if (ffmpegPath?.includes("app.asar")) {
     ffmpegPath = ffmpegPath.replace("app.asar", "app.asar.unpacked");
   }
   return ffmpegPath;
@@ -222,7 +224,7 @@ export function setupFFmpegHandlers() {
 
   ipcMain.handle(
     "file:writeBinary",
-    async (_, filePath: string, data: number[]) => {
+    async (_, filePath: string, data: Uint8Array | number[]) => {
       try {
         const dir = path.dirname(filePath);
         await mkdir(dir, { recursive: true });

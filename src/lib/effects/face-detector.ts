@@ -155,7 +155,6 @@ const FACE_DETECTION_EFFECT_TYPES = new Set([
   "face-mouth-censor",
   "face-landmark-glitch",
   "face-forehead-text",
-  "detection-labels",
 ]);
 
 export function requiresFaceDetection(effects: { type: string; active: boolean }[]): boolean {

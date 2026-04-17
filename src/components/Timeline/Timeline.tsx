@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
+import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, type MutableRefObject } from "react";
 import {
   Play,
   Pause,
@@ -61,6 +61,7 @@ interface TimelineProps {
   onPlay: () => void;
   onPause: () => void;
   onStop: () => void;
+  liveTimeRef: MutableRefObject<number>;
 }
 
 const MIN_ZOOM = 2;
@@ -100,6 +101,7 @@ export function Timeline({
   onPlay,
   onPause,
   onStop,
+  liveTimeRef,
 }: TimelineProps) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [trackHeight, setTrackHeight] = useState(DEFAULT_TRACK_H);
@@ -112,9 +114,15 @@ export function Timeline({
   }, []);
   const tracksAreaRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
+  const playheadLineRef = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   const pendingScrollLeftRef = useRef(0);
   const scrollRafRef = useRef<number | null>(null);
+
+  // Refs so the playhead RAF loop always reads the latest values without
+  // being re-created when zoom or scrollLeft changes.
+  const zoomRef = useRef(0);
+  const scrollLeftRef = useRef(0);
 
   const {
     mediaTracks,
@@ -126,6 +134,28 @@ export function Timeline({
     removeOverlayTrack,
     renameOverlayTrack,
   } = useProjectStore();
+
+  // Keep zoom/scrollLeft refs in sync so the playhead RAF reads fresh values.
+  zoomRef.current = zoom;
+  scrollLeftRef.current = scrollLeft;
+
+  // Direct-DOM playhead update during playback — bypasses React reconciliation
+  // so the needle moves at RAF rate (60fps) rather than at the throttled store
+  // update rate (~20fps).
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    let rafId: number;
+    const tick = () => {
+      if (playheadLineRef.current) {
+        playheadLineRef.current.style.left = `${liveTimeRef.current * zoomRef.current}px`;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, liveTimeRef]);
 
   const syncScroll = useCallback(() => {
     const ta = tracksAreaRef.current;
@@ -369,13 +399,16 @@ export function Timeline({
               zoom={zoom}
               onSeek={onSeek}
               scrollLeft={scrollLeft}
+              isPlaying={isPlaying}
+              liveTimeRef={liveTimeRef}
             />
           </div>
 
           {/* Scrollable tracks area */}
           <div ref={tracksAreaRef} className={styles.tracksArea} onScroll={syncScroll}>
-            {/* Playhead line — absolute within scrollable content, aligns with clips */}
+            {/* Playhead line — position is driven by direct DOM during playback */}
             <div
+              ref={playheadLineRef}
               style={{
                 position: "absolute",
                 left: currentTime * zoom,

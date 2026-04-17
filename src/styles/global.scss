@@ -115,23 +115,23 @@ canvas {
 }
 
 [data-panel-resize-handle-id][data-panel-group-direction="horizontal"] {
-  width: 1px;
+  width: 3px;
   cursor: col-resize;
 
   &::after {
-    left: -2px;
-    right: -2px;
+    left: -5px;
+    right: -5px;
     width: auto;
   }
 }
 
 [data-panel-resize-handle-id][data-panel-group-direction="vertical"] {
-  height: 1px;
+  height: 3px;
   cursor: row-resize;
 
   &::after {
-    top: -2px;
-    bottom: -2px;
+    top: -5px;
+    bottom: -5px;
     height: auto;
   }
 }

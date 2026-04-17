@@ -72,6 +72,15 @@ export const useUIStore = create<UIState>()(
         effectsPanelSize: state.effectsPanelSize,
         timelineSize: state.timelineSize,
       }),
+      merge: (persisted, current) => {
+        const p = persisted as Partial<UIState>;
+        return {
+          ...current,
+          mediaBrowserSize: Math.max(12, p.mediaBrowserSize ?? current.mediaBrowserSize),
+          effectsPanelSize: Math.max(14, p.effectsPanelSize ?? current.effectsPanelSize),
+          timelineSize: Math.max(12, p.timelineSize ?? current.timelineSize),
+        };
+      },
     }
   )
 );

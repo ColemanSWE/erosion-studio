@@ -610,6 +610,62 @@ registerEffect({
     { key: "bands", label: "Band Density", type: "slider", min: 1, max: 30, step: 1 },
     { key: "blend", label: "Blend Mode", type: "select", options: ["screen", "overlay", "add"] },
   ],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_speed;
+uniform float u_angleRad;
+uniform float u_bands;
+uniform int u_blend;
+void main() {
+  vec2 uv = v_texCoord;
+  vec2 px = 1.0 / u_resolution;
+  vec4 c = texture(u_source, uv);
+  float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+
+  // Sobel gradient — warps band positions to follow image contours
+  float l00 = dot(texture(u_source, uv + vec2(-px.x, -px.y)).rgb, vec3(0.299, 0.587, 0.114));
+  float l20 = dot(texture(u_source, uv + vec2( px.x, -px.y)).rgb, vec3(0.299, 0.587, 0.114));
+  float l01 = dot(texture(u_source, uv + vec2(-px.x,  0.0)).rgb, vec3(0.299, 0.587, 0.114));
+  float l21 = dot(texture(u_source, uv + vec2( px.x,  0.0)).rgb, vec3(0.299, 0.587, 0.114));
+  float l02 = dot(texture(u_source, uv + vec2(-px.x,  px.y)).rgb, vec3(0.299, 0.587, 0.114));
+  float l22 = dot(texture(u_source, uv + vec2( px.x,  px.y)).rgb, vec3(0.299, 0.587, 0.114));
+  float gx = (l20 + 2.0*l21 + l22) - (l00 + 2.0*l01 + l02);
+  float gy = (l02 + 2.0*dot(texture(u_source, uv + vec2(0.0, px.y)).rgb, vec3(0.299,0.587,0.114)) + l22)
+           - (l00 + 2.0*dot(texture(u_source, uv - vec2(0.0, px.y)).rgb, vec3(0.299,0.587,0.114)) + l20);
+
+  float cosA = cos(u_angleRad);
+  float sinA = sin(u_angleRad);
+  float t = u_time * u_speed * 0.04;
+
+  vec2 centered = uv - 0.5;
+  float posAlong = centered.x * cosA + centered.y * sinA;
+  float gradAlong = gx * cosA + gy * sinA;
+  float phase = posAlong * u_bands + gradAlong * u_bands * 0.8 + t;
+  float h = fract(phase);
+  vec3 holoRgb = hslToRgb(h * 360.0, 1.0, 0.58);
+
+  float eff = u_intensity * (0.15 + lum * 0.85);
+  vec3 blended;
+  if (u_blend == 1) { // overlay
+    vec3 base = c.rgb;
+    blended = mix(2.0 * base * holoRgb, 1.0 - 2.0*(1.0-base)*(1.0-holoRgb), step(0.5, base));
+    blended = mix(c.rgb, blended, eff);
+  } else if (u_blend == 2) { // add
+    blended = min(c.rgb + holoRgb * eff, 1.0);
+  } else { // screen
+    vec3 s = 1.0 - (1.0 - c.rgb) * (1.0 - holoRgb);
+    blended = mix(c.rgb, s, eff);
+  }
+  fragColor = vec4(blended, c.a);
+}`,
+    uniforms: { intensity: "float", speed: "float", angleRad: "float", bands: "float", blend: "int" },
+    uniformMapper: (p) => ({
+      ...p,
+      angleRad: ((p.angle as number) ?? 45) * (Math.PI / 180),
+      blend: ["screen", "overlay", "add"].indexOf((p.blend as string) ?? "screen"),
+    }),
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const intensity = (params.intensity as number) ?? 0.8;
     const speed = (params.speed as number) ?? 1.0;
@@ -701,6 +757,68 @@ registerEffect({
     { key: "style", label: "Style", type: "select", options: ["subtle", "burn", "flare", "edge"] },
     { key: "count", label: "Leak Count", type: "slider", min: 1, max: 4, step: 1 },
   ],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_speed;
+uniform float u_warmth;
+uniform int u_style;
+uniform int u_count;
+
+// Warm film colors in linear space: amber, magenta, cyan, orange, rose
+const vec3 LEAK_COLORS[5] = vec3[5](
+  vec3(1.0,    0.627, 0.196),
+  vec3(1.0,    0.314, 0.549),
+  vec3(0.314,  0.784, 1.0),
+  vec3(1.0,    0.471, 0.078),
+  vec3(0.863,  0.235, 0.392)
+);
+
+void main() {
+  vec2 uv = v_texCoord;
+  vec4 c = texture(u_source, uv);
+  float t = u_time * u_speed;
+  vec3 leak = vec3(0.0);
+
+  for (int li = 0; li < 4; li++) {
+    if (li >= u_count) break;
+    float seed = float(li) * 7.3 + 1.0;
+    vec3 rawColor = LEAK_COLORS[li % 5];
+    vec3 tinted = mix(rawColor, vec3(1.0, 0.784, 0.588), 1.0 - u_warmth);
+
+    float cx = 0.5 + sin(seed * 2.1 + t * 0.3) * 0.4;
+    float cy = 0.5 + cos(seed * 1.7 + t * 0.2) * 0.4;
+    float baseRadius = u_style == 3 ? 1.2 : (u_style == 2 ? 0.6 : 0.5);
+    float radius = baseRadius * (0.4 + 0.3 * sin(seed + t * 0.15));
+    float leakInt = u_intensity * (0.5 + 0.5 * sin(seed * 3.1 + t * 0.4));
+
+    float alpha;
+    if (u_style == 3) { // edge
+      float edgeDist = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y));
+      alpha = max(0.0, 1.0 - edgeDist * 8.0) * leakInt;
+    } else {
+      vec2 delta = uv - vec2(cx, cy);
+      delta.x *= u_resolution.x / max(u_resolution.x, u_resolution.y);
+      delta.y *= u_resolution.y / max(u_resolution.x, u_resolution.y);
+      float dist = length(delta) / radius;
+      float falloff = u_style == 2 ? 2.5 : 1.5;
+      alpha = max(0.0, 1.0 - pow(dist, falloff)) * leakInt;
+    }
+
+    leak += tinted * alpha;
+  }
+
+  // Screen blend
+  vec3 result = 1.0 - (1.0 - c.rgb) * (1.0 - leak);
+  fragColor = vec4(result, c.a);
+}`,
+    uniforms: { intensity: "float", speed: "float", warmth: "float", style: "int", count: "int" },
+    uniformMapper: (p) => ({
+      ...p,
+      style: ["subtle", "burn", "flare", "edge"].indexOf((p.style as string) ?? "subtle"),
+      count: Math.round((p.count as number) ?? 2),
+    }),
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const intensity = (params.intensity as number) ?? 0.7;
     const speed = (params.speed as number) ?? 0.5;

@@ -131,7 +131,7 @@ function App() {
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
 
   // ─── Playback heartbeat ───────────────────────────────────────────────────
-  usePlayback({ isPlaying, currentTime, duration, setCurrentTime, pause });
+  const { liveTimeRef } = usePlayback({ isPlaying, currentTime, duration, setCurrentTime, pause });
 
   // ─── Timeline rendering logic ─────────────────────────────────────────────
   const activeClips = clips
@@ -175,7 +175,7 @@ function App() {
     .map((s) => ({
       id: s.clip ? s.clip.id : s.media.id,
       path: s.media.path,
-      localTime: s.clip ? currentTime - s.clip.startTime : currentTime,
+      clipStartTime: s.clip ? s.clip.startTime : 0,
     }));
 
   const activeOverlays = overlays.filter(
@@ -186,7 +186,7 @@ function App() {
     .filter((o) => o.type === "video" && o.mediaId)
     .map((o) => {
       const mediaItem = media.find((m) => m.id === o.mediaId);
-      return { id: o.id, path: mediaItem?.path || "", localTime: currentTime - o.startTime };
+      return { id: o.id, path: mediaItem?.path || "", clipStartTime: o.startTime };
     })
     .filter((o) => o.path);
 
@@ -444,8 +444,9 @@ function App() {
               minSize={12}
               collapsible
               onResize={(size) => {
-                setMediaBrowserSize(size.asPercentage);
-                setShowMediaBrowser(size.asPercentage > 0);
+                const pct = size.asPercentage;
+                setShowMediaBrowser(pct > 0);
+                if (pct >= 12) setMediaBrowserSize(pct);
               }}
             >
               <MediaBrowser
@@ -523,8 +524,9 @@ function App() {
               minSize={14}
               collapsible
               onResize={(size) => {
-                setEffectsPanelSize(size.asPercentage);
-                setShowEffectsPanel(size.asPercentage > 0);
+                const pct = size.asPercentage;
+                setShowEffectsPanel(pct > 0);
+                if (pct >= 14) setEffectsPanelSize(pct);
               }}
             >
               <EffectsPanel
@@ -554,8 +556,9 @@ function App() {
           minSize={12}
           collapsible
           onResize={(size) => {
-            setTimelineSize(size.asPercentage);
-            setShowTimeline(size.asPercentage > 0);
+            const pct = size.asPercentage;
+            setShowTimeline(pct > 0);
+            if (pct >= 12) setTimelineSize(pct);
           }}
         >
           <Timeline
@@ -568,6 +571,7 @@ function App() {
             currentTime={currentTime}
             duration={duration}
             isPlaying={isPlaying}
+            liveTimeRef={liveTimeRef}
             onAddClip={addClip}
             onRemoveClip={removeClip}
             onUpdateClip={updateClip}

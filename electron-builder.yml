@@ -6,6 +6,8 @@ directories:
 files:
   - dist
   - dist-electron
+asarUnpack:
+  - node_modules/ffmpeg-static/**
 mac:
   category: public.app-category.graphics-design
   target:

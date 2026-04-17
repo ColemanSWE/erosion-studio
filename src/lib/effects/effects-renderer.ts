@@ -576,16 +576,19 @@ export async function renderWithEffects(
       bufferCtx.putImageData(imageData, 0, 0);
     }
 
+    const { drawX: nDrawX, drawY: nDrawY, drawWidth: nDrawW, drawHeight: nDrawH } = computeDrawRect(
+      sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
+    );
+
     // For shape effects (not mesh), draw the processed image as background first.
     // The WebGL renderers use a transparent clear so the geometry composites on top.
     if (activeStyle.type !== "3d-mesh") {
-      const { drawX: bgX, drawY: bgY, drawWidth: bgW, drawHeight: bgH } = computeDrawRect(
-        sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
-      );
-      ctx.drawImage(buffer, bgX, bgY, bgW, bgH);
+      ctx.drawImage(buffer, nDrawX, nDrawY, nDrawW, nDrawH);
     }
 
-    // Dispatch to correct 3D renderer based on effect type
+    // Dispatch to correct 3D renderer based on effect type.
+    // For 3d-mesh, pass the letterboxed dimensions so the camera aspect matches source.
+    // For other 3D effects, pass full canvas dimensions (they composite via transparency).
     let nativeCanvas: HTMLCanvasElement;
     switch (activeStyle.type) {
       case "3d-sphere":
@@ -601,10 +604,14 @@ export async function renderWithEffects(
         nativeCanvas = renderCrystal(buffer, activeStyle.params, canvasWidth, canvasHeight);
         break;
       default:
-        nativeCanvas = renderMesh(buffer, activeStyle.params, canvasWidth, canvasHeight);
+        nativeCanvas = renderMesh(buffer, activeStyle.params, Math.round(nDrawW), Math.round(nDrawH));
     }
 
-    ctx.drawImage(nativeCanvas, 0, 0, canvasWidth, canvasHeight);
+    if (activeStyle.type === "3d-mesh") {
+      ctx.drawImage(nativeCanvas, nDrawX, nDrawY, nDrawW, nDrawH);
+    } else {
+      ctx.drawImage(nativeCanvas, 0, 0, canvasWidth, canvasHeight);
+    }
 
     if (postStyleEffects.length > 0) {
       const canvasImageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
@@ -622,24 +629,27 @@ export async function renderWithEffects(
     return;
   }
 
-  const aspect = sourceHeight / sourceWidth;
-  const charAspect = renderMode === "emoji" ? 1.0 : 0.6;
+  const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
+    sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
+  );
+
+  // pixelate ("standard") needs square cells (charAspect=1.0); text-based modes use
+  // a narrower character aspect (~0.6) so glyphs fill their cells correctly.
+  const charAspect = renderMode === "standard" || renderMode === "emoji" ? 1.0 : 0.6;
   const cols = density;
+  const aspect = drawHeight / drawWidth;
   const rows = Math.floor(cols * aspect * charAspect);
 
   if (rows < 1 || cols < 1) {
     console.warn("Calculated dimensions too small for style effect, skipping");
-    const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
-      sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
-    );
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
     return;
   }
 
-  const cellWidth = canvasWidth / cols;
-  const cellHeight = canvasHeight / rows;
+  const cellWidth = drawWidth / cols;
+  const cellHeight = drawHeight / rows;
   const fontSize = Math.floor(Math.min(cellWidth, cellHeight));
 
   buffer.width = cols;
@@ -658,9 +668,11 @@ export async function renderWithEffects(
     poseBounds: context.poseBounds,
   });
 
-  const { canvas: renderCanvas, ctx: renderCtx } = getOrCreateStyleCanvas(canvasWidth, canvasHeight);
-  
-  renderCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+  const drawWidthInt = Math.round(drawWidth);
+  const drawHeightInt = Math.round(drawHeight);
+  const { canvas: renderCanvas, ctx: renderCtx } = getOrCreateStyleCanvas(drawWidthInt, drawHeightInt);
+
+  renderCtx.clearRect(0, 0, drawWidthInt, drawHeightInt);
 
   const dotScale = (activeStyle.params.dotScale as number) || 1.0;
   const halftoneShape = (activeStyle.params.shape as string) || "circle";
@@ -673,8 +685,8 @@ export async function renderWithEffects(
       imageData.data,
       cols,
       rows,
-      canvasWidth,
-      canvasHeight,
+      drawWidthInt,
+      drawHeightInt,
       dotScale,
       halftoneShape,
       halftoneAngle,
@@ -692,15 +704,10 @@ export async function renderWithEffects(
   }
 
   if (postStyleEffects.length > 0) {
-    const renderImageData = renderCtx.getImageData(
-      0,
-      0,
-      canvasWidth,
-      canvasHeight,
-    );
+    const renderImageData = renderCtx.getImageData(0, 0, drawWidthInt, drawHeightInt);
     applyEffects(renderImageData.data, postStyleEffects, {
-      width: canvasWidth,
-      height: canvasHeight,
+      width: drawWidthInt,
+      height: drawHeightInt,
       time: tick,
       timelineFrames: context.timelineFrames,
       faceBounds: context.faceBounds,
@@ -710,11 +717,9 @@ export async function renderWithEffects(
     renderCtx.putImageData(renderImageData, 0, 0);
   }
 
-  ctx.drawImage(renderCanvas, 0, 0);
-
-  const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
-    sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
-  );
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  ctx.drawImage(renderCanvas, drawX, drawY, drawWidth, drawHeight);
 
   // Draw active overlays that are not effect zones
   for (const overlay of overlays) {
