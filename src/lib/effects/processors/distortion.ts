@@ -1,5 +1,5 @@
 import { registerEffect } from "../effect-registry";
-import { meltState, setMeltState, perlinNoise } from "./shared";
+import { meltState, setMeltState, perlinNoise, clamp, hslToRgb } from "./shared";
 
 registerEffect({
   type: "chromatic-aberration",

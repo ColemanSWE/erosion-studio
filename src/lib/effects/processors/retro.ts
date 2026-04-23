@@ -1,5 +1,5 @@
 import { registerEffect } from "../effect-registry";
-import { BAYER_MATRIX_4x4, setPosterizeTimeCache, posterizeTimeCache } from "./shared";
+import { BAYER_MATRIX_4x4, setPosterizeTimeCache, posterizeTimeCache, clamp, pseudoRandom } from "./shared";
 
 registerEffect({
   type: "dither",
