@@ -1,11 +1,9 @@
-import { registerEffect, ProcessConfig } from "../effect-registry";
-import { EffectType, EffectParamConfig } from "../types";
-import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { registerEffect} from "../effect-registry";
+import { motionSmearState, blockShovingState, bilinearSample, pseudoRandom, clamp, getBlockAverage, rgbToHsl, hslToRgb, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
 
 let pixelSortBuffer: Uint8ClampedArray | null = null;
 
-function getPixelSortBuffer(size: number): Uint8ClampedArray {
+function _getPixelSortBuffer(size: number): Uint8ClampedArray {
   if (!pixelSortBuffer || pixelSortBuffer.length !== size) {
     pixelSortBuffer = new Uint8ClampedArray(size);
   }
@@ -133,7 +131,7 @@ registerEffect({
   category: "glitch",
     defaultParams: { mode: "melt", intensity: 70, momentum: 0.92, mediaSources: [] },
   paramsConfig: [],
-  processor: (data, { width, height, time = 0, timelineFrames }, params) => {
+  processor: (data, { width, height, timelineFrames }, params) => {
     const mode = (params.mode as string) ?? "melt";
     const intensity = (params.intensity as number) ?? 70;
     const momentum = (params.momentum as number) ?? 0.92;
@@ -656,7 +654,7 @@ const PS_DIRECTION_STEPS: Record<string, { dx: number; dy: number }> = {
   "diagonal-up":   { dx:  1, dy: -1 },
 };
 
-const PS_SORT_PASSES_MAX = 2048;
+const _PS_SORT_PASSES_MAX = 2048;
 
 // Flat TypedArray buffers for zero-allocation counting sort
 const PS_MAX_DIMENSION = 16384; // Safe margin handling up to 8K resolution diagonals
@@ -856,14 +854,14 @@ void main() {
 }`,
     uniforms: { intensity: "float", count: "float", offset: "float" },
   },
-  processor: (data, { width, height, time = 0 }, params) => {
+  processor: (data, { width, height }, params) => {
     const intensity = (params.intensity as number) ?? 50;
     const count = (params.count as number) ?? 3;
     const offset = (params.offset as number) ?? 20;
     if (intensity === 0) return;
 
     const source = new Uint8ClampedArray(data);
-    const chaos = Date.now() % 10000;
+    const _chaos = Date.now() % 10000;
     const numTears = Math.floor(
       count + Math.random() * count * (intensity / 30)
     );
@@ -1342,7 +1340,7 @@ void main() {
 }`,
     uniforms: { intensity: "float", layers: "float" },
   },
-  processor: (data, { width, height, time = 0 }, params) => {
+  processor: (data, { width, height }, params) => {
     const intensity = (params.intensity as number) ?? 50;
     const layers = (params.layers as number) ?? 3;
     if (intensity === 0) return;
@@ -1605,7 +1603,7 @@ void main() {
         avgG /= count;
         avgB /= count;
 
-        const lumaStep = 256 / Math.pow(2, colorQuantization);
+        const _lumaStep = 256 / Math.pow(2, colorQuantization);
         const chromaStep = 256 / Math.pow(2, chromaQuantization);
 
         avgR = Math.round(avgR / chromaStep) * chromaStep;

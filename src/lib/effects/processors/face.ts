@@ -1,6 +1,6 @@
-import { registerEffect, ProcessConfig } from "../effect-registry";
-import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { registerEffect} from "../effect-registry";
+import { FaceBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
+import { hexToRgb, isPointInFaceBounds} from "./shared";
 
 // ─── Forehead text helpers ────────────────────────────────────────────────────
 

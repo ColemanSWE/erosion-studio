@@ -1,5 +1,5 @@
 import { registerEffect } from "../effect-registry";
-import { BAYER_MATRIX_4x4, motionSmearState, blockShovingState, bilinearSample, meltState, setMeltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { hexToRgb, rgbToHsl, hslToRgb} from "./shared";
 
 registerEffect({
   type: "invert",

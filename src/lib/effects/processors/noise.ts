@@ -1,7 +1,5 @@
-import { registerEffect, ProcessConfig } from "../effect-registry";
-import { EffectType, EffectParamConfig } from "../types";
-import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { registerEffect} from "../effect-registry";
+import { pseudoRandom, clamp} from "./shared";
 
 registerEffect({
   type: "film-grain",
@@ -21,7 +19,7 @@ void main() {
 }`,
     uniforms: { intensity: "float" },
   },
-  processor: (data, { width, height, time = 0 }, params) => {
+  processor: (data, { time = 0 }, params) => {
     const intensity = (params.intensity as number) ?? 30;
     if (intensity === 0) return;
 

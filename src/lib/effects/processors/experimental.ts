@@ -1,5 +1,5 @@
-import { registerEffect, ProcessConfig } from "../effect-registry";
-import { clamp, storeFrame, getFrameFromHistory, frameHistoryStore } from "./shared";
+import { registerEffect} from "../effect-registry";
+import { clamp} from "./shared";
 
 // ─── Experimental / Avant-Garde Effects ────────────────────────────────────────
 
@@ -508,7 +508,7 @@ registerEffect({
         const sx = clamp(Math.floor(x / scale), 0, sw - 1);
         const sy = clamp(Math.floor(y / scale), 0, sh - 1);
         const b = gridB[sy * sw + sx];
-        const a = gridA[sy * sw + sx];
+        const _a = gridA[sy * sw + sx];
 
         const idx = (y * width + x) * 4;
         const t = clamp(b * 2, 0, 1);
@@ -609,7 +609,7 @@ void main() {
 
     // Droste transform uses complex logarithm
     const rotRad = (rotationDeg * Math.PI) / 180;
-    const logZoom = Math.log(zoom);
+    const _logZoom = Math.log(zoom);
     const timeOffset = animated ? time * speed : 0;
 
     // Complex number helpers for Droste spiral

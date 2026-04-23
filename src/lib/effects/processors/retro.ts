@@ -415,7 +415,7 @@ void main() {
       pattern: ["pulse", "saw", "square", "triangle"].indexOf((p.pattern as string) || "pulse"),
     }),
   },
-  processor: (data, { width, height, time = 0 }, params) => {
+  processor: (data, { time = 0 }, params) => {
     const frequency = (params.frequency as number) ?? 8;
     const intensity = (params.intensity as number) ?? 1.0;
     const pattern = (params.pattern as string) ?? "pulse";
@@ -467,7 +467,7 @@ void main() {
 }`,
     uniforms: { rFreq: "float", gFreq: "float", bFreq: "float", intensity: "float" },
   },
-  processor: (data, { width, height, time = 0 }, params) => {
+  processor: (data, { time = 0 }, params) => {
     const rFreq = (params.rFreq as number) ?? 8;
     const gFreq = (params.gFreq as number) ?? 6;
     const bFreq = (params.bFreq as number) ?? 10;
@@ -1083,7 +1083,7 @@ registerEffect({
     const src = new Uint8ClampedArray(pixelated.data);
     const cx = width / 2;
     const cy = height / 2;
-    const maxR = Math.sqrt(cx * cx + cy * cy);
+    const _maxR = Math.sqrt(cx * cx + cy * cy);
     const seed = Math.floor(time * 30);
 
     for (let y = 0; y < height; y++) {

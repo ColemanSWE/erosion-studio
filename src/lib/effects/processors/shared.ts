@@ -1,5 +1,4 @@
-import { ProcessConfig } from "../effect-registry";
-import { FaceBounds, getLandmarkBounds } from "../face-detector";
+import { FaceBounds} from "../face-detector";
 
 export const BAYER_MATRIX_4x4 = [
   [0, 8, 2, 10],
