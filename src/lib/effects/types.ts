@@ -102,7 +102,8 @@ export type EffectType =
   | "3d-shatter"
   | "3d-ribbon"
   | "3d-crystal"
-  | "face-forehead-text";
+  | "face-forehead-text"
+  | "fmv";
 
 export interface Region {
   id: string;

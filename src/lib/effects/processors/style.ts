@@ -1,7 +1,38 @@
-import { registerEffect, ProcessConfig, getEffectDefinition } from "../effect-registry";
+import {
+  registerEffect,
+  ProcessConfig,
+  getEffectDefinition,
+} from "../effect-registry";
 import { EffectType, EffectParamConfig } from "../types";
-import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import {
+  FaceBounds,
+  HandBounds,
+  PoseBounds,
+  getEyeLandmarks,
+  getMouthLandmarks,
+  getLandmarkBounds,
+} from "../face-detector";
+import {
+  BAYER_MATRIX_4x4,
+  motionSmearState,
+  blockShovingState,
+  bilinearSample,
+  meltState,
+  perlinNoise,
+  posterizeTimeCache,
+  pseudoRandom,
+  clamp,
+  sortSegment,
+  sortSegmentV,
+  getBlockAverage,
+  hexToRgb,
+  rgbToHsl,
+  hslToRgb,
+  isPointInFaceBounds,
+  frameHistoryStore,
+  storeFrame,
+  getFrameFromHistory,
+} from "./shared";
 
 let blobTrackMiniBuffer: Uint8ClampedArray | null = null;
 const BLOB_DETECT_INTERVAL = 3;
@@ -38,9 +69,16 @@ registerEffect({
   category: "style",
   defaultParams: { density: 64 },
   paramsConfig: [
-    { key: "density", label: "Density", type: "slider", min: 8, max: 200, step: 1 },
+    {
+      key: "density",
+      label: "Density",
+      type: "slider",
+      min: 8,
+      max: 200,
+      step: 1,
+    },
   ],
-  processor: () => {},  // handled by renderer
+  processor: () => {}, // handled by renderer
 });
 
 registerEffect({
@@ -49,8 +87,29 @@ registerEffect({
   category: "style",
   defaultParams: { density: 48, palette: "standard" },
   paramsConfig: [
-    { key: "density", label: "Density", type: "slider", min: 8, max: 128, step: 1 },
-    { key: "palette", label: "Palette", type: "select", options: ["standard", "nature", "food", "faces", "animals", "objects", "halloween", "christmas"] },
+    {
+      key: "density",
+      label: "Density",
+      type: "slider",
+      min: 8,
+      max: 128,
+      step: 1,
+    },
+    {
+      key: "palette",
+      label: "Palette",
+      type: "select",
+      options: [
+        "standard",
+        "nature",
+        "food",
+        "faces",
+        "animals",
+        "objects",
+        "halloween",
+        "christmas",
+      ],
+    },
   ],
   processor: () => {},
 });
@@ -61,9 +120,26 @@ registerEffect({
   category: "style",
   defaultParams: { density: 80, charset: "standard", colorMode: "colored" },
   paramsConfig: [
-    { key: "density", label: "Density", type: "slider", min: 16, max: 200, step: 1 },
-    { key: "charset", label: "Character Set", type: "select", options: ["standard", "blocks", "binary", "dots", "kanji"] },
-    { key: "colorMode", label: "Color Mode", type: "select", options: ["colored", "green", "amber", "white"] },
+    {
+      key: "density",
+      label: "Density",
+      type: "slider",
+      min: 16,
+      max: 200,
+      step: 1,
+    },
+    {
+      key: "charset",
+      label: "Character Set",
+      type: "select",
+      options: ["standard", "blocks", "binary", "dots", "kanji"],
+    },
+    {
+      key: "colorMode",
+      label: "Color Mode",
+      type: "select",
+      options: ["colored", "green", "amber", "white"],
+    },
   ],
   processor: () => {},
 });
@@ -74,7 +150,14 @@ registerEffect({
   category: "style",
   defaultParams: { density: 64 },
   paramsConfig: [
-    { key: "density", label: "Density", type: "slider", min: 16, max: 200, step: 1 },
+    {
+      key: "density",
+      label: "Density",
+      type: "slider",
+      min: 16,
+      max: 200,
+      step: 1,
+    },
   ],
   processor: () => {},
 });
@@ -83,13 +166,43 @@ registerEffect({
   type: "halftone",
   label: "Halftone",
   category: "style",
-  defaultParams: { density: 64, dotScale: 1.0, shape: "circle", angle: 0, colorMode: "colored" },
+  defaultParams: {
+    density: 64,
+    dotScale: 1.0,
+    shape: "circle",
+    angle: 0,
+    colorMode: "colored",
+  },
   paramsConfig: [
-    { key: "density", label: "Density", type: "slider", min: 8, max: 200, step: 1 },
-    { key: "dotScale", label: "Dot Scale", type: "slider", min: 0.1, max: 3.0, step: 0.05 },
-    { key: "shape", label: "Dot Shape", type: "select", options: ["circle", "square", "diamond", "line"] },
+    {
+      key: "density",
+      label: "Density",
+      type: "slider",
+      min: 8,
+      max: 200,
+      step: 1,
+    },
+    {
+      key: "dotScale",
+      label: "Dot Scale",
+      type: "slider",
+      min: 0.1,
+      max: 3.0,
+      step: 0.05,
+    },
+    {
+      key: "shape",
+      label: "Dot Shape",
+      type: "select",
+      options: ["circle", "square", "diamond", "line"],
+    },
     { key: "angle", label: "Angle", type: "slider", min: 0, max: 360, step: 5 },
-    { key: "colorMode", label: "Color Mode", type: "select", options: ["colored", "mono", "cmyk"] },
+    {
+      key: "colorMode",
+      label: "Color Mode",
+      type: "select",
+      options: ["colored", "mono", "cmyk"],
+    },
   ],
   processor: () => {},
 });
@@ -98,13 +211,40 @@ registerEffect({
   type: "3d-mesh",
   label: "3D Mesh",
   category: "style",
-  defaultParams: { density: 2, displacementScale: 3, wireframe: true, mode: "mesh", pointSize: 0.08 },
+  defaultParams: {
+    density: 2,
+    displacementScale: 3,
+    wireframe: true,
+    mode: "mesh",
+    pointSize: 0.08,
+  },
   paramsConfig: [
-    { key: "density", label: "Density", type: "slider", min: 0.5, max: 10, step: 0.1 },
-    { key: "displacementScale", label: "Displacement", type: "slider", min: 0, max: 10, step: 0.1 },
+    {
+      key: "density",
+      label: "Density",
+      type: "slider",
+      min: 0.5,
+      max: 10,
+      step: 0.1,
+    },
+    {
+      key: "displacementScale",
+      label: "Displacement",
+      type: "slider",
+      min: 0,
+      max: 10,
+      step: 0.1,
+    },
     { key: "wireframe", label: "Wireframe", type: "checkbox" },
     { key: "mode", label: "Mode", type: "select", options: ["mesh", "points"] },
-    { key: "pointSize", label: "Point Size", type: "slider", min: 0.01, max: 0.5, step: 0.01 },
+    {
+      key: "pointSize",
+      label: "Point Size",
+      type: "slider",
+      min: 0.01,
+      max: 0.5,
+      step: 0.01,
+    },
   ],
   processor: () => {},
 });
@@ -113,14 +253,54 @@ registerEffect({
   type: "3d-sphere",
   label: "3D Sphere",
   category: "style",
-  defaultParams: { zoom: 1.0, rotationSpeed: 0.5, tilt: 15, mode: "solid", roughness: 0.4, metalness: 0.1 },
+  defaultParams: {
+    zoom: 1.0,
+    rotationSpeed: 0.5,
+    tilt: 15,
+    mode: "solid",
+    roughness: 0.4,
+    metalness: 0.1,
+  },
   paramsConfig: [
-    { key: "zoom", label: "Zoom", type: "slider", min: 0.3, max: 3, step: 0.05 },
-    { key: "rotationSpeed", label: "Rotation Speed", type: "slider", min: 0, max: 3, step: 0.05 },
+    {
+      key: "zoom",
+      label: "Zoom",
+      type: "slider",
+      min: 0.3,
+      max: 3,
+      step: 0.05,
+    },
+    {
+      key: "rotationSpeed",
+      label: "Rotation Speed",
+      type: "slider",
+      min: 0,
+      max: 3,
+      step: 0.05,
+    },
     { key: "tilt", label: "Tilt", type: "slider", min: -45, max: 45, step: 1 },
-    { key: "mode", label: "Mode", type: "select", options: ["solid", "wireframe", "points"] },
-    { key: "roughness", label: "Roughness", type: "slider", min: 0, max: 1, step: 0.01 },
-    { key: "metalness", label: "Metalness", type: "slider", min: 0, max: 1, step: 0.01 },
+    {
+      key: "mode",
+      label: "Mode",
+      type: "select",
+      options: ["solid", "wireframe", "points"],
+    },
+    {
+      key: "roughness",
+      label: "Roughness",
+      type: "slider",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
+    {
+      key: "metalness",
+      label: "Metalness",
+      type: "slider",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
   ],
   processor: () => {},
 });
@@ -129,15 +309,56 @@ registerEffect({
   type: "3d-shatter",
   label: "3D Shatter",
   category: "style",
-  defaultParams: { fragments: 6, force: 1.0, progress: 0.5, rotateShards: true, mode: "explode", roughness: 0.3, metalness: 0.5 },
+  defaultParams: {
+    fragments: 6,
+    force: 1.0,
+    progress: 0.5,
+    rotateShards: true,
+    mode: "explode",
+    roughness: 0.3,
+    metalness: 0.5,
+  },
   paramsConfig: [
-    { key: "fragments", label: "Fragments", type: "slider", min: 2, max: 12, step: 1 },
+    {
+      key: "fragments",
+      label: "Fragments",
+      type: "slider",
+      min: 2,
+      max: 12,
+      step: 1,
+    },
     { key: "force", label: "Force", type: "slider", min: 0, max: 3, step: 0.1 },
-    { key: "progress", label: "Progress", type: "slider", min: 0, max: 1, step: 0.01 },
+    {
+      key: "progress",
+      label: "Progress",
+      type: "slider",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
     { key: "rotateShards", label: "Rotate Shards", type: "checkbox" },
-    { key: "mode", label: "Mode", type: "select", options: ["explode", "implode", "float"] },
-    { key: "roughness", label: "Roughness", type: "slider", min: 0, max: 1, step: 0.01 },
-    { key: "metalness", label: "Metalness", type: "slider", min: 0, max: 1, step: 0.01 },
+    {
+      key: "mode",
+      label: "Mode",
+      type: "select",
+      options: ["explode", "implode", "float"],
+    },
+    {
+      key: "roughness",
+      label: "Roughness",
+      type: "slider",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
+    {
+      key: "metalness",
+      label: "Metalness",
+      type: "slider",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
   ],
   processor: () => {},
 });
@@ -146,15 +367,56 @@ registerEffect({
   type: "3d-ribbon",
   label: "3D Ribbon",
   category: "style",
-  defaultParams: { twist: 1.0, amplitude: 1.0, speed: 1.0, segments: 120, mode: "ribbon", roughness: 0.3, metalness: 0.2 },
+  defaultParams: {
+    twist: 1.0,
+    amplitude: 1.0,
+    speed: 1.0,
+    segments: 120,
+    mode: "ribbon",
+    roughness: 0.3,
+    metalness: 0.2,
+  },
   paramsConfig: [
     { key: "twist", label: "Twist", type: "slider", min: 0, max: 4, step: 0.1 },
-    { key: "amplitude", label: "Amplitude", type: "slider", min: 0, max: 3, step: 0.1 },
+    {
+      key: "amplitude",
+      label: "Amplitude",
+      type: "slider",
+      min: 0,
+      max: 3,
+      step: 0.1,
+    },
     { key: "speed", label: "Speed", type: "slider", min: 0, max: 4, step: 0.1 },
-    { key: "segments", label: "Segments", type: "slider", min: 30, max: 200, step: 10 },
-    { key: "mode", label: "Mode", type: "select", options: ["ribbon", "helix", "wave"] },
-    { key: "roughness", label: "Roughness", type: "slider", min: 0, max: 1, step: 0.01 },
-    { key: "metalness", label: "Metalness", type: "slider", min: 0, max: 1, step: 0.01 },
+    {
+      key: "segments",
+      label: "Segments",
+      type: "slider",
+      min: 30,
+      max: 200,
+      step: 10,
+    },
+    {
+      key: "mode",
+      label: "Mode",
+      type: "select",
+      options: ["ribbon", "helix", "wave"],
+    },
+    {
+      key: "roughness",
+      label: "Roughness",
+      type: "slider",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
+    {
+      key: "metalness",
+      label: "Metalness",
+      type: "slider",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
   ],
   processor: () => {},
 });
@@ -163,15 +425,61 @@ registerEffect({
   type: "3d-crystal",
   label: "3D Crystal",
   category: "style",
-  defaultParams: { facets: 1, rotationSpeed: 0.5, scale: 1.0, mode: "solid", geometry: "icosahedron", roughness: 0.05, metalness: 0.1 },
+  defaultParams: {
+    facets: 1,
+    rotationSpeed: 0.5,
+    scale: 1.0,
+    mode: "solid",
+    geometry: "icosahedron",
+    roughness: 0.05,
+    metalness: 0.1,
+  },
   paramsConfig: [
     { key: "facets", label: "Detail", type: "slider", min: 0, max: 3, step: 1 },
-    { key: "rotationSpeed", label: "Rotation Speed", type: "slider", min: 0, max: 3, step: 0.05 },
-    { key: "scale", label: "Scale", type: "slider", min: 0.3, max: 2, step: 0.05 },
-    { key: "mode", label: "Mode", type: "select", options: ["solid", "wireframe", "points"] },
-    { key: "geometry", label: "Shape", type: "select", options: ["icosahedron", "dodecahedron", "octahedron", "tetrahedron"] },
-    { key: "roughness", label: "Roughness", type: "slider", min: 0, max: 1, step: 0.01 },
-    { key: "metalness", label: "Metalness", type: "slider", min: 0, max: 1, step: 0.01 },
+    {
+      key: "rotationSpeed",
+      label: "Rotation Speed",
+      type: "slider",
+      min: 0,
+      max: 3,
+      step: 0.05,
+    },
+    {
+      key: "scale",
+      label: "Scale",
+      type: "slider",
+      min: 0.3,
+      max: 2,
+      step: 0.05,
+    },
+    {
+      key: "mode",
+      label: "Mode",
+      type: "select",
+      options: ["solid", "wireframe", "points"],
+    },
+    {
+      key: "geometry",
+      label: "Shape",
+      type: "select",
+      options: ["icosahedron", "dodecahedron", "octahedron", "tetrahedron"],
+    },
+    {
+      key: "roughness",
+      label: "Roughness",
+      type: "slider",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
+    {
+      key: "metalness",
+      label: "Metalness",
+      type: "slider",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
   ],
   processor: () => {},
 });
@@ -182,51 +490,159 @@ registerEffect({
   type: "blob-track",
   label: "Blob Track",
   category: "standard",
-    defaultParams: {
-        threshold: 128,
-        minBlobSize: 200,
-        maxBlobSize: 150000,
-        maxBlobs: 30,
-        flashRate: 5,
-        lineWidth: 1.5,
-        connectionWidth: 1.0,
-        style: "box",
-        connections: "none",
-        labelStyle: "minimal",
-        invert: false,
-        forceSquare: false,
-        showScanlines: true,
-        boxPalette: "custom",
-        connectionPalette: "custom",
-        innerEffect: "none",
-        boxColor: "#00ff88",
-        connectionColor: "#00aaff",
-        color: "#00ff88", // Legacy, kept for compatibility if needed elsewhere
-      },
+  defaultParams: {
+    threshold: 128,
+    minBlobSize: 200,
+    maxBlobSize: 150000,
+    maxBlobs: 30,
+    flashRate: 5,
+    lineWidth: 1.5,
+    connectionWidth: 1.0,
+    style: "box",
+    connections: "none",
+    labelStyle: "minimal",
+    invert: false,
+    forceSquare: false,
+    boxPalette: "custom",
+    connectionPalette: "custom",
+    innerEffect: "none",
+    boxColor: "#00ff88",
+    connectionColor: "#00aaff",
+    color: "#00ff88", // Legacy, kept for compatibility if needed elsewhere
+  },
   paramsConfig: [
-    { key: "threshold", label: "Threshold", type: "slider", min: 0, max: 255, step: 1 },
-    { key: "minBlobSize", label: "Min Blob Size", type: "slider", min: 10, max: 5000, step: 10 },
-    { key: "maxBlobSize", label: "Max Blob Size", type: "slider", min: 1000, max: 500000, step: 1000 },
-    { key: "maxBlobs", label: "Max Blobs", type: "slider", min: 1, max: 100, step: 1 },
-    { key: "flashRate", label: "Flash Rate", type: "slider", min: 1, max: 10, step: 1 },
-    { key: "lineWidth", label: "Line Width", type: "slider", min: 0.5, max: 8, step: 0.5 },
-    { key: "connectionWidth", label: "Connection Width", type: "slider", min: 0.5, max: 5, step: 0.5 },
-    { key: "style", label: "Style", type: "select", options: ["box", "corners", "crosshair", "grid", "dot", "hidden"] },
-    { key: "connections", label: "Connections", type: "select", options: ["none", "neighbors", "all", "hub"] },
-    { key: "labelStyle", label: "Label Style", type: "select", options: ["minimal", "object", "value", "none"] },
+    {
+      key: "threshold",
+      label: "Threshold",
+      type: "slider",
+      min: 0,
+      max: 255,
+      step: 1,
+    },
+    {
+      key: "minBlobSize",
+      label: "Min Blob Size",
+      type: "slider",
+      min: 10,
+      max: 5000,
+      step: 10,
+    },
+    {
+      key: "maxBlobSize",
+      label: "Max Blob Size",
+      type: "slider",
+      min: 1000,
+      max: 500000,
+      step: 1000,
+    },
+    {
+      key: "maxBlobs",
+      label: "Max Blobs",
+      type: "slider",
+      min: 1,
+      max: 100,
+      step: 1,
+    },
+    {
+      key: "flashRate",
+      label: "Flash Rate",
+      type: "slider",
+      min: 1,
+      max: 10,
+      step: 1,
+    },
+    {
+      key: "lineWidth",
+      label: "Line Width",
+      type: "slider",
+      min: 0.5,
+      max: 8,
+      step: 0.5,
+    },
+    {
+      key: "connectionWidth",
+      label: "Connection Width",
+      type: "slider",
+      min: 0.5,
+      max: 5,
+      step: 0.5,
+    },
+    {
+      key: "style",
+      label: "Style",
+      type: "select",
+      options: ["box", "corners", "crosshair", "grid", "dot", "hidden"],
+    },
+    {
+      key: "connections",
+      label: "Connections",
+      type: "select",
+      options: ["none", "neighbors", "all", "hub"],
+    },
+    {
+      key: "labelStyle",
+      label: "Label Style",
+      type: "select",
+      options: ["minimal", "object", "value", "none"],
+    },
     { key: "invert", label: "Invert", type: "checkbox" },
     { key: "forceSquare", label: "Force Square", type: "checkbox" },
-    { key: "showScanlines", label: "Show Scanlines", type: "checkbox" },
-    { key: "boxPalette", label: "Box Palette", type: "select", options: ["custom", "cyberpunk", "neon", "vintage", "monochrome", "danger"] },
-    { key: "connectionPalette", label: "Connection Palette", type: "select", options: ["custom", "cyberpunk", "neon", "vintage", "monochrome", "danger"] },
-    { key: "innerEffect", label: "Inner Effect", type: "select", options: ["none", "invert", "glitch", "block-corrupt", "pixel-sort", "edge-detect", "noise", "pixelate"] },
+    {
+      key: "boxPalette",
+      label: "Box Palette",
+      type: "select",
+      options: [
+        "custom",
+        "cyberpunk",
+        "neon",
+        "vintage",
+        "monochrome",
+        "danger",
+      ],
+    },
+    {
+      key: "connectionPalette",
+      label: "Connection Palette",
+      type: "select",
+      options: [
+        "custom",
+        "cyberpunk",
+        "neon",
+        "vintage",
+        "monochrome",
+        "danger",
+      ],
+    },
+    {
+      key: "innerEffect",
+      label: "Inner Effect",
+      type: "select",
+      options: [
+        "none",
+        "invert",
+        "glitch",
+        "block-corrupt",
+        "pixel-sort",
+        "edge-detect",
+        "noise",
+        "pixelate",
+      ],
+    },
     { key: "boxColor", label: "Box Color", type: "color" },
     { key: "connectionColor", label: "Connection Color", type: "color" },
   ],
   processor: (
     data,
-    { width, height, time = 0, timelineFrames, faceBounds, handBounds, poseBounds },
-    params
+    {
+      width,
+      height,
+      time = 0,
+      timelineFrames,
+      faceBounds,
+      handBounds,
+      poseBounds,
+    },
+    params,
   ) => {
     const threshold = (params.threshold as number) ?? 128;
     const minBlobSize = (params.minBlobSize as number) ?? 200;
@@ -240,11 +656,11 @@ registerEffect({
     const labelStyle = (params.labelStyle as string) ?? "minimal";
     const invertBlobs = (params.invert as boolean) ?? false;
     const forceSquare = (params.forceSquare as boolean) ?? false;
-    const showScanlines = (params.showScanlines as boolean) ?? true;
     const boxPaletteName = (params.boxPalette as string) ?? "custom";
     const connPaletteName = (params.connectionPalette as string) ?? "custom";
     const innerEffect = (params.innerEffect as string) ?? "none";
-    const boxColor = (params.boxColor as string) ?? (params.color as string) ?? "#00ff88";
+    const boxColor =
+      (params.boxColor as string) ?? (params.color as string) ?? "#00ff88";
     const connectionColor = (params.connectionColor as string) ?? "#00aaff";
 
     // Pseudo-random function seeded by time for erratic behavior
@@ -260,123 +676,135 @@ registerEffect({
       blobTrackCache &&
       blobTrackCache.width === width &&
       blobTrackCache.height === height &&
-      (frameKey - blobTrackCache.frameKey) < BLOB_DETECT_INTERVAL;
+      frameKey - blobTrackCache.frameKey < BLOB_DETECT_INTERVAL;
 
     let blobs: BlobInfo[];
 
     if (canUseCache) {
       blobs = blobTrackCache!.blobs;
     } else {
-    const binary = new Uint8Array(totalPixels);
-    for (let i = 0; i < totalPixels; i++) {
-      const idx = i * 4;
-      const gray = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
-      const isBright = gray >= threshold;
-      binary[i] = (invertBlobs ? !isBright : isBright) ? 1 : 0;
-    }
-
-    // Step 2: Connected-Component Labeling (two-pass with union-find)
-    const labels = new Int32Array(totalPixels);
-    const parent: number[] = [0]; // parent[0] unused, labels start at 1
-    let nextLabel = 1;
-
-    const find = (x: number): number => {
-      while (parent[x] !== x) {
-        parent[x] = parent[parent[x]]; // path compression
-        x = parent[x];
+      const binary = new Uint8Array(totalPixels);
+      for (let i = 0; i < totalPixels; i++) {
+        const idx = i * 4;
+        const gray =
+          data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+        const isBright = gray >= threshold;
+        binary[i] = (invertBlobs ? !isBright : isBright) ? 1 : 0;
       }
-      return x;
-    };
 
-    const union = (a: number, b: number): void => {
-      const ra = find(a);
-      const rb = find(b);
-      if (ra !== rb) {
-        parent[Math.max(ra, rb)] = Math.min(ra, rb);
-      }
-    };
+      // Step 2: Connected-Component Labeling (two-pass with union-find)
+      const labels = new Int32Array(totalPixels);
+      const parent: number[] = [0]; // parent[0] unused, labels start at 1
+      let nextLabel = 1;
 
-    // First pass
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const pos = y * width + x;
-        if (binary[pos] === 0) continue;
+      const find = (x: number): number => {
+        while (parent[x] !== x) {
+          parent[x] = parent[parent[x]]; // path compression
+          x = parent[x];
+        }
+        return x;
+      };
 
-        const left = x > 0 ? labels[pos - 1] : 0;
-        const above = y > 0 ? labels[pos - width] : 0;
+      const union = (a: number, b: number): void => {
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb) {
+          parent[Math.max(ra, rb)] = Math.min(ra, rb);
+        }
+      };
 
-        if (left === 0 && above === 0) {
-          labels[pos] = nextLabel;
-          parent.push(nextLabel);
-          nextLabel++;
-        } else if (left !== 0 && above === 0) {
-          labels[pos] = left;
-        } else if (left === 0 && above !== 0) {
-          labels[pos] = above;
-        } else {
-          labels[pos] = Math.min(left, above);
-          if (left !== above) {
-            union(left, above);
+      // First pass
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const pos = y * width + x;
+          if (binary[pos] === 0) continue;
+
+          const left = x > 0 ? labels[pos - 1] : 0;
+          const above = y > 0 ? labels[pos - width] : 0;
+
+          if (left === 0 && above === 0) {
+            labels[pos] = nextLabel;
+            parent.push(nextLabel);
+            nextLabel++;
+          } else if (left !== 0 && above === 0) {
+            labels[pos] = left;
+          } else if (left === 0 && above !== 0) {
+            labels[pos] = above;
+          } else {
+            labels[pos] = Math.min(left, above);
+            if (left !== above) {
+              union(left, above);
+            }
           }
         }
       }
-    }
 
-    const blobMap = new Map<number, BlobInfo>();
+      const blobMap = new Map<number, BlobInfo>();
 
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const pos = y * width + x;
-        if (labels[pos] === 0) continue;
-        const root = find(labels[pos]);
-        labels[pos] = root;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const pos = y * width + x;
+          if (labels[pos] === 0) continue;
+          const root = find(labels[pos]);
+          labels[pos] = root;
 
-        let info = blobMap.get(root);
-        if (!info) {
-          info = { minX: x, minY: y, maxX: x, maxY: y, area: 0 };
-          blobMap.set(root, info);
+          let info = blobMap.get(root);
+          if (!info) {
+            info = { minX: x, minY: y, maxX: x, maxY: y, area: 0 };
+            blobMap.set(root, info);
+          }
+          info.minX = Math.min(info.minX, x);
+          info.minY = Math.min(info.minY, y);
+          info.maxX = Math.max(info.maxX, x);
+          info.maxY = Math.max(info.maxY, y);
+          info.area++;
         }
-        info.minX = Math.min(info.minX, x);
-        info.minY = Math.min(info.minY, y);
-        info.maxX = Math.max(info.maxX, x);
-        info.maxY = Math.max(info.maxY, y);
-        info.area++;
       }
-    }
 
-    let detectedBlobs = Array.from(blobMap.values()).filter(b => b.area >= minBlobSize && b.area <= maxBlobSize);
-    detectedBlobs.sort((a, b) => b.area - a.area);
-    if (detectedBlobs.length > maxBlobs) {
-      detectedBlobs = detectedBlobs.slice(0, maxBlobs);
-    }
+      let detectedBlobs = Array.from(blobMap.values()).filter(
+        (b) => b.area >= minBlobSize && b.area <= maxBlobSize,
+      );
+      detectedBlobs.sort((a, b) => b.area - a.area);
+      if (detectedBlobs.length > maxBlobs) {
+        detectedBlobs = detectedBlobs.slice(0, maxBlobs);
+      }
 
-    blobTrackCache = {
-      blobs: detectedBlobs,
-      frameKey,
-      width,
-      height,
-    };
-    blobs = detectedBlobs;
+      blobTrackCache = {
+        blobs: detectedBlobs,
+        frameKey,
+        width,
+        height,
+      };
+      blobs = detectedBlobs;
     }
 
     if (blobs.length === 0) return;
 
-// Global cache for blob-track temp canvas
-let blobTrackCanvas: HTMLCanvasElement | null = null;
-let blobTrackCtx: CanvasRenderingContext2D | null = null;
+    // Global cache for blob-track temp canvas
+    let blobTrackCanvas: HTMLCanvasElement | null = null;
+    let blobTrackCtx: CanvasRenderingContext2D | null = null;
 
-function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
-  if (!blobTrackCanvas || blobTrackCanvas.width !== width || blobTrackCanvas.height !== height) {
-    blobTrackCanvas = document.createElement("canvas");
-    blobTrackCanvas.width = width;
-    blobTrackCanvas.height = height;
-    blobTrackCtx = blobTrackCanvas.getContext("2d", { willReadFrequently: true });
-  }
-  if (!blobTrackCtx) {
-    throw new Error("Failed to get 2D context for blob-track canvas");
-  }
-  return { canvas: blobTrackCanvas, ctx: blobTrackCtx };
-}
+    function getOrCreateBlobCanvas(
+      width: number,
+      height: number,
+    ): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+      if (
+        !blobTrackCanvas ||
+        blobTrackCanvas.width !== width ||
+        blobTrackCanvas.height !== height
+      ) {
+        blobTrackCanvas = document.createElement("canvas");
+        blobTrackCanvas.width = width;
+        blobTrackCanvas.height = height;
+        blobTrackCtx = blobTrackCanvas.getContext("2d", {
+          willReadFrequently: true,
+        });
+      }
+      if (!blobTrackCtx) {
+        throw new Error("Failed to get 2D context for blob-track canvas");
+      }
+      return { canvas: blobTrackCanvas, ctx: blobTrackCtx };
+    }
 
     // Step 4: Render overlays using a cached canvas
     const { canvas: tempCanvas, ctx } = getOrCreateBlobCanvas(width, height);
@@ -395,8 +823,13 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
       danger: ["#ff0000", "#ff3300", "#ff6600", "#cc0000", "#990000"],
     };
 
-    const getPaletteColor = (paletteName: string, customColor: string, index: number): string => {
-      if (paletteName === "custom" || !palettes[paletteName]) return customColor;
+    const getPaletteColor = (
+      paletteName: string,
+      customColor: string,
+      index: number,
+    ): string => {
+      if (paletteName === "custom" || !palettes[paletteName])
+        return customColor;
       const palette = palettes[paletteName];
       return palette[index % palette.length];
     };
@@ -423,11 +856,15 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
 
       // Erratic flicker: skip some blobs randomly each frame
       const flickerChance = flashRate / 10;
-      if (prng(seed + i * 7.31) > (0.3 + flickerChance * 0.7)) continue;
+      if (prng(seed + i * 7.31) > 0.3 + flickerChance * 0.7) continue;
 
       // Jitter position slightly
-      const jitterX = Math.floor((prng(seed + i * 13.7) - 0.5) * flashRate * 1.5);
-      const jitterY = Math.floor((prng(seed + i * 23.1) - 0.5) * flashRate * 1.5);
+      const jitterX = Math.floor(
+        (prng(seed + i * 13.7) - 0.5) * flashRate * 1.5,
+      );
+      const jitterY = Math.floor(
+        (prng(seed + i * 23.1) - 0.5) * flashRate * 1.5,
+      );
 
       blobsToDraw.push({
         ...blob,
@@ -441,8 +878,12 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
     // Draw detected blobs with stylized overlays
     for (let i = 0; i < blobsToDraw.length; i++) {
       const blob = blobsToDraw[i];
-      let bx = blob.minX, by = blob.minY, bw = blob.maxX - blob.minX, bh = blob.maxY - blob.minY;
-      const cx = bx + bw / 2, cy = by + bh / 2;
+      let bx = blob.minX,
+        by = blob.minY,
+        bw = blob.maxX - blob.minX,
+        bh = blob.maxY - blob.minY;
+      const cx = bx + bw / 2,
+        cy = by + bh / 2;
 
       if (forceSquare) {
         const side = Math.max(bw, bh);
@@ -458,7 +899,7 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
       // Apply the inner effect only to the bounds of the current blob
       if (innerEffect && innerEffect !== "none") {
         const effectDef = getEffectDefinition(innerEffect as EffectType);
-        
+
         if (effectDef && effectDef.processor) {
           const safeBx = Math.max(0, Math.floor(bx));
           const safeBy = Math.max(0, Math.floor(by));
@@ -470,7 +911,8 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
             const miniBuffer = getBlobTrackMiniBuffer(miniSize);
             for (let localY = 0; localY < safeBh; localY++) {
               for (let localX = 0; localX < safeBw; localX++) {
-                const srcIdx = ((safeBy + localY) * width + (safeBx + localX)) * 4;
+                const srcIdx =
+                  ((safeBy + localY) * width + (safeBx + localX)) * 4;
                 const dstIdx = (localY * safeBw + localX) * 4;
                 miniBuffer[dstIdx] = data[srcIdx];
                 miniBuffer[dstIdx + 1] = data[srcIdx + 1];
@@ -481,17 +923,17 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
 
             // Run the processor aggressively just on this sub-region
             effectDef.processor(
-              miniBuffer, 
-              { 
-                width: safeBw, 
-                height: safeBh, 
-                time, 
-                timelineFrames, 
-                faceBounds, 
-                handBounds, 
-                poseBounds 
-              }, 
-              effectDef.defaultParams || {}
+              miniBuffer,
+              {
+                width: safeBw,
+                height: safeBh,
+                time,
+                timelineFrames,
+                faceBounds,
+                handBounds,
+                poseBounds,
+              },
+              effectDef.defaultParams || {},
             );
 
             const chunkData = new ImageData(
@@ -514,7 +956,8 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
       ctx.fillStyle = drawColor;
 
       // Randomly vary line width for erratic feel, scaled by user setting
-      const currentLineWidth = boxLineWidth + prng(seed + i * 5.7) * boxLineWidth;
+      const currentLineWidth =
+        boxLineWidth + prng(seed + i * 5.7) * boxLineWidth;
       ctx.lineWidth = currentLineWidth;
 
       if (style === "box") {
@@ -524,21 +967,31 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
         const cornerLen = Math.min(bw, bh, 20);
         ctx.beginPath();
         // Top-left
-        ctx.moveTo(bx, by + cornerLen); ctx.lineTo(bx, by); ctx.lineTo(bx + cornerLen, by);
+        ctx.moveTo(bx, by + cornerLen);
+        ctx.lineTo(bx, by);
+        ctx.lineTo(bx + cornerLen, by);
         // Top-right
-        ctx.moveTo(bx + bw - cornerLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + cornerLen);
+        ctx.moveTo(bx + bw - cornerLen, by);
+        ctx.lineTo(bx + bw, by);
+        ctx.lineTo(bx + bw, by + cornerLen);
         // Bottom-right
-        ctx.moveTo(bx + bw, by + bh - cornerLen); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw - cornerLen, by + bh);
+        ctx.moveTo(bx + bw, by + bh - cornerLen);
+        ctx.lineTo(bx + bw, by + bh);
+        ctx.lineTo(bx + bw - cornerLen, by + bh);
         // Bottom-left
-        ctx.moveTo(bx + cornerLen, by + bh); ctx.lineTo(bx, by + bh); ctx.lineTo(bx, by + bh - cornerLen);
+        ctx.moveTo(bx + cornerLen, by + bh);
+        ctx.lineTo(bx, by + bh);
+        ctx.lineTo(bx, by + bh - cornerLen);
         ctx.stroke();
       } else if (style === "crosshair") {
         const crossSize = Math.min(bw, bh) * 0.4;
         ctx.beginPath();
         // Horizontal
-        ctx.moveTo(cx - crossSize, cy); ctx.lineTo(cx + crossSize, cy);
+        ctx.moveTo(cx - crossSize, cy);
+        ctx.lineTo(cx + crossSize, cy);
         // Vertical
-        ctx.moveTo(cx, cy - crossSize); ctx.lineTo(cx, cy + crossSize);
+        ctx.moveTo(cx, cy - crossSize);
+        ctx.lineTo(cx, cy + crossSize);
         ctx.stroke();
         // Circle
         ctx.beginPath();
@@ -552,11 +1005,13 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
         ctx.rect(bx, by, bw, bh);
         for (let c = 1; c < cols; c++) {
           const gx = bx + (bw / cols) * c;
-          ctx.moveTo(gx, by); ctx.lineTo(gx, by + bh);
+          ctx.moveTo(gx, by);
+          ctx.lineTo(gx, by + bh);
         }
         for (let r = 1; r < rows; r++) {
           const gy = by + (bh / rows) * r;
-          ctx.moveTo(bx, gy); ctx.lineTo(bx + bw, gy);
+          ctx.moveTo(bx, gy);
+          ctx.lineTo(bx + bw, gy);
         }
         ctx.stroke();
       } else if (style === "dot") {
@@ -571,23 +1026,23 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
       if (labelStyle !== "none") {
         let labelText = "";
         const areaRatio = (blob.area / totalPixels).toFixed(4);
-        
+
         if (labelStyle === "minimal") {
           labelText = `${i}:${areaRatio}`;
         } else if (labelStyle === "object") {
-          labelText = `OBJ_${i.toString().padStart(2, '0')}`;
+          labelText = `OBJ_${i.toString().padStart(2, "0")}`;
         } else if (labelStyle === "value") {
           labelText = prng(seed + i * 99.1).toFixed(3);
         }
 
         const labelAlpha = 0.5 + prng(seed + i * 41.3) * 0.5;
-        
+
         if (labelStyle === "object") {
           // Object mode: Header bar spanning the top of the box
           const barHeight = 16;
           ctx.fillStyle = `rgba(${boxRgbStr}, ${labelAlpha})`;
           ctx.fillRect(bx, by - barHeight, bw, barHeight);
-          
+
           ctx.fillStyle = "#000000";
           ctx.font = `bold 10px monospace`;
           ctx.fillText(labelText, bx + 4, by - barHeight + 3);
@@ -595,9 +1050,9 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
           // Value mode: Centered inside the box
           ctx.font = `bold 14px monospace`;
           const metrics = ctx.measureText(labelText);
-          const lblX = bx + (bw / 2) - (metrics.width / 2);
-          const lblY = by + (bh / 2) - 7;
-          
+          const lblX = bx + bw / 2 - metrics.width / 2;
+          const lblY = by + bh / 2 - 7;
+
           ctx.fillStyle = `rgba(${boxRgbStr}, ${labelAlpha})`;
           ctx.fillText(labelText, lblX, lblY);
         } else {
@@ -613,30 +1068,21 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
           ctx.fillText(labelText, lblX + 2, lblY + 1);
         }
       }
-
-      // Random scan lines within some blobs for extra data-viz feel
-      if (showScanlines && style !== "hidden" && style !== "dot" && prng(seed + i * 61.7) > 0.6) {
-        ctx.strokeStyle = `rgba(${boxRgbStr}, 0.3)`;
-        ctx.lineWidth = boxLineWidth * 0.5;
-        const lineSpacing = 4 + Math.floor(prng(seed + i * 71.3) * 6);
-        for (let ly = by; ly < by + bh; ly += lineSpacing) {
-          ctx.beginPath();
-          ctx.moveTo(bx, ly);
-          ctx.lineTo(bx + bw, ly);
-          ctx.stroke();
-        }
-      }
     }
 
     // Connection lines between blob centers
     if (connections !== "none" && blobCenters.length > 1) {
       for (let i = 0; i < blobCenters.length; i++) {
         // Color depends on the connection origin blob
-        const currentConnColor = getPaletteColor(connPaletteName, connectionColor, i);
+        const currentConnColor = getPaletteColor(
+          connPaletteName,
+          connectionColor,
+          i,
+        );
         const connRgbStr = getRgbStr(currentConnColor);
         ctx.strokeStyle = `rgba(${connRgbStr}, 0.3)`;
         ctx.lineWidth = connectionLineWidth;
-        
+
         if (connections === "neighbors") {
           // Connect to nearest neighbors (1 or 2 indices ahead)
           for (let j = 1; j <= 2 && i + j < blobCenters.length; j++) {
@@ -658,7 +1104,7 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
           }
         }
       }
-      
+
       // Hub is calculated across all, uses the base connection color
       if (connections === "hub") {
         const connRgbStr = getRgbStr(connectionColor);
@@ -666,11 +1112,14 @@ function getOrCreateBlobCanvas(width: number, height: number): { canvas: HTMLCan
         ctx.lineWidth = connectionLineWidth;
 
         // Find center of mass of all blobs
-        let hubX = 0, hubY = 0;
+        let hubX = 0,
+          hubY = 0;
         for (const center of blobCenters) {
-          hubX += center.cx; hubY += center.cy;
+          hubX += center.cx;
+          hubY += center.cy;
         }
-        hubX /= blobCenters.length; hubY /= blobCenters.length;
+        hubX /= blobCenters.length;
+        hubY /= blobCenters.length;
 
         // Draw central hub point
         ctx.fillStyle = `rgba(${connRgbStr}, 0.8)`;
