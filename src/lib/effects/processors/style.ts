@@ -1,38 +1,8 @@
 import {
   registerEffect,
-  ProcessConfig,
   getEffectDefinition,
 } from "../effect-registry";
-import { EffectType, EffectParamConfig } from "../types";
-import {
-  FaceBounds,
-  HandBounds,
-  PoseBounds,
-  getEyeLandmarks,
-  getMouthLandmarks,
-  getLandmarkBounds,
-} from "../face-detector";
-import {
-  BAYER_MATRIX_4x4,
-  motionSmearState,
-  blockShovingState,
-  bilinearSample,
-  meltState,
-  perlinNoise,
-  posterizeTimeCache,
-  pseudoRandom,
-  clamp,
-  sortSegment,
-  sortSegmentV,
-  getBlockAverage,
-  hexToRgb,
-  rgbToHsl,
-  hslToRgb,
-  isPointInFaceBounds,
-  frameHistoryStore,
-  storeFrame,
-  getFrameFromHistory,
-} from "./shared";
+import { EffectType } from "../types";
 
 let blobTrackMiniBuffer: Uint8ClampedArray | null = null;
 const BLOB_DETECT_INTERVAL = 3;
@@ -807,7 +777,7 @@ registerEffect({
     }
 
     // Step 4: Render overlays using a cached canvas
-    const { canvas: tempCanvas, ctx } = getOrCreateBlobCanvas(width, height);
+    const { ctx } = getOrCreateBlobCanvas(width, height);
     ctx.clearRect(0, 0, width, height);
 
     const imgData = ctx.createImageData(width, height);
@@ -840,9 +810,6 @@ registerEffect({
       if (!result) return "0, 255, 136";
       return `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`;
     };
-
-    const boxRgbStr = getRgbStr(boxColor);
-    const connRgbStr = getRgbStr(connectionColor);
 
     ctx.lineWidth = 1.5;
     ctx.font = `bold 10px monospace`;

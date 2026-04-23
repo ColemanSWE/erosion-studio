@@ -186,6 +186,7 @@ export function useVideoPlayer({
     if (isPlayingRef.current && !primaryVideo.paused) {
       animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvas]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import type { Keyframe, EffectParamTrack, Effect, TimelineClip, Overlay } from "./effects/types";
+import type { EffectParamTrack, Effect, TimelineClip, Overlay } from "./effects/types";
 
 /**
  * Linearly interpolate a value between two keyframes at time `t`.

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, type MutableRefObject } from "react";
+import React, { useRef, useState, useCallback, useEffect, type MutableRefObject } from "react";
 import {
   Play,
   Pause,
@@ -21,7 +21,7 @@ import type {
 } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
 import { TimelineRuler } from "./TimelineRuler";
-import { MediaTrack, MEDIA_ROW_H } from "./MediaTrack";
+import { MediaTrack } from "./MediaTrack";
 import { OverlayTrack } from "./OverlayTrack";
 import { EffectTrack } from "./EffectTrack";
 import { formatTime } from "../../lib/timeline";
@@ -70,7 +70,6 @@ const DEFAULT_ZOOM = 60;
 const MIN_TRACK_H = 24;
 const MAX_TRACK_H = 100;
 const DEFAULT_TRACK_H = 40;
-const RULER_H = 28;
 const LABEL_W = 170;
 
 export function Timeline({

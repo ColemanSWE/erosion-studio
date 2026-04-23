@@ -26,12 +26,6 @@ const ASCII_CHARSETS: Record<string, string> = {
   dots: " ·•●",
   kanji: " 人大中小上下左右",
 };
-const BAYER_MATRIX_4x4 = [
-  [0, 8, 2, 10],
-  [12, 4, 14, 6],
-  [3, 11, 1, 9],
-  [15, 7, 13, 5],
-];
 
 function getAsciiChar(brightness: number, charset: string = "standard"): string {
   const chars = ASCII_CHARSETS[charset] || ASCII_CHARSETS.standard;
@@ -70,7 +64,6 @@ export function renderFrame(
 
   // Standard Mode: Just draw the modified pixels directly
   if (mode === "standard") {
-    const imageData = new ImageData(new Uint8ClampedArray(pixelData), width, height);
     // We might need to scale it up if the canvas is larger than the grid?
     // Yes, usually width/height are the 'cols/rows' (small), but canvas is 720p or similar.
     // So we can draw the tiny ImageData to a temp canvas and drawImage(scale) it?

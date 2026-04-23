@@ -182,7 +182,7 @@ export function OverlayTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [overlays, clips, zoom, rowHeight, numTracks, currentTime, snapEnabled, tracks, onUpdateOverlay, onSelectOverlay, onSnapLine],
+    [overlays, clips, zoom, rowHeight, currentTime, snapEnabled, tracks, onUpdateOverlay, onSelectOverlay, onSnapLine],
   );
 
   // ─── Resize handles ───────────────────────────────────────────────────────

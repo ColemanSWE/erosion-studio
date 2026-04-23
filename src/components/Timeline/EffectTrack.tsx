@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Plus, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
   Effect,
   EffectParamTrack,
@@ -24,7 +24,7 @@ interface EffectTrackProps {
   onToggleExpanded: () => void;
   onUpdateEffect: (id: string, updates: Partial<Effect>) => void;
   onAddParamTrack: (track: EffectParamTrack) => void;
-  onRemoveParamTrack: (id: string) => void;
+  _onRemoveParamTrack: (id: string) => void;
   onAddKeyframe: (trackId: string, kf: Keyframe) => void;
   onUpdateKeyframe: (trackId: string, kfId: string, updates: Partial<Keyframe>) => void;
   onRemoveKeyframe: (trackId: string, kfId: string) => void;
@@ -47,7 +47,7 @@ export function EffectTrack({
   onToggleExpanded,
   onUpdateEffect,
   onAddParamTrack,
-  onRemoveParamTrack,
+  _onRemoveParamTrack,
   onAddKeyframe,
   onUpdateKeyframe,
   onRemoveKeyframe,

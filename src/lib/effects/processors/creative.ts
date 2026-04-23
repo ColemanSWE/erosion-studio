@@ -1,5 +1,5 @@
-import { registerEffect, ProcessConfig } from "../effect-registry";
-import { clamp, perlinNoise, hslToRgb } from "./shared";
+import { registerEffect } from "../effect-registry";
+import { clamp, hslToRgb } from "./shared";
 
 // ─── Premium Creative Effects ──────────────────────────────────────────────────
 

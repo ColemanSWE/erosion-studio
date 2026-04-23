@@ -78,6 +78,7 @@ export function usePhotoEditor({
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
       }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       for (const decoder of gifDecodersRef.current.values()) decoder.dispose();
       gifDecodersRef.current.clear();
     };
@@ -165,6 +166,7 @@ export function usePhotoEditor({
         overlays,
       );
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [canvas, effects, regions, overlays, activeImages, sourceTransform],
   );
 
@@ -198,6 +200,7 @@ export function usePhotoEditor({
     if (isAnimatingRef.current) {
       animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvas, renderFrame]);
 
   // Keep renderRef current so callbacks always call the latest render

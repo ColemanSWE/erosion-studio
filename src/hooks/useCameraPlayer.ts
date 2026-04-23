@@ -95,6 +95,7 @@ export function useCameraPlayer({
     if (isActive) {
       animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvas, effects, isActive, regions, overlays, sourceTransform]);
 
   useEffect(() => {
@@ -168,6 +169,7 @@ export function useCameraPlayer({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive]); 
 
   useEffect(() => {

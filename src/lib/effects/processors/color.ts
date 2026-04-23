@@ -1,7 +1,5 @@
-import { registerEffect, ProcessConfig } from "../effect-registry";
-import { EffectType, EffectParamConfig } from "../types";
-import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { registerEffect } from "../effect-registry";
+import { BAYER_MATRIX_4x4, motionSmearState, blockShovingState, bilinearSample, meltState, setMeltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
 
 registerEffect({
   type: "invert",
@@ -857,7 +855,7 @@ void main() {
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const i = (y * width + x) * 4;
-          let alpha = 0;
+          let alpha;
 
           if (style === "edge") {
             const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y) / Math.max(width, height);

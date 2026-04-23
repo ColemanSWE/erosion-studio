@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Effect, EffectType } from "../../lib/effects/types";
+import type { Effect } from "../../lib/effects/types";
 import { getEffectDefinition } from "../../lib/effects/effect-registry";
 import styles from "./EffectParams.module.scss";
 
