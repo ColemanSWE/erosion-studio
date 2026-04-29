@@ -7,7 +7,7 @@ Erosion Studio is a desktop photo and video editor with 55+ glitch, compression,
 ## Tech Stack
 
 - **Desktop**: Electron
-- **Frontend**: React 19, TypeScript, Vite
+- **Frontend**: React 18, TypeScript, Vite
 - **3D Effects**: Three.js (@react-three/fiber, @react-three/drei)
 - **Video Processing**: FFmpeg (@ffmpeg/ffmpeg, @ffmpeg/util)
 - **State Management**: Zustand

@@ -50,7 +50,6 @@ export type EffectType =
   | "perlin-distort"
   | "scan-sweep"
   | "posterize-time"
-  | "detection-labels"
   | "blob-track"
   | "jpeg-artifacts"
   | "codec-damage"
@@ -88,13 +87,23 @@ export type EffectType =
   | "reaction-diffusion"
   | "droste"
   | "slit-scan"
-  | "datamosh-transition"
   | "buffer-corrupt"
   | "neon-crush"
   | "line-massacre"
-  | "vsync-destroy"
   | "nerve-damage"
-  | "vhs-degrade";
+  | "vhs-degrade"
+  | "holographic"
+  | "light-leak"
+  | "chrome"
+  | "photocopy"
+  | "cctv"
+  | "prism"
+  | "3d-sphere"
+  | "3d-shatter"
+  | "3d-ribbon"
+  | "3d-crystal"
+  | "face-forehead-text"
+  | "fmv";
 
 export interface Region {
   id: string;
@@ -119,8 +128,9 @@ export interface Overlay {
   startTime: number;
   endTime: number;
   trackIndex: number; // row in timeline
-  color?: string;     // For text
-  fontSize?: number;  // For text
+  color?: string;
+  fontSize?: number;
+  fontFamily?: string;
   isEffectZone?: boolean; // If true, it acts as a mask and isn't drawn directly
 }
 
@@ -160,14 +170,22 @@ export interface TimelineClip {
   trackIndex: number; // row (0 = primary)
 }
 
+/** A named row on the timeline (media or overlay section) */
+export interface TimelineTrack {
+  id: string;
+  name: string;
+  type: "media" | "overlay";
+}
+
 export interface EffectParamConfig {
   key: string;
   label: string;
-  type: "slider" | "checkbox" | "select" | "color";
+  type: "slider" | "checkbox" | "select" | "color" | "text";
   min?: number;
   max?: number;
   step?: number;
   default?: unknown;
   options?: string[];
   group?: string;
+  placeholder?: string;
 }

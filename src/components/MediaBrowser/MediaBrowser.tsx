@@ -56,13 +56,12 @@ function MediaBrowser({
     >
       <div className={styles.header}>
         <h3>Media</h3>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button className={styles.importButton} onClick={onAddCamera} title="Add Live Camera">
-            <Camera size={16} />
-            <span>Cam</span>
+        <div className={styles.headerActions}>
+          <button className={styles.cameraButton} onClick={onAddCamera} title="Add Live Camera">
+            <Camera size={12} />
           </button>
           <button className={styles.importButton} onClick={onImport} title="Import File">
-            <Upload size={16} />
+            <Upload size={12} />
             <span>Import</span>
           </button>
         </div>
@@ -70,8 +69,8 @@ function MediaBrowser({
 
       <div className={styles.mediaList}>
         {media.length === 0 ? (
-          <div className={`${styles.empty} ${isDragOver ? styles.dropHint : ""}`}>
-            <Upload size={32} />
+          <div className={styles.empty}>
+            <Upload size={24} />
             <p>No media imported</p>
             <p className={styles.hint}>
               {isDragOver ? "Drop files here!" : "Click Import or drag files here"}
@@ -103,11 +102,11 @@ function MediaBrowser({
               >
                 <div className={styles.thumbnail}>
                   {item.type === "image" ? (
-                    <Image size={24} />
+                    <Image size={16} />
                   ) : item.type === "camera" ? (
-                    <Camera size={24} />
+                    <Camera size={16} />
                   ) : (
-                    <Film size={24} />
+                    <Film size={16} />
                   )}
                 </div>
                 <div className={styles.info}>

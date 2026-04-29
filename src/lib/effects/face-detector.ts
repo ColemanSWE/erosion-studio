@@ -44,16 +44,18 @@ export interface DetectionBounds {
 let landmarker: FaceLandmarker | null = null;
 let isInitializing = false;
 let initPromise: Promise<void> | null = null;
+let initFailed = false;
 
 async function initializeLandmarker(): Promise<void> {
   if (landmarker) return;
+  if (initFailed) return;
   if (isInitializing && initPromise) return initPromise;
 
   isInitializing = true;
   initPromise = (async () => {
     try {
       const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
       );
 
       landmarker = await FaceLandmarker.createFromOptions(vision, {
@@ -72,7 +74,8 @@ async function initializeLandmarker(): Promise<void> {
       isInitializing = false;
     } catch (error) {
       isInitializing = false;
-      console.error("Failed to initialize face landmarker:", error);
+      initFailed = true;
+      initPromise = null;
       throw error;
     }
   })();
@@ -142,6 +145,20 @@ export async function detectFaces(
 
 export function isDetectorReady(): boolean {
   return landmarker !== null;
+}
+
+const FACE_DETECTION_EFFECT_TYPES = new Set([
+  "face-pixelate",
+  "face-blur",
+  "face-color-replace",
+  "face-eye-censor",
+  "face-mouth-censor",
+  "face-landmark-glitch",
+  "face-forehead-text",
+]);
+
+export function requiresFaceDetection(effects: { type: string; active: boolean }[]): boolean {
+  return effects.some((e) => e.active && FACE_DETECTION_EFFECT_TYPES.has(e.type));
 }
 
 export function getEyeLandmarks(landmarks: FaceLandmarks[]): {

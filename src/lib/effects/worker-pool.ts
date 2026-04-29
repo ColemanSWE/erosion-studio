@@ -2,11 +2,11 @@ import type { Effect } from "./types";
 import type { ProcessConfig } from "./effect-registry";
 
 type WorkerMessage = { id: number; buffer: Uint8ClampedArray; effects: Effect[]; config: ProcessConfig };
-type WorkerResponse = { id: number; buffer: Uint8ClampedArray };
+type WorkerResponse = { id: number; buffer: Uint8ClampedArray; error?: string };
 
 let worker: Worker | null = null;
 let nextId = 0;
-let pending = new Map<number, { resolve: (buf: Uint8ClampedArray) => void; reject: (err: unknown) => void }>();
+const pending = new Map<number, { resolve: (buf: Uint8ClampedArray) => void; reject: (err: unknown) => void }>();
 
 function getWorker(): Worker | null {
   if (worker) return worker;
@@ -16,12 +16,17 @@ function getWorker(): Worker | null {
       { type: "module" }
     );
     worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      const { id, buffer } = e.data;
+      const { id, buffer, error } = e.data;
       const p = pending.get(id);
-      if (p) {
-        pending.delete(id);
-        p.resolve(buffer);
+      if (!p) {
+        console.warn(`Worker: received response for unknown request id=${id}`);
+        return;
       }
+      pending.delete(id);
+      if (error) {
+        console.error("Worker effect processing error:", error);
+      }
+      p.resolve(buffer);
     };
     worker.onerror = (err) => {
       for (const p of pending.values()) p.reject(err);

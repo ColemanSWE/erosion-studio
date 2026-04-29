@@ -1,7 +1,5 @@
-import { registerEffect, ProcessConfig } from "../effect-registry";
-import { EffectType, EffectParamConfig } from "../types";
-import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { registerEffect} from "../effect-registry";
+import { pseudoRandom, clamp} from "./shared";
 
 registerEffect({
   type: "film-grain",
@@ -21,8 +19,8 @@ void main() {
 }`,
     uniforms: { intensity: "float" },
   },
-  processor: (data, { width, height, time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 30;
+  processor: (data, { time = 0 }, params) => {
+    const intensity = (params.intensity as number) ?? 30;
     if (intensity === 0) return;
 
     const strength = intensity * 2.55;
@@ -70,8 +68,8 @@ void main() {
     uniforms: { intensity: "float", colored: "bool" },
   },
   processor: (data, { time = 0 }, params) => {
-    const intensity = (params.intensity as number) || 20;
-    const colored = (params.colored as boolean) || false;
+    const intensity = (params.intensity as number) ?? 20;
+    const colored = (params.colored as boolean) ?? false;
     if (intensity === 0) return;
 
     const noiseAmount = intensity / 100;

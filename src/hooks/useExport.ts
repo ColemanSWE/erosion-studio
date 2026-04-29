@@ -1,15 +1,18 @@
 import { useState, useCallback } from "react";
 import type { ExportSettings } from "../components/ExportDialog/ExportDialog";
 
-/** Convert a canvas data-URL to a byte array for IPC transfer. */
-function dataUrlToBytes(dataUrl: string): number[] {
-  const base64 = dataUrl.split(",")[1];
-  const binary = atob(base64);
-  const bytes: number[] = new Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
+/** Encode a canvas to a Uint8Array for IPC transfer. */
+function canvasToBytes(canvas: HTMLCanvasElement, mimeType: string, quality?: number): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) { reject(new Error("Canvas toBlob returned null")); return; }
+        blob.arrayBuffer().then((ab) => resolve(new Uint8Array(ab))).catch(reject);
+      },
+      mimeType,
+      quality,
+    );
+  });
 }
 
 export interface ExportHook {
@@ -55,7 +58,7 @@ export function useExport(): ExportHook {
       seek: (time: number) => Promise<void>,
     ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
       if (!window.electron) {
-        return { success: false, error: "Electron API not available" };
+        return { success: false, error: "Export requires the Electron window. You are viewing the app in a browser — use the Electron window that opened alongside the Vite dev server, not a browser tab or IDE preview." };
       }
 
       const ext = settings.format === "gif" ? "gif" : settings.format === "webm" ? "webm" : "mp4";
@@ -97,8 +100,7 @@ export function useExport(): ExportHook {
           await seek(time);
 
           // Extract the frame from the canvas
-          const dataUrl = canvas.toDataURL("image/png");
-          const bytes = dataUrlToBytes(dataUrl);
+          const bytes = await canvasToBytes(canvas, "image/png");
 
           // Write frame to temp dir
           const frameName = `frame_${String(i).padStart(6, "0")}.png`;
@@ -147,7 +149,7 @@ export function useExport(): ExportHook {
       fps: number,
     ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
       if (!window.electron) {
-        return { success: false, error: "Electron API not available" };
+        return { success: false, error: "Export requires the Electron window. You are viewing the app in a browser — use the Electron window that opened alongside the Vite dev server, not a browser tab or IDE preview." };
       }
 
       const saveResult = await window.electron.saveFile({
@@ -201,9 +203,7 @@ export function useExport(): ExportHook {
         setExportProgress(80);
 
         const blob = new Blob(chunks, { type: "video/webm" });
-        const arrayBuffer = await blob.arrayBuffer();
-        const uint8 = new Uint8Array(arrayBuffer);
-        const bytes: number[] = Array.from({ length: uint8.length }, (_, i) => uint8[i]);
+        const bytes = new Uint8Array(await blob.arrayBuffer());
 
         setExportProgress(95);
         const writeResult = await window.electron.file.writeBinary(filePath, bytes);
@@ -228,7 +228,7 @@ export function useExport(): ExportHook {
       quality = 0.95,
     ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
       if (!window.electron) {
-        return { success: false, error: "Electron API not available" };
+        return { success: false, error: "Export requires the Electron window. You are viewing the app in a browser — use the Electron window that opened alongside the Vite dev server, not a browser tab or IDE preview." };
       }
 
       const saveResult = await window.electron.saveFile({
@@ -251,8 +251,7 @@ export function useExport(): ExportHook {
         const actualFormat: "png" | "jpeg" | "webp" =
           ext === "jpg" || ext === "jpeg" ? "jpeg" : ext === "webp" ? "webp" : "png";
 
-        const dataUrl = canvas.toDataURL(`image/${actualFormat}`, quality);
-        const bytes = dataUrlToBytes(dataUrl);
+        const bytes = await canvasToBytes(canvas, `image/${actualFormat}`, quality);
         const writeResult = await window.electron.file.writeBinary(filePath, bytes);
 
         if (!writeResult.success) throw new Error(writeResult.error);

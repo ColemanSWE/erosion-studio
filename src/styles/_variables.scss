@@ -1,27 +1,40 @@
-// Brutalist Design System - Ported from Kinetic
+// Brutalist Design System
 
 // Colors
-$bg-base: #000000;
-$bg-surface: #0a0a0a;
-$bg-elevated: #141414;
-$bg-overlay: #1a1a1a;
+$bg-base: #0c0c0e;
+$bg-surface: #141418;
+$bg-elevated: #1c1c22;
+$bg-overlay: #24242c;
 
-$border-primary: #333333;
-$border-secondary: #222222;
-$border-accent: #ffffff;
+$border-primary: #2a2a36;
+$border-secondary: #1e1e28;
+$border-accent: #00e5ff;
 
-$text-primary: #ffffff;
-$text-secondary: #999999;
-$text-tertiary: #666666;
-$text-inverse: #000000;
+$text-primary: #f0f0f0;
+$text-secondary: #888899;
+$text-tertiary: #555566;
+$text-inverse: #0c0c0e;
 
-$accent-primary: #ffffff;
-$accent-secondary: #cccccc;
+$accent-primary: #00e5ff;
+$accent-secondary: #00b8d4;
+$accent-glow: rgba(0, 229, 255, 0.12);
+$accent-glow-strong: rgba(0, 229, 255, 0.25);
 
 // Error/Warning/Success
 $error: #ff4444;
 $warning: #ffaa00;
-$success: #44ff44;
+$success: #44ff88;
+
+// Timeline-specific tokens
+$timeline-playhead: #ff3366;
+$timeline-snap: $accent-primary;
+$timeline-clip: #1e5a7a;
+$timeline-clip-hover: #2a7aaa;
+$timeline-clip-border: #2e7aa0;
+$timeline-effect: #1e6a50;
+$timeline-effect-hover: #2a8a68;
+$timeline-overlay: #5a3a6a;
+$timeline-keyframe: #cc7700;
 
 // Typography
 $font-primary: "JetBrains Mono", "Fira Code", "SF Mono", Monaco, "Cascadia Code",
@@ -36,20 +49,20 @@ $spacing-md: 16px;
 $spacing-lg: 24px;
 $spacing-xl: 32px;
 
-// Border radius (minimal)
-$radius-sm: 0px;
-$radius-md: 2px;
-$radius-lg: 3px;
+// Border radius
+$radius-sm: 2px;
+$radius-md: 4px;
+$radius-lg: 6px;
 
-// Shadows (sharp)
-$shadow-sm: 2px 2px 0 rgba(0, 0, 0, 0.5);
-$shadow-md: 4px 4px 0 rgba(0, 0, 0, 0.5);
-$shadow-lg: 6px 6px 0 rgba(0, 0, 0, 0.5);
+// Shadows
+$shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+$shadow-md: 0 2px 8px rgba(0, 0, 0, 0.5);
+$shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.6);
 
 // Transitions
-$transition-fast: 100ms ease;
-$transition-normal: 200ms ease;
-$transition-slow: 300ms ease;
+$transition-fast: 80ms ease;
+$transition-normal: 150ms ease;
+$transition-slow: 250ms ease;
 
 // Z-index layers
 $z-base: 0;

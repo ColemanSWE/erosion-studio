@@ -8,6 +8,7 @@ import {
   createProgram,
   bindUniforms,
   getUniformLocation,
+  clearUniformCache,
   type UniformType,
 } from "./shaders";
 export type { UniformType };
@@ -24,7 +25,8 @@ interface FBOPair {
 }
 
 function makeFBO(gl: WebGL2RenderingContext, width: number, height: number): FBOPair {
-  const tex = gl.createTexture()!;
+  const tex = gl.createTexture();
+  if (!tex) throw new Error("WebGL: failed to create texture");
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -33,10 +35,15 @@ function makeFBO(gl: WebGL2RenderingContext, width: number, height: number): FBO
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_2D, null);
 
-  const fbo = gl.createFramebuffer()!;
+  const fbo = gl.createFramebuffer();
+  if (!fbo) throw new Error("WebGL: failed to create framebuffer");
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  if (status !== gl.FRAMEBUFFER_COMPLETE) {
+    throw new Error(`WebGL: incomplete framebuffer (status 0x${status.toString(16)})`);
+  }
   return { fbo, tex };
 }
 
@@ -56,7 +63,9 @@ export class GLPipeline {
   private height = 0;
   private cpuBufFull: Uint8ClampedArray | null = null;
   private cpuBufRegion: Uint8ClampedArray | null = null;
-  private isFlippedToR = false;
+  // True once a CPU effect has uploaded pixels this frame. Determines whether the
+  // FBO data needs a Y-flip before CPU processing and which flipY the final blit uses.
+  private cpuFlushed = false;
 
   constructor(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
     this.gl = gl;
@@ -256,6 +265,19 @@ export class GLPipeline {
     gl.bindVertexArray(null);
   }
 
+  private flipYBuffer(buf: Uint8ClampedArray, w: number, h: number): void {
+    const rowLen = w * 4;
+    const half = h >> 1;
+    const temp = new Uint8ClampedArray(rowLen);
+    for (let y = 0; y < half; y++) {
+      const top = y * rowLen;
+      const bot = (h - 1 - y) * rowLen;
+      temp.set(buf.subarray(top, top + rowLen));
+      buf.copyWithin(top, bot, bot + rowLen);
+      buf.set(temp, bot);
+    }
+  }
+
   private runEffectList(
     effects: Effect[],
     config: ProcessConfig,
@@ -276,6 +298,7 @@ export class GLPipeline {
       } else {
         this.uploadPixels(cpuBuf);
       }
+      this.cpuFlushed = true;
       cpuBuf = null;
       cpuDirty = false;
     };
@@ -295,18 +318,21 @@ export class GLPipeline {
         const uniforms: Record<string, import("./shaders").UniformType> = { ...(glsl.uniforms ?? {}) };
         if (passCount > 1) uniforms["pass"] = "int";
         if (passCount > 1) this.setFBOFilter(this.gl.NEAREST);
-        
+
+        // Always use u_flipY=-1.0 for every GPU pass. This keeps gl_FragCoord.y and
+        // v_texCoord.y in the same direction (both increase bottom-to-top), so shaders
+        // that use either or both produce consistent results. Any number of -1.0 passes
+        // in sequence leaves the FBO in the same orientation as the original texImage2D
+        // upload, which blitToDefaultFB(1.0) then corrects for display.
         for (let p = 0; p < passCount; p++) {
           const passParams = { ...mappedParams, pass: p };
-          const flipY = this.isFlippedToR ? 1.0 : -1.0;
           if (regionRect) {
-            this.runRegionPass(prog, regionRect, resolution, time, passParams, uniforms, flipY);
+            this.runRegionPass(prog, regionRect, resolution, time, passParams, uniforms, -1.0);
           } else {
-            this.runPass(prog, resolution, time, passParams, uniforms, flipY);
+            this.runPass(prog, resolution, time, passParams, uniforms, -1.0);
           }
-          this.isFlippedToR = true;
         }
-        
+
         if (passCount > 1) {
           this.setFBOFilter(this.gl.LINEAR);
           this.gl.flush();
@@ -314,36 +340,20 @@ export class GLPipeline {
       } else {
         if (!cpuBuf) {
           cpuBuf = regionRect ? this.readRegionPixels(regionRect) : this.readCurrentPixels();
-          // readPixels returns data bottom-up. We must flip it to top-down for the JS effect processors
-          if (!this.isFlippedToR) {
+          // readPixels from the raw texImage2D FBO (or a GPU-processed FBO that used
+          // u_flipY=-1.0) returns rows bottom-first. Flip to top-first so CPU effect
+          // code can treat row 0 as the image top. After a CPU upload (cpuFlushed=true)
+          // the FBO is in a different orientation that does not need this flip.
+          if (!this.cpuFlushed) {
             this.flipYBuffer(cpuBuf, rw, rh);
           }
         }
         applyEffect(cpuBuf, effect, { ...config, width: rw, height: rh });
         cpuDirty = true;
-        // The array is in top-down format, when we upload it back via texSubImage2D, it will be uploaded properly 
-        // to be rendered top-down by the default framebuffer (which uses -1.0 to flip it).
-        // Wait, texSubImage2D uploads it. Then blitToDefaultFB uses flipY = -1.0. This means if we upload it top-down,
-        // and draw it with -1.0, it will end up bottom-up on the canvas. 
-        // Let's actually trace this: 
-        // If we flip the cpuBuf so it's top-down for applyEffect, we should probably flip it back to bottom-up before texSubImage2D, OR set isFlippedToR.
       }
     }
 
     flushCPU();
-  }
-
-  private flipYBuffer(buf: Uint8ClampedArray, w: number, h: number): void {
-    const rowLen = w * 4;
-    const half = h >> 1;
-    const temp = new Uint8ClampedArray(rowLen);
-    for (let y = 0; y < half; y++) {
-      const top = y * rowLen;
-      const bot = (h - 1 - y) * rowLen;
-      temp.set(buf.subarray(top, top + rowLen));
-      buf.copyWithin(top, bot, bot + rowLen);
-      buf.set(temp, bot);
-    }
   }
 
   renderEffects(
@@ -364,7 +374,7 @@ export class GLPipeline {
     if (sourceWidth <= 0 || sourceHeight <= 0) return;
     this.ensureSize(sourceWidth, sourceHeight);
     this.current = 0;
-    this.isFlippedToR = false;
+    this.cpuFlushed = false;
     this.uploadSource(source);
 
     const resolution: [number, number] = [sourceWidth, sourceHeight];
@@ -380,7 +390,11 @@ export class GLPipeline {
       }
     }
 
-    this.blitToDefaultFB(this.isFlippedToR ? 1.0 : -1.0);
+    // After GPU-only effects (u_flipY=-1.0, orientation preserved from texImage2D),
+    // blit(1.0) swaps to the display-correct orientation.
+    // After a CPU upload, the FBO is already in display-correct orientation,
+    // so blit(-1.0) preserves it.
+    this.blitToDefaultFB(this.cpuFlushed ? -1.0 : 1.0);
 
     displayCtx.fillStyle = "#000";
     displayCtx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -393,6 +407,7 @@ export class GLPipeline {
     freeFBO(gl, this.fbo[1]);
     gl.deleteVertexArray(this.vao);
     for (const prog of this.programCache.values()) {
+      clearUniformCache(prog);
       gl.deleteProgram(prog);
     }
     this.programCache.clear();

@@ -24,6 +24,7 @@ interface WorkerRequest {
 interface WorkerResponse {
   id: number;
   buffer: Uint8ClampedArray;
+  error?: string;
 }
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
@@ -31,7 +32,10 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   try {
     applyEffects(buffer, effects, config);
     self.postMessage({ id, buffer } as WorkerResponse, { transfer: [buffer.buffer] });
-  } catch {
-    self.postMessage({ id, buffer } as WorkerResponse, { transfer: [buffer.buffer] });
+  } catch (err) {
+    self.postMessage(
+      { id, buffer, error: String(err) } as WorkerResponse,
+      { transfer: [buffer.buffer] },
+    );
   }
 };

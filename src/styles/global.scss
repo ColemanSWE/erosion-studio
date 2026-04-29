@@ -16,7 +16,7 @@ body {
   font-family: variables.$font-primary;
   background-color: variables.$bg-base;
   color: variables.$text-primary;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -43,7 +43,7 @@ button {
 
   &:disabled {
     cursor: not-allowed;
-    opacity: 0.5;
+    opacity: 0.4;
   }
 }
 
@@ -53,7 +53,7 @@ textarea {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
-  background-color: variables.$bg-surface;
+  background-color: variables.$bg-elevated;
   border: 1px solid variables.$border-primary;
   border-radius: variables.$radius-md;
   padding: variables.$spacing-sm;
@@ -61,32 +61,77 @@ textarea {
   &:focus {
     outline: none;
     border-color: variables.$accent-primary;
+    box-shadow: 0 0 0 2px variables.$accent-glow;
   }
 
   &:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: variables.$bg-surface;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
   background: variables.$border-primary;
-  border-radius: 0;
+  border-radius: 99px;
 
   &:hover {
-    background: variables.$border-accent;
+    background: variables.$accent-primary;
   }
 }
 
 canvas {
   display: block;
+}
+
+// react-resizable-panels handle styling
+[data-panel-resize-handle-id] {
+  position: relative;
+  background: variables.$border-secondary;
+  transition: background variables.$transition-fast;
+  flex-shrink: 0;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    background: variables.$accent-primary;
+    transition: opacity variables.$transition-fast;
+  }
+
+  &:hover::after,
+  &[data-resize-handle-active]::after {
+    opacity: 1;
+  }
+}
+
+[data-panel-resize-handle-id][data-panel-group-direction="horizontal"] {
+  width: 3px;
+  cursor: col-resize;
+
+  &::after {
+    left: -5px;
+    right: -5px;
+    width: auto;
+  }
+}
+
+[data-panel-resize-handle-id][data-panel-group-direction="vertical"] {
+  height: 3px;
+  cursor: row-resize;
+
+  &::after {
+    top: -5px;
+    bottom: -5px;
+    height: auto;
+  }
 }

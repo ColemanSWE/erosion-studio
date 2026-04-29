@@ -1,12 +1,13 @@
 @use "../../styles/variables";
 
 .preview {
-  flex: 1;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   background-color: variables.$bg-base;
-  padding: variables.$spacing-lg;
+  padding: variables.$spacing-md;
   min-width: 0;
   min-height: 0;
 }
@@ -18,14 +19,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid variables.$border-primary;
-  background: linear-gradient(45deg, #0a0a0a 25%, transparent 25%),
-    linear-gradient(-45deg, #0a0a0a 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #0a0a0a 75%),
-    linear-gradient(-45deg, transparent 75%, #0a0a0a 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
-  background-color: variables.$bg-surface;
+  border: 1px solid variables.$border-primary;
+  background: repeating-conic-gradient(
+    variables.$bg-surface 0% 25%,
+    variables.$bg-base 0% 50%
+  ) 0 0 / 16px 16px;
 }
 
 .overlay {
@@ -37,11 +35,54 @@
     pointer-events: all;
     cursor: crosshair;
   }
+
+  &.panning {
+    pointer-events: all;
+    cursor: grab;
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+}
+
+.transformControls {
+  position: absolute;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.transformBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: rgba(12, 12, 14, 0.85);
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-sm;
+  color: variables.$text-secondary;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: all variables.$transition-fast;
+
+  &:hover {
+    color: variables.$text-primary;
+    border-color: variables.$accent-primary;
+    background: variables.$bg-elevated;
+  }
+
+  &.active {
+    color: variables.$accent-primary;
+    border-color: variables.$accent-primary;
+  }
 }
 
 .region {
   position: absolute;
-  border: 2px dashed;
+  border: 1px dashed;
   pointer-events: all;
   cursor: pointer;
   transition: opacity variables.$transition-fast;
@@ -52,35 +93,35 @@
 
   &.active {
     border-style: solid;
-    border-width: 3px;
+    border-width: 2px;
   }
 }
 
 .regionLabel {
   position: absolute;
-  top: -20px;
+  top: -18px;
   left: 0;
-  font-size: 11px;
+  font-size: 10px;
   font-family: variables.$font-mono;
-  font-weight: bold;
-  padding: 2px 6px;
-  background-color: rgba(0, 0, 0, 0.8);
+  font-weight: 600;
+  padding: 1px 5px;
+  background-color: rgba(0, 0, 0, 0.85);
   border-radius: variables.$radius-sm;
   white-space: nowrap;
 }
 
 .drawingRect {
   position: absolute;
-  border: 2px dashed #fff;
+  border: 1px dashed variables.$accent-primary;
   pointer-events: none;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: variables.$accent-glow;
 }
 
 .canvas {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  box-shadow: variables.$shadow-lg;
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.7);
   position: relative;
   z-index: 1;
 }
@@ -88,48 +129,48 @@
 // ─── Camera capture HUD ──────────────────────────────────────────────────────
 .captureHud {
   position: absolute;
-  bottom: 16px;
+  bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
   display: flex;
   align-items: center;
   gap: variables.$spacing-sm;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(12, 12, 14, 0.85);
   border: 1px solid variables.$border-primary;
-  padding: 8px 16px;
-  backdrop-filter: blur(8px);
+  border-radius: variables.$radius-md;
+  padding: 6px 12px;
+  backdrop-filter: blur(12px);
 }
 
 .captureBtn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 5px;
+  padding: 4px 10px;
   font-family: variables.$font-mono;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   border: 1px solid;
+  border-radius: variables.$radius-sm;
   cursor: pointer;
   transition: all variables.$transition-fast;
   background: transparent;
 
   &.snap {
-    color: variables.$text-primary;
+    color: variables.$text-secondary;
     border-color: variables.$border-primary;
 
     &:hover {
-      background: variables.$border-primary;
-      color: variables.$bg-base;
+      background: variables.$bg-elevated;
+      color: variables.$text-primary;
+      border-color: variables.$accent-primary;
     }
   }
 
   &.record {
     color: variables.$error;
     border-color: variables.$error;
-    animation: none;
 
     &:hover {
       background: variables.$error;
@@ -148,8 +189,9 @@
   font-family: variables.$font-mono;
   font-size: 11px;
   color: variables.$error;
-  min-width: 42px;
+  min-width: 40px;
   text-align: center;
+  letter-spacing: 0.05em;
 }
 
 @keyframes pulse {

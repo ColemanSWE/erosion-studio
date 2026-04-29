@@ -1,7 +1,5 @@
-import { registerEffect, ProcessConfig } from "../effect-registry";
-import { EffectType, EffectParamConfig } from "../types";
-import { FaceBounds, HandBounds, PoseBounds, getEyeLandmarks, getMouthLandmarks, getLandmarkBounds } from "../face-detector";
-import { BAYER_MATRIX_4x4, motionSmearState, datamoshState, blockShovingState, bilinearSample, meltState, perlinNoise, posterizeTimeCache, pseudoRandom, clamp, sortSegment, sortSegmentV, getBlockAverage, hexToRgb, rgbToHsl, hslToRgb, isPointInFaceBounds, frameHistoryStore, storeFrame, getFrameFromHistory } from "./shared";
+import { registerEffect } from "../effect-registry";
+import { hexToRgb, rgbToHsl, hslToRgb} from "./shared";
 
 registerEffect({
   type: "invert",
@@ -46,8 +44,8 @@ void main() {
     uniforms: { intensity: "float", radius: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const intensity = (params.intensity as number) || 0.5;
-    const radius = (params.radius as number) || 0.8;
+    const intensity = (params.intensity as number) ?? 0.5;
+    const radius = (params.radius as number) ?? 0.8;
 
     const cx = width / 2;
     const cy = height / 2;
@@ -101,8 +99,8 @@ void main() {
     uniforms: { threshold: "float", invert: "bool" },
   },
   processor: (data, { width, height }, params) => {
-    const threshold = (params.threshold as number) || 50;
-    const invert = (params.invert as boolean) || false;
+    const threshold = (params.threshold as number) ?? 50;
+    const invert = (params.invert as boolean) ?? false;
 
     const source = new Uint8ClampedArray(data);
     const sobelX = [
@@ -186,7 +184,7 @@ void main() {
     }),
   },
   processor: (data, config, params) => {
-    const palette = (params.palette as string) || "thermal";
+    const palette = (params.palette as string) ?? "thermal";
     const gradients: Record<string, number[][]> = {
       thermal: [
         [0, 0, 0],
@@ -276,9 +274,9 @@ void main() {
     uniforms: { threshold: "float", intensity: "float", radius: "float" },
   },
   processor: (data, { width, height }, params) => {
-    const threshold = (params.threshold as number) || 200;
-    const intensity = (params.intensity as number) || 0.5;
-    const radius = (params.radius as number) || 3;
+    const threshold = (params.threshold as number) ?? 200;
+    const intensity = (params.intensity as number) ?? 0.5;
+    const radius = (params.radius as number) ?? 3;
 
     const brightPixels = new Float32Array(width * height * 3);
 
@@ -355,7 +353,7 @@ void main() {
     uniforms: { levels: "float" },
   },
   processor: (data, config, params) => {
-    const levels = (params.levels as number) || 8;
+    const levels = (params.levels as number) ?? 8;
     const step = 255 / (levels - 1);
 
     for (let i = 0; i < data.length; i += 4) {
@@ -430,8 +428,8 @@ void main() {
     },
   },
   processor: (data, config, params) => {
-    const color1 = hexToRgb((params.color1 as string) || "#000000");
-    const color2 = hexToRgb((params.color2 as string) || "#ffffff");
+    const color1 = hexToRgb((params.color1 as string) ?? "#000000");
+    const color2 = hexToRgb((params.color2 as string) ?? "#ffffff");
 
     for (let i = 0; i < data.length; i += 4) {
       const lum = (data[i] + data[i + 1] + data[i + 2]) / 3 / 255;
@@ -461,7 +459,7 @@ void main() {
     uniforms: { speed: "float" },
   },
   processor: (data, { time = 0 }, params) => {
-    const speed = (params.speed as number) || 1;
+    const speed = (params.speed as number) ?? 1;
     const hueShift = (time * speed) % 360;
 
     for (let i = 0; i < data.length; i += 4) {
@@ -499,7 +497,7 @@ void main() {
     }),
   },
   processor: (data, config, params) => {
-    const swap = (params.swap as string) || "rg";
+    const swap = (params.swap as string) ?? "rg";
 
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i],
@@ -557,9 +555,9 @@ void main() {
     }),
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const speed = (params.speed as number) || 1;
-    const intensity = (params.intensity as number) || 0.5;
-    const direction = (params.direction as string) || "horizontal";
+    const speed = (params.speed as number) ?? 1;
+    const intensity = (params.intensity as number) ?? 0.5;
+    const direction = (params.direction as string) ?? "horizontal";
 
     const t = time * speed * 0.01;
 
@@ -599,6 +597,290 @@ void main() {
 });
 
 registerEffect({
+  type: "holographic",
+  label: "Holographic",
+  category: "color",
+  defaultParams: { intensity: 0.8, speed: 1.0, angle: 45, bands: 10, blend: "screen" },
+  paramsConfig: [
+    { key: "intensity", label: "Intensity", type: "slider", min: 0, max: 1, step: 0.05 },
+    { key: "speed", label: "Speed", type: "slider", min: 0, max: 5, step: 0.1 },
+    { key: "angle", label: "Angle", type: "slider", min: 0, max: 360, step: 5 },
+    { key: "bands", label: "Band Density", type: "slider", min: 1, max: 30, step: 1 },
+    { key: "blend", label: "Blend Mode", type: "select", options: ["screen", "overlay", "add"] },
+  ],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_speed;
+uniform float u_angleRad;
+uniform float u_bands;
+uniform int u_blend;
+void main() {
+  vec2 uv = v_texCoord;
+  vec2 px = 1.0 / u_resolution;
+  vec4 c = texture(u_source, uv);
+  float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+
+  // Sobel gradient — warps band positions to follow image contours
+  float l00 = dot(texture(u_source, uv + vec2(-px.x, -px.y)).rgb, vec3(0.299, 0.587, 0.114));
+  float l20 = dot(texture(u_source, uv + vec2( px.x, -px.y)).rgb, vec3(0.299, 0.587, 0.114));
+  float l01 = dot(texture(u_source, uv + vec2(-px.x,  0.0)).rgb, vec3(0.299, 0.587, 0.114));
+  float l21 = dot(texture(u_source, uv + vec2( px.x,  0.0)).rgb, vec3(0.299, 0.587, 0.114));
+  float l02 = dot(texture(u_source, uv + vec2(-px.x,  px.y)).rgb, vec3(0.299, 0.587, 0.114));
+  float l22 = dot(texture(u_source, uv + vec2( px.x,  px.y)).rgb, vec3(0.299, 0.587, 0.114));
+  float gx = (l20 + 2.0*l21 + l22) - (l00 + 2.0*l01 + l02);
+  float gy = (l02 + 2.0*dot(texture(u_source, uv + vec2(0.0, px.y)).rgb, vec3(0.299,0.587,0.114)) + l22)
+           - (l00 + 2.0*dot(texture(u_source, uv - vec2(0.0, px.y)).rgb, vec3(0.299,0.587,0.114)) + l20);
+
+  float cosA = cos(u_angleRad);
+  float sinA = sin(u_angleRad);
+  float t = u_time * u_speed * 0.04;
+
+  vec2 centered = uv - 0.5;
+  float posAlong = centered.x * cosA + centered.y * sinA;
+  float gradAlong = gx * cosA + gy * sinA;
+  float phase = posAlong * u_bands + gradAlong * u_bands * 0.8 + t;
+  float h = fract(phase);
+  vec3 holoRgb = hslToRgb(h * 360.0, 1.0, 0.58);
+
+  float eff = u_intensity * (0.15 + lum * 0.85);
+  vec3 blended;
+  if (u_blend == 1) { // overlay
+    vec3 base = c.rgb;
+    blended = mix(2.0 * base * holoRgb, 1.0 - 2.0*(1.0-base)*(1.0-holoRgb), step(0.5, base));
+    blended = mix(c.rgb, blended, eff);
+  } else if (u_blend == 2) { // add
+    blended = min(c.rgb + holoRgb * eff, 1.0);
+  } else { // screen
+    vec3 s = 1.0 - (1.0 - c.rgb) * (1.0 - holoRgb);
+    blended = mix(c.rgb, s, eff);
+  }
+  fragColor = vec4(blended, c.a);
+}`,
+    uniforms: { intensity: "float", speed: "float", angleRad: "float", bands: "float", blend: "int" },
+    uniformMapper: (p) => ({
+      ...p,
+      angleRad: ((p.angle as number) ?? 45) * (Math.PI / 180),
+      blend: ["screen", "overlay", "add"].indexOf((p.blend as string) ?? "screen"),
+    }),
+  },
+  processor: (data, { width, height, time = 0 }, params) => {
+    const intensity = (params.intensity as number) ?? 0.8;
+    const speed = (params.speed as number) ?? 1.0;
+    const angle = ((params.angle as number) ?? 45) * (Math.PI / 180);
+    const bands = (params.bands as number) ?? 10;
+    const blend = (params.blend as string) ?? "screen";
+
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const t = time * speed * 0.04;
+
+    // Build luma map once — used for both the surface-normal warp and the intensity mask
+    const luma = new Float32Array(width * height);
+    for (let k = 0; k < width * height; k++) {
+      luma[k] = (data[k * 4] * 0.299 + data[k * 4 + 1] * 0.587 + data[k * 4 + 2] * 0.114) / 255;
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const lum = luma[y * width + x];
+
+        // Sobel gradient: proxy for the surface normal at this pixel.
+        // The gradient direction and magnitude determine how the band positions warp,
+        // so colors "follow" the image's contours — the key visual property of
+        // holographic foil vs a plain rainbow gradient.
+        let gx = 0, gy = 0;
+        if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+          gx = luma[y * width + x + 1] - luma[y * width + x - 1];
+          gy = luma[(y + 1) * width + x] - luma[(y - 1) * width + x];
+        }
+
+        // Signed position along the light-direction axis (−0.5 → +0.5)
+        const nx = x / width - 0.5;
+        const ny = y / height - 0.5;
+        const posAlong = nx * cosA + ny * sinA;
+
+        // Gradient component along the same axis — displaces band positions so they
+        // track image structure rather than sitting as a flat overlay
+        const gradAlong = gx * cosA + gy * sinA;
+
+        // Phase = many tight band cycles + gradient warp + time tilt
+        const phase = posAlong * bands + gradAlong * bands * 0.8 + t;
+        const hue = ((phase % 1) + 1) % 1;
+
+        const [hr, hg, hb] = hslToRgb(hue * 360, 1.0, 0.58);
+
+        // Luminance mask: highlights catch more foil shimmer; pure black reflects nothing
+        const eff = intensity * (0.15 + lum * 0.85);
+
+        let fr: number, fg: number, fb: number;
+
+        if (blend === "overlay") {
+          const ov = (base: number, top: number) => {
+            const b = base / 255;
+            const tp = top / 255;
+            return (b < 0.5 ? 2 * b * tp : 1 - 2 * (1 - b) * (1 - tp)) * 255;
+          };
+          fr = ov(data[i], hr);
+          fg = ov(data[i + 1], hg);
+          fb = ov(data[i + 2], hb);
+        } else if (blend === "add") {
+          fr = Math.min(255, data[i] + hr);
+          fg = Math.min(255, data[i + 1] + hg);
+          fb = Math.min(255, data[i + 2] + hb);
+        } else {
+          fr = 255 - ((255 - data[i]) * (255 - hr)) / 255;
+          fg = 255 - ((255 - data[i + 1]) * (255 - hg)) / 255;
+          fb = 255 - ((255 - data[i + 2]) * (255 - hb)) / 255;
+        }
+
+        data[i] = data[i] * (1 - eff) + fr * eff;
+        data[i + 1] = data[i + 1] * (1 - eff) + fg * eff;
+        data[i + 2] = data[i + 2] * (1 - eff) + fb * eff;
+      }
+    }
+  },
+});
+
+registerEffect({
+  type: "light-leak",
+  label: "Light Leak",
+  category: "color",
+  defaultParams: { intensity: 0.7, speed: 0.5, warmth: 0.7, style: "subtle", count: 2 },
+  paramsConfig: [
+    { key: "intensity", label: "Intensity", type: "slider", min: 0, max: 1, step: 0.05 },
+    { key: "speed", label: "Speed", type: "slider", min: 0, max: 3, step: 0.1 },
+    { key: "warmth", label: "Warmth", type: "slider", min: 0, max: 1, step: 0.05 },
+    { key: "style", label: "Style", type: "select", options: ["subtle", "burn", "flare", "edge"] },
+    { key: "count", label: "Leak Count", type: "slider", min: 1, max: 4, step: 1 },
+  ],
+  glsl: {
+    fragment: `
+uniform float u_intensity;
+uniform float u_speed;
+uniform float u_warmth;
+uniform int u_style;
+uniform int u_count;
+
+// Warm film colors in linear space: amber, magenta, cyan, orange, rose
+const vec3 LEAK_COLORS[5] = vec3[5](
+  vec3(1.0,    0.627, 0.196),
+  vec3(1.0,    0.314, 0.549),
+  vec3(0.314,  0.784, 1.0),
+  vec3(1.0,    0.471, 0.078),
+  vec3(0.863,  0.235, 0.392)
+);
+
+void main() {
+  vec2 uv = v_texCoord;
+  vec4 c = texture(u_source, uv);
+  float t = u_time * u_speed;
+  vec3 leak = vec3(0.0);
+
+  for (int li = 0; li < 4; li++) {
+    if (li >= u_count) break;
+    float seed = float(li) * 7.3 + 1.0;
+    vec3 rawColor = LEAK_COLORS[li % 5];
+    vec3 tinted = mix(rawColor, vec3(1.0, 0.784, 0.588), 1.0 - u_warmth);
+
+    float cx = 0.5 + sin(seed * 2.1 + t * 0.3) * 0.4;
+    float cy = 0.5 + cos(seed * 1.7 + t * 0.2) * 0.4;
+    float baseRadius = u_style == 3 ? 1.2 : (u_style == 2 ? 0.6 : 0.5);
+    float radius = baseRadius * (0.4 + 0.3 * sin(seed + t * 0.15));
+    float leakInt = u_intensity * (0.5 + 0.5 * sin(seed * 3.1 + t * 0.4));
+
+    float alpha;
+    if (u_style == 3) { // edge
+      float edgeDist = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y));
+      alpha = max(0.0, 1.0 - edgeDist * 8.0) * leakInt;
+    } else {
+      vec2 delta = uv - vec2(cx, cy);
+      delta.x *= u_resolution.x / max(u_resolution.x, u_resolution.y);
+      delta.y *= u_resolution.y / max(u_resolution.x, u_resolution.y);
+      float dist = length(delta) / radius;
+      float falloff = u_style == 2 ? 2.5 : 1.5;
+      alpha = max(0.0, 1.0 - pow(dist, falloff)) * leakInt;
+    }
+
+    leak += tinted * alpha;
+  }
+
+  // Screen blend
+  vec3 result = 1.0 - (1.0 - c.rgb) * (1.0 - leak);
+  fragColor = vec4(result, c.a);
+}`,
+    uniforms: { intensity: "float", speed: "float", warmth: "float", style: "int", count: "int" },
+    uniformMapper: (p) => ({
+      ...p,
+      style: ["subtle", "burn", "flare", "edge"].indexOf((p.style as string) ?? "subtle"),
+      count: Math.round((p.count as number) ?? 2),
+    }),
+  },
+  processor: (data, { width, height, time = 0 }, params) => {
+    const intensity = (params.intensity as number) ?? 0.7;
+    const speed = (params.speed as number) ?? 0.5;
+    const warmth = (params.warmth as number) ?? 0.7;
+    const style = (params.style as string) ?? "subtle";
+    const count = Math.round((params.count as number) ?? 2);
+
+    const t = time * speed;
+
+    // Warm film colors: amber, magenta, cyan, orange, rose
+    const leakColors = [
+      [255, 160, 50],   // amber
+      [255, 80, 140],   // magenta
+      [80, 200, 255],   // cyan
+      [255, 120, 20],   // orange
+      [220, 60, 100],   // rose
+    ];
+
+    for (let li = 0; li < count; li++) {
+      const seed = li * 7.3 + 1.0;
+      const colorIdx = li % leakColors.length;
+      const [lr, lg, lb] = leakColors[colorIdx];
+
+      const cx = (0.5 + Math.sin(seed * 2.1 + t * 0.3) * 0.4) * width;
+      const cy = (0.5 + Math.cos(seed * 1.7 + t * 0.2) * 0.4) * height;
+
+      const baseRadius = (style === "edge" ? 1.2 : style === "flare" ? 0.6 : 0.5) * Math.max(width, height);
+      const radius = baseRadius * (0.4 + 0.3 * Math.sin(seed + t * 0.15));
+      const leakIntensity = intensity * (0.5 + 0.5 * Math.sin(seed * 3.1 + t * 0.4));
+
+      // Blend warm tint into color
+      const tr = lr * warmth + 255 * (1 - warmth);
+      const tg = lg * warmth + 200 * (1 - warmth);
+      const tb = lb * warmth + 150 * (1 - warmth);
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          let alpha;
+
+          if (style === "edge") {
+            const edgeDist = Math.min(x, y, width - 1 - x, height - 1 - y) / Math.max(width, height);
+            alpha = Math.max(0, 1 - edgeDist * 8) * leakIntensity;
+          } else {
+            const dx = x - cx;
+            const dy = y - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const falloff = style === "flare" ? 2.5 : 1.5;
+            alpha = Math.max(0, 1 - Math.pow(dist / radius, falloff)) * leakIntensity;
+          }
+
+          if (alpha <= 0) continue;
+
+          // Screen blend for light leak look
+          data[i] = Math.min(255, data[i] + (255 - data[i]) * (tr / 255) * alpha);
+          data[i + 1] = Math.min(255, data[i + 1] + (255 - data[i + 1]) * (tg / 255) * alpha);
+          data[i + 2] = Math.min(255, data[i + 2] + (255 - data[i + 2]) * (tb / 255) * alpha);
+        }
+      }
+    }
+  },
+});
+
+registerEffect({
   type: "gradient-flash",
   label: "Gradient Flash",
   category: "color",
@@ -622,9 +904,9 @@ void main() {
     uniforms: { speed: "float", intensity: "float", flashRate: "float" },
   },
   processor: (data, { width, height, time = 0 }, params) => {
-    const speed = (params.speed as number) || 2;
-    const intensity = (params.intensity as number) || 0.7;
-    const flashRate = (params.flashRate as number) || 4;
+    const speed = (params.speed as number) ?? 2;
+    const intensity = (params.intensity as number) ?? 0.7;
+    const flashRate = (params.flashRate as number) ?? 4;
 
     const t = time * speed * 0.02;
     const flash = Math.abs(Math.sin(t * flashRate));

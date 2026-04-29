@@ -62,7 +62,9 @@ export function useCameraCapture({
     // Prefer canvas capture stream (so effects are baked in)
     let recordStream: MediaStream;
     try {
-      recordStream = (canvas as any).captureStream(30);
+      // HTMLCanvasElement.captureStream is supported in all modern browsers
+      // but is not yet in the TypeScript DOM lib, hence the cast
+      recordStream = (canvas as HTMLCanvasElement & { captureStream(fps?: number): MediaStream }).captureStream(30);
     } catch {
       // Fallback to raw camera stream
       if (!stream) return;

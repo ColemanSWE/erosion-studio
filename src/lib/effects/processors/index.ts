@@ -1,4 +1,5 @@
 import "./glitch";
+import "./datamosh";
 import "./distortion";
 import "./retro";
 import "./color";

@@ -3,20 +3,21 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: variables.$z-modal;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
 }
 
 .dialog {
   background: variables.$bg-surface;
-  border: 2px solid variables.$border-primary;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-lg;
   min-width: 400px;
   max-width: 480px;
-  box-shadow: variables.$shadow-lg;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px variables.$border-secondary;
 }
 
 .header {
@@ -28,18 +29,24 @@
 
   h2 {
     font-family: variables.$font-mono;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.1em;
     margin: 0;
+    color: variables.$text-primary;
   }
 }
 
 .closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   background: none;
   border: 1px solid variables.$border-primary;
-  padding: variables.$spacing-xs variables.$spacing-sm;
+  border-radius: variables.$radius-md;
   cursor: pointer;
   color: variables.$text-secondary;
   transition: all variables.$transition-fast;
@@ -47,6 +54,7 @@
   &:hover {
     color: variables.$text-primary;
     border-color: variables.$accent-primary;
+    background: variables.$accent-glow;
   }
 }
 
@@ -54,54 +62,54 @@
   padding: variables.$spacing-lg;
   display: flex;
   flex-direction: column;
-  gap: variables.$spacing-lg;
+  gap: variables.$spacing-md;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: variables.$spacing-sm;
+  gap: variables.$spacing-xs;
 }
 
 .label {
   font-family: variables.$font-mono;
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  color: variables.$text-secondary;
+  letter-spacing: 0.1em;
+  color: variables.$text-tertiary;
 }
 
 .optionGroup {
   display: flex;
-  gap: 0;
+  gap: 2px;
+  background: variables.$bg-base;
   border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-md;
+  padding: 2px;
 }
 
 .option {
   flex: 1;
-  padding: variables.$spacing-sm variables.$spacing-md;
-  background: variables.$bg-elevated;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  background: transparent;
   border: none;
-  border-right: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-sm;
   font-family: variables.$font-mono;
-  font-size: 12px;
+  font-size: 11px;
   color: variables.$text-secondary;
   cursor: pointer;
   transition: all variables.$transition-fast;
   text-align: center;
 
-  &:last-child {
-    border-right: none;
-  }
-
   &:hover {
-    background: variables.$bg-overlay;
+    background: variables.$bg-elevated;
     color: variables.$text-primary;
   }
 
   &.active {
     background: variables.$accent-primary;
     color: variables.$text-inverse;
+    font-weight: 600;
   }
 }
 
@@ -109,51 +117,50 @@
   font-family: variables.$font-mono;
   font-size: 10px;
   color: variables.$text-tertiary;
-  line-height: 1.4;
-  margin-top: 2px;
+  line-height: 1.5;
 }
 
 .footer {
   display: flex;
-  gap: variables.$spacing-md;
+  gap: variables.$spacing-sm;
   padding: variables.$spacing-md variables.$spacing-lg;
   border-top: 1px solid variables.$border-secondary;
   justify-content: flex-end;
 }
 
 .cancelBtn {
-  padding: variables.$spacing-sm variables.$spacing-lg;
+  padding: variables.$spacing-xs variables.$spacing-lg;
   background: variables.$bg-elevated;
   border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-md;
   font-family: variables.$font-mono;
   font-size: 12px;
   color: variables.$text-secondary;
   cursor: pointer;
   transition: all variables.$transition-fast;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 
   &:hover {
-    border-color: variables.$accent-primary;
+    border-color: variables.$border-accent;
     color: variables.$text-primary;
   }
 }
 
 .exportBtn {
-  padding: variables.$spacing-sm variables.$spacing-xl;
+  padding: variables.$spacing-xs variables.$spacing-xl;
   background: variables.$accent-primary;
-  border: 1px solid variables.$accent-primary;
+  border: none;
+  border-radius: variables.$radius-md;
   font-family: variables.$font-mono;
   font-size: 12px;
   font-weight: 700;
   color: variables.$text-inverse;
   cursor: pointer;
   transition: all variables.$transition-fast;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
 
   &:hover {
     background: variables.$accent-secondary;
+    box-shadow: 0 0 12px variables.$accent-glow-strong;
   }
 
   &:disabled {
@@ -167,50 +174,57 @@
 .progressOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: variables.$z-modal + 1;
   flex-direction: column;
   gap: variables.$spacing-lg;
+  backdrop-filter: blur(12px);
 }
 
 .progressBox {
   background: variables.$bg-surface;
-  border: 2px solid variables.$border-primary;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-lg;
   padding: variables.$spacing-xl;
   min-width: 360px;
   display: flex;
   flex-direction: column;
   gap: variables.$spacing-md;
   align-items: center;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6), 0 0 20px variables.$accent-glow;
 }
 
 .progressLabel {
   font-family: variables.$font-mono;
-  font-size: 13px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.1em;
+  color: variables.$text-secondary;
 }
 
 .progressBarContainer {
   width: 100%;
-  height: 6px;
+  height: 4px;
   background: variables.$bg-overlay;
-  border: 1px solid variables.$border-primary;
+  border-radius: 99px;
   overflow: hidden;
 }
 
 .progressBar {
   height: 100%;
   background: variables.$accent-primary;
+  border-radius: 99px;
   transition: width 150ms ease;
+  box-shadow: 0 0 8px variables.$accent-glow-strong;
 }
 
 .progressPercent {
   font-family: variables.$font-mono;
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: -1px;
+  color: variables.$accent-primary;
 }

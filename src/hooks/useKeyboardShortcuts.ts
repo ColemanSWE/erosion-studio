@@ -10,6 +10,18 @@ interface KeyboardShortcuts {
   canRedo: boolean;
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!target) return false;
+  const el = target as HTMLElement;
+  const tag = el.tagName;
+  return (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    el.isContentEditable
+  );
+}
+
 export function useKeyboardShortcuts(shortcuts: KeyboardShortcuts) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -32,10 +44,7 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcuts) {
       } else if (cmdOrCtrl && e.key === "e") {
         e.preventDefault();
         shortcuts.export();
-      } else if (
-        (e.key === " " && !e.target) ||
-        (e.target as HTMLElement).tagName !== "INPUT"
-      ) {
+      } else if (e.key === " " && !isEditableTarget(e.target)) {
         e.preventDefault();
         shortcuts.playPause();
       }

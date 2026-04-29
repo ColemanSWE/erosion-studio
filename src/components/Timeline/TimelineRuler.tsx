@@ -1,13 +1,15 @@
-import React, { useRef, useEffect, useCallback } from "react";
+import React, { useRef, useEffect, useCallback, useLayoutEffect, type MutableRefObject } from "react";
 import { formatTime } from "../../lib/timeline";
 import styles from "./Timeline.module.scss";
 
 interface TimelineRulerProps {
   duration: number;
   currentTime: number;
-  zoom: number; // pixels per second
+  zoom: number;
   onSeek: (time: number) => void;
   scrollLeft: number;
+  isPlaying?: boolean;
+  liveTimeRef?: MutableRefObject<number>;
 }
 
 export function TimelineRuler({
@@ -16,12 +18,21 @@ export function TimelineRuler({
   zoom,
   onSeek,
   scrollLeft,
+  isPlaying,
+  liveTimeRef,
 }: TimelineRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const playheadDivRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
 
-  const totalWidth = Math.max(duration * zoom, 200);
+  // Refs so the playhead RAF always reads the latest zoom/scrollLeft without
+  // being re-created on every prop change.
+  const zoomRef = useRef(zoom);
+  const scrollLeftRef = useRef(scrollLeft);
+  zoomRef.current = zoom;
+  scrollLeftRef.current = scrollLeft;
+
   const playheadX = currentTime * zoom - scrollLeft;
 
   // Draw tick marks
@@ -40,14 +51,13 @@ export function TimelineRuler({
 
     ctx.clearRect(0, 0, w, h);
 
-    // Determine tick spacing
     const minorInterval = zoom >= 60 ? 0.5 : zoom >= 20 ? 1 : 5;
     const majorInterval = minorInterval * 5;
     const startSec = Math.floor(scrollLeft / zoom / minorInterval) * minorInterval;
     const endSec = (scrollLeft + w) / zoom + minorInterval;
 
-    ctx.strokeStyle = "#333";
-    ctx.fillStyle = "#666";
+    ctx.strokeStyle = "#2a2a36";
+    ctx.fillStyle = "#555566";
     ctx.font = `9px "JetBrains Mono", monospace`;
     ctx.textBaseline = "top";
 
@@ -57,15 +67,15 @@ export function TimelineRuler({
 
       const isMajor = Math.abs(t % majorInterval) < 0.001 || Math.abs(t % majorInterval - majorInterval) < 0.001;
       if (isMajor) {
-        ctx.strokeStyle = "#555";
+        ctx.strokeStyle = "#3a3a48";
         ctx.beginPath();
         ctx.moveTo(x, h);
         ctx.lineTo(x, h * 0.3);
         ctx.stroke();
-        ctx.fillStyle = "#777";
+        ctx.fillStyle = "#888899";
         ctx.fillText(formatTime(t), x + 2, 2);
       } else {
-        ctx.strokeStyle = "#333";
+        ctx.strokeStyle = "#2a2a36";
         ctx.beginPath();
         ctx.moveTo(x, h);
         ctx.lineTo(x, h * 0.65);
@@ -73,6 +83,23 @@ export function TimelineRuler({
       }
     }
   }, [duration, zoom, scrollLeft]);
+
+  // Direct-DOM playhead during playback — reads liveTimeRef every RAF frame so
+  // the indicator moves at 60fps independently of React re-renders.
+  useEffect(() => {
+    if (!isPlaying || !liveTimeRef) return;
+
+    let rafId: number;
+    const tick = () => {
+      if (playheadDivRef.current) {
+        playheadDivRef.current.style.left = `${liveTimeRef.current * zoomRef.current - scrollLeftRef.current}px`;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [isPlaying, liveTimeRef]);
 
   const seekFromEvent = useCallback(
     (e: React.MouseEvent | MouseEvent) => {
@@ -86,39 +113,35 @@ export function TimelineRuler({
     [duration, zoom, onSeek, scrollLeft],
   );
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      draggingRef.current = true;
-      seekFromEvent(e);
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    },
-    [seekFromEvent],
-  );
+  const seekFromEventRef = useRef(seekFromEvent);
+  useLayoutEffect(() => { seekFromEventRef.current = seekFromEvent; });
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (draggingRef.current) seekFromEvent(e);
-    },
-    [seekFromEvent],
-  );
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    draggingRef.current = true;
+    seekFromEventRef.current(e);
 
-  const handleMouseUp = useCallback(() => {
-    draggingRef.current = false;
-    window.removeEventListener("mousemove", handleMouseMove);
-    window.removeEventListener("mouseup", handleMouseUp);
-  }, [handleMouseMove]);
+    const onMove = (me: MouseEvent) => {
+      if (draggingRef.current) seekFromEventRef.current(me);
+    };
+    const onUp = () => {
+      draggingRef.current = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
 
   return (
     <div
       ref={containerRef}
       className={styles.ruler}
-      style={{ width: totalWidth }}
       onMouseDown={handleMouseDown}
     >
       <canvas ref={canvasRef} className={styles.rulerCanvas} />
-      {/* Playhead indicator */}
+      {/* Playhead indicator — position driven by direct DOM during playback */}
       <div
+        ref={playheadDivRef}
         className={styles.playhead}
         style={{ left: playheadX }}
         onMouseDown={(e) => e.stopPropagation()}

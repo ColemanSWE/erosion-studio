@@ -1,25 +1,34 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Plus, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
   Effect,
   EffectParamTrack,
   Keyframe,
+  TimelineClip,
+  Overlay,
 } from "../../lib/effects/types";
 import { getEffectDefinition } from "../../lib/effects/effect-registry";
+import { collectSnapTargets, applySnap } from "../../lib/timeline";
 import styles from "./Timeline.module.scss";
 
 interface EffectTrackProps {
   effect: Effect;
   paramTracks: EffectParamTrack[];
+  clips: TimelineClip[];
+  overlays: Overlay[];
   zoom: number;
   duration: number;
   currentTime: number;
+  snapEnabled: boolean;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onUpdateEffect: (id: string, updates: Partial<Effect>) => void;
   onAddParamTrack: (track: EffectParamTrack) => void;
-  onRemoveParamTrack: (id: string) => void;
+  _onRemoveParamTrack: (id: string) => void;
   onAddKeyframe: (trackId: string, kf: Keyframe) => void;
   onUpdateKeyframe: (trackId: string, kfId: string, updates: Partial<Keyframe>) => void;
   onRemoveKeyframe: (trackId: string, kfId: string) => void;
+  onSnapLine: (time: number | null) => void;
 }
 
 let trackIdCounter = 0;
@@ -28,17 +37,22 @@ let kfIdCounter = 0;
 export function EffectTrack({
   effect,
   paramTracks,
+  clips,
+  overlays,
   zoom,
   duration,
   currentTime,
+  snapEnabled,
+  expanded,
+  onToggleExpanded,
   onUpdateEffect,
   onAddParamTrack,
-  onRemoveParamTrack,
+  _onRemoveParamTrack,
   onAddKeyframe,
   onUpdateKeyframe,
   onRemoveKeyframe,
+  onSnapLine,
 }: EffectTrackProps) {
-  const [expanded, setExpanded] = useState(false);
   const [selectedKf, setSelectedKf] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -47,13 +61,17 @@ export function EffectTrack({
 
   const totalWidth = Math.max(duration * zoom, 200);
 
-  // Time window (full duration if not set)
   const startTime = effect.startTime ?? 0;
   const endTime = effect.endTime ?? duration;
   const barLeft = startTime * zoom;
   const barWidth = Math.max(4, (endTime - startTime) * zoom);
 
-  // ─── Drag whole bar to offset ─────────────────────────────────────────────
+  const buildSnapTargets = useCallback(
+    () => collectSnapTargets(clips, overlays, currentTime),
+    [clips, overlays, currentTime],
+  );
+
+  // ─── Drag whole bar ───────────────────────────────────────────────────────
   const handleBarDrag = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -61,21 +79,37 @@ export function EffectTrack({
       const origStart = startTime;
       const origEnd = endTime;
       const clipLen = origEnd - origStart;
+      let lastX = startX;
+      let rafId: number | null = null;
+      const snapTargets = buildSnapTargets();
 
       const onMove = (me: MouseEvent) => {
-        const dx = me.clientX - startX;
-        const dt = dx / zoom;
-        const newStart = Math.max(0, Math.min(duration - clipLen, origStart + dt));
-        onUpdateEffect(effect.id, { startTime: newStart, endTime: newStart + clipLen });
+        lastX = me.clientX;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const rawStart = origStart + (lastX - startX) / zoom;
+          const { snappedTime: snappedStart, magnetTime: ms } = applySnap(rawStart, snapTargets, zoom, snapEnabled);
+          const { snappedTime: snappedEnd, magnetTime: me2 } = applySnap(rawStart + clipLen, snapTargets, zoom, snapEnabled);
+
+          let finalStart = snappedStart;
+          if (!ms && me2) finalStart = Math.max(0, snappedEnd - clipLen);
+          finalStart = Math.max(0, Math.min(duration - clipLen, finalStart));
+
+          onSnapLine(ms ?? me2 ?? null);
+          onUpdateEffect(effect.id, { startTime: finalStart, endTime: finalStart + clipLen });
+        });
       };
       const onUp = () => {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        onSnapLine(null);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [startTime, endTime, zoom, duration, effect.id, onUpdateEffect],
+    [startTime, endTime, zoom, duration, effect.id, snapEnabled, buildSnapTargets, onUpdateEffect, onSnapLine],
   );
 
   // ─── Resize handles ───────────────────────────────────────────────────────
@@ -86,40 +120,46 @@ export function EffectTrack({
       const startX = e.clientX;
       const origStart = startTime;
       const origEnd = endTime;
+      let lastX = startX;
+      let rafId: number | null = null;
+      const snapTargets = buildSnapTargets();
 
       const onMove = (me: MouseEvent) => {
-        const dx = me.clientX - startX;
-        const dt = dx / zoom;
-        if (side === "left") {
-          const newStart = Math.max(0, Math.min(origEnd - 0.1, origStart + dt));
-          onUpdateEffect(effect.id, { startTime: newStart });
-        } else {
-          const newEnd = Math.max(origStart + 0.1, Math.min(duration, origEnd + dt));
-          onUpdateEffect(effect.id, { endTime: newEnd });
-        }
+        lastX = me.clientX;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const rawTime = (side === "left" ? origStart : origEnd) + (lastX - startX) / zoom;
+          const { snappedTime, magnetTime } = applySnap(rawTime, snapTargets, zoom, snapEnabled);
+          onSnapLine(magnetTime);
+          if (side === "left") {
+            const newStart = Math.max(0, Math.min(origEnd - 0.1, snappedTime));
+            onUpdateEffect(effect.id, { startTime: newStart });
+          } else {
+            const newEnd = Math.max(origStart + 0.1, Math.min(duration, snappedTime));
+            onUpdateEffect(effect.id, { endTime: newEnd });
+          }
+        });
       };
       const onUp = () => {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        onSnapLine(null);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [startTime, endTime, zoom, duration, effect.id, onUpdateEffect],
+    [startTime, endTime, zoom, duration, effect.id, snapEnabled, buildSnapTargets, onUpdateEffect, onSnapLine],
   );
 
   // ─── Keyframe actions ─────────────────────────────────────────────────────
   const addKeyframeAtPlayhead = useCallback(
     (track: EffectParamTrack) => {
-      const existing = track.keyframes.find(
-        (k) => Math.abs(k.time - currentTime) < 0.05,
-      );
-      if (existing) return; // already a kf here
-
-      // Get current param value
+      const existing = track.keyframes.find((k) => Math.abs(k.time - currentTime) < 0.05);
+      if (existing) return;
       const rawVal = effect.params[track.paramKey];
       const val = typeof rawVal === "number" ? rawVal : 0;
-
       onAddKeyframe(track.id, {
         id: `kf-${Date.now()}-${kfIdCounter++}`,
         time: currentTime,
@@ -131,7 +171,6 @@ export function EffectTrack({
 
   const addNewParamTrack = useCallback(
     (paramKey: string) => {
-      // Only one track per param
       if (paramTracks.some((t) => t.paramKey === paramKey)) return;
       onAddParamTrack({
         id: `pt-${Date.now()}-${trackIdCounter++}`,
@@ -143,12 +182,9 @@ export function EffectTrack({
     [paramTracks, effect.id, onAddParamTrack],
   );
 
-  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div style={{ width: totalWidth, position: "relative" }}>
-      {/* Main effect bar row */}
       <div className={styles.trackRow} style={{ width: totalWidth }}>
-        {/* The active range bar */}
         <div
           ref={barRef}
           className={`${styles.effectBar} ${!effect.startTime && !effect.endTime ? styles.effectBarFull : ""}`}
@@ -165,22 +201,19 @@ export function EffectTrack({
           />
         </div>
 
-        {/* Add param keyframe track button (top of bar area, right side) */}
         {numericParams.length > 0 && (
           <button
             className={styles.addKeyframeBtn}
             title="Add keyframe track for a param"
-            onClick={() => setExpanded((v) => !v)}
+            onClick={onToggleExpanded}
           >
             {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
           </button>
         )}
       </div>
 
-      {/* Expanded: param selector + keyframe rows */}
       {expanded && (
         <div>
-          {/* Param selector */}
           <div
             style={{
               position: "relative",
@@ -215,7 +248,6 @@ export function EffectTrack({
               ))}
           </div>
 
-          {/* Keyframe rows per param track */}
           {paramTracks.map((track) => {
             const paramConfig = numericParams.find((p) => p.key === track.paramKey);
             return (
@@ -223,41 +255,29 @@ export function EffectTrack({
                 key={track.id}
                 className={styles.keyframeRow}
                 style={{ width: totalWidth }}
-                onDoubleClick={() => {
-                  // Double-click on row to add kf
-                  addKeyframeAtPlayhead(track);
-                }}
+                onDoubleClick={() => addKeyframeAtPlayhead(track)}
               >
-                {/* Keyframe diamonds */}
-                {track.keyframes.map((kf) => {
-                  const kfX = kf.time * zoom;
-                  return (
-                    <KeyframeMarker
-                      key={kf.id}
-                      kf={kf}
-                      x={kfX}
-                      selected={selectedKf === kf.id}
-                      zoom={zoom}
-                      duration={duration}
-                      min={paramConfig?.min ?? 0}
-                      max={paramConfig?.max ?? 1}
-                      step={paramConfig?.step}
-                      label={paramConfig?.label ?? track.paramKey}
-                      onSelect={() =>
-                        setSelectedKf(kf.id === selectedKf ? null : kf.id)
-                      }
-                      onUpdate={(updates) =>
-                        onUpdateKeyframe(track.id, kf.id, updates)
-                      }
-                      onRemove={() => {
-                        onRemoveKeyframe(track.id, kf.id);
-                        setSelectedKf(null);
-                      }}
-                    />
-                  );
-                })}
+                {track.keyframes.map((kf) => (
+                  <KeyframeMarker
+                    key={kf.id}
+                    kf={kf}
+                    x={kf.time * zoom}
+                    selected={selectedKf === kf.id}
+                    zoom={zoom}
+                    duration={duration}
+                    min={paramConfig?.min ?? 0}
+                    max={paramConfig?.max ?? 1}
+                    step={paramConfig?.step}
+                    label={paramConfig?.label ?? track.paramKey}
+                    snapTargets={buildSnapTargets()}
+                    snapEnabled={snapEnabled}
+                    onSelect={() => setSelectedKf(kf.id === selectedKf ? null : kf.id)}
+                    onUpdate={(updates) => onUpdateKeyframe(track.id, kf.id, updates)}
+                    onRemove={() => { onRemoveKeyframe(track.id, kf.id); setSelectedKf(null); }}
+                    onSnapLine={onSnapLine}
+                  />
+                ))}
 
-                {/* + button to add kf at playhead */}
                 <button
                   className={styles.addKeyframeBtn}
                   onClick={() => addKeyframeAtPlayhead(track)}
@@ -274,7 +294,9 @@ export function EffectTrack({
   );
 }
 
-// ─── Keyframe Marker ───────────────────────────────────────────────────────
+// ─── Keyframe Marker ─────────────────────────────────────────────────────────
+import type { SnapTarget } from "../../lib/timeline";
+
 interface KeyframeMarkerProps {
   kf: Keyframe;
   x: number;
@@ -285,9 +307,12 @@ interface KeyframeMarkerProps {
   max: number;
   step?: number;
   label: string;
+  snapTargets: SnapTarget[];
+  snapEnabled: boolean;
   onSelect: () => void;
   onUpdate: (updates: Partial<Keyframe>) => void;
   onRemove: () => void;
+  onSnapLine: (time: number | null) => void;
 }
 
 function KeyframeMarker({
@@ -300,9 +325,12 @@ function KeyframeMarker({
   max,
   step,
   label,
+  snapTargets,
+  snapEnabled,
   onSelect,
   onUpdate,
   onRemove,
+  onSnapLine,
 }: KeyframeMarkerProps) {
   const markerRef = useRef<HTMLDivElement>(null);
 
@@ -312,20 +340,30 @@ function KeyframeMarker({
       e.stopPropagation();
       const startX = e.clientX;
       const origTime = kf.time;
+      let lastX = startX;
+      let rafId: number | null = null;
 
       const onMove = (me: MouseEvent) => {
-        const dx = me.clientX - startX;
-        const newTime = Math.max(0, Math.min(duration, origTime + dx / zoom));
-        onUpdate({ time: newTime });
+        lastX = me.clientX;
+        if (rafId !== null) return;
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          const rawTime = Math.max(0, Math.min(duration, origTime + (lastX - startX) / zoom));
+          const { snappedTime, magnetTime } = applySnap(rawTime, snapTargets, zoom, snapEnabled);
+          onSnapLine(magnetTime);
+          onUpdate({ time: snappedTime });
+        });
       };
       const onUp = () => {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        onSnapLine(null);
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [kf.time, zoom, duration, onUpdate],
+    [kf.time, zoom, duration, snapTargets, snapEnabled, onUpdate, onSnapLine],
   );
 
   return (
@@ -334,14 +372,8 @@ function KeyframeMarker({
         ref={markerRef}
         className={`${styles.keyframe} ${selected ? styles.selected : ""}`}
         onMouseDown={startDrag}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect();
-        }}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
+        onClick={(e) => { e.stopPropagation(); onSelect(); }}
+        onDoubleClick={(e) => { e.stopPropagation(); onRemove(); }}
         title={`${label}: ${kf.value.toFixed(3)} @ ${kf.time.toFixed(2)}s\nDouble-click to delete`}
       />
 

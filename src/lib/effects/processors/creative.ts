@@ -1,5 +1,5 @@
-import { registerEffect, ProcessConfig } from "../effect-registry";
-import { clamp, perlinNoise } from "./shared";
+import { registerEffect } from "../effect-registry";
+import { clamp, hslToRgb } from "./shared";
 
 // ─── Premium Creative Effects ──────────────────────────────────────────────────
 
@@ -41,10 +41,10 @@ registerEffect({
   processor: (data, { width, height }, params) => {
     const threshold = (params.threshold as number) ?? 80;
     const density = (params.density as number) ?? 8;
-    const charsetKey = (params.charset as string) || "standard";
-    const color = (params.color as string) || "#00ff88";
+    const charsetKey = (params.charset as string) ?? "standard";
+    const color = (params.color as string) ?? "#00ff88";
     const opacity = (params.opacity as number) ?? 0.85;
-    const edgeMode = (params.edgeMode as string) || "sobel";
+    const edgeMode = (params.edgeMode as string) ?? "sobel";
     const fontSize = (params.fontSize as number) ?? 10;
     const bgDarken = (params.bgDarken as number) ?? 0.4;
 
@@ -78,6 +78,7 @@ registerEffect({
             // Non-maximum suppression approximation
             const angle = Math.atan2(gy, gx);
             const dir = ((angle + Math.PI) / Math.PI * 4) & 3;
+            // eslint-disable-next-line no-useless-assignment
             let n1 = 0, n2 = 0;
             if (dir === 0) { n1 = edges[pos - 1] || 0; n2 = edges[pos + 1] || 0; }
             else if (dir === 1) { n1 = edges[pos - width + 1] || 0; n2 = edges[pos + width - 1] || 0; }
@@ -176,7 +177,7 @@ registerEffect({
   processor: (data, { width, height }, params) => {
     const cellCount = (params.cellCount as number) ?? 200;
     const strokeWidth = (params.strokeWidth as number) ?? 1.5;
-    const strokeColor = (params.strokeColor as string) || "#000000";
+    const strokeColor = (params.strokeColor as string) ?? "#000000";
     const randomness = (params.randomness as number) ?? 0.8;
     const colorBlend = (params.colorBlend as number) ?? 0.7;
 
@@ -338,7 +339,7 @@ registerEffect({
   processor: (data, { width, height }, params) => {
     const levels = (params.levels as number) ?? 10;
     const lineWidth = (params.lineWidth as number) ?? 1.5;
-    const lineColor = (params.lineColor as string) || "#ffffff";
+    const lineColor = (params.lineColor as string) ?? "#ffffff";
     const fillBands = (params.fillBands as boolean) ?? false;
     const opacity = (params.opacity as number) ?? 0.9;
     const smooth = (params.smooth as number) ?? 2;
@@ -510,7 +511,7 @@ void main() {
     const intensity = (params.intensity as number) ?? 30;
     const iterations = (params.iterations as number) ?? 2;
     const channelSeparate = (params.channelSeparate as boolean) ?? true;
-    const direction = (params.direction as string) || "horizontal";
+    const direction = (params.direction as string) ?? "horizontal";
     const animated = (params.animated as boolean) ?? true;
 
     const cx = width / 2;
@@ -799,8 +800,8 @@ registerEffect({
   processor: (data, { width, height }, params) => {
     const spacing = (params.spacing as number) ?? 40;
     const lineWidth = (params.lineWidth as number) ?? 1;
-    const color = (params.color as string) || "#00ff88";
-    const gridStyle = (params.style as string) || "lines";
+    const color = (params.color as string) ?? "#00ff88";
+    const gridStyle = (params.style as string) ?? "lines";
     const opacity = (params.opacity as number) ?? 0.6;
     const showCoordinates = (params.showCoordinates as boolean) ?? false;
 
@@ -924,5 +925,125 @@ registerEffect({
     ctx.globalAlpha = 1;
     const resultData = ctx.getImageData(0, 0, width, height);
     data.set(resultData.data);
+  },
+});
+
+// ─── Chrome ────────────────────────────────────────────────────────────────────
+// Liquid metal / chrome surface simulation using Sobel normals mapped to
+// a metallic environment gradient
+
+registerEffect({
+  type: "chrome",
+  label: "Chrome",
+  category: "style",
+  defaultParams: { reflectivity: 0.85, tint: "silver", contrast: 1.5, smoothing: 2 },
+  paramsConfig: [
+    { key: "reflectivity", label: "Reflectivity", type: "slider", min: 0, max: 1, step: 0.05 },
+    { key: "tint", label: "Tint", type: "select", options: ["silver", "gold", "rainbow", "copper"] },
+    { key: "contrast", label: "Contrast", type: "slider", min: 0.5, max: 4, step: 0.1 },
+    { key: "smoothing", label: "Smoothing", type: "slider", min: 0, max: 5, step: 0.5 },
+  ],
+  processor: (data, { width, height }, params) => {
+    const reflectivity = (params.reflectivity as number) ?? 0.85;
+    const tint = (params.tint as string) ?? "silver";
+    const contrast = (params.contrast as number) ?? 1.5;
+    const smoothing = Math.round((params.smoothing as number) ?? 2);
+
+    let src = data;
+    if (smoothing > 0) {
+      src = new Uint8ClampedArray(data);
+      for (let pass = 0; pass < smoothing; pass++) {
+        const blurred = new Uint8ClampedArray(src.length);
+        for (let y = 1; y < height - 1; y++) {
+          for (let x = 1; x < width - 1; x++) {
+            const i = (y * width + x) * 4;
+            for (let c = 0; c < 3; c++) {
+              blurred[i + c] = (
+                src[((y - 1) * width + x - 1) * 4 + c] + src[((y - 1) * width + x) * 4 + c] * 2 + src[((y - 1) * width + x + 1) * 4 + c] +
+                src[(y * width + x - 1) * 4 + c] * 2 + src[i + c] * 4 + src[(y * width + x + 1) * 4 + c] * 2 +
+                src[((y + 1) * width + x - 1) * 4 + c] + src[((y + 1) * width + x) * 4 + c] * 2 + src[((y + 1) * width + x + 1) * 4 + c]
+              ) / 16;
+            }
+            blurred[i + 3] = src[i + 3];
+          }
+        }
+        src = blurred;
+      }
+    }
+
+    const luma = new Float32Array(width * height);
+    for (let i = 0; i < width * height; i++) {
+      luma[i] = (src[i * 4] * 0.299 + src[i * 4 + 1] * 0.587 + src[i * 4 + 2] * 0.114) / 255;
+    }
+
+    const nxArr = new Float32Array(width * height);
+    const nyArr = new Float32Array(width * height);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        const gx = (
+          -luma[(y - 1) * width + x - 1] + luma[(y - 1) * width + x + 1] +
+          -2 * luma[y * width + x - 1] + 2 * luma[y * width + x + 1] +
+          -luma[(y + 1) * width + x - 1] + luma[(y + 1) * width + x + 1]
+        );
+        const gy = (
+          -luma[(y - 1) * width + x - 1] - 2 * luma[(y - 1) * width + x] - luma[(y - 1) * width + x + 1] +
+          luma[(y + 1) * width + x - 1] + 2 * luma[(y + 1) * width + x] + luma[(y + 1) * width + x + 1]
+        );
+        nxArr[idx] = gx;
+        nyArr[idx] = gy;
+      }
+    }
+
+    const getChromeTint = (envU: number, envV: number): [number, number, number] => {
+      const t = (envU * 0.5 + envV * 0.5 + 1) * 0.5;
+      const tc = clamp(t * contrast - (contrast - 1) * 0.5, 0, 1);
+
+      if (tint === "gold") {
+        const stops: [number, number, number][] = [[50, 30, 0], [160, 110, 20], [255, 220, 80], [255, 255, 180], [255, 240, 120]];
+        const pos = tc * (stops.length - 1);
+        const sidx = Math.min(stops.length - 2, Math.floor(pos));
+        const frac = pos - sidx;
+        return [
+          stops[sidx][0] + (stops[sidx + 1][0] - stops[sidx][0]) * frac,
+          stops[sidx][1] + (stops[sidx + 1][1] - stops[sidx][1]) * frac,
+          stops[sidx][2] + (stops[sidx + 1][2] - stops[sidx][2]) * frac,
+        ];
+      } else if (tint === "rainbow") {
+        return hslToRgb(tc * 360, 0.9, 0.55 + tc * 0.1);
+      } else if (tint === "copper") {
+        const stops: [number, number, number][] = [[40, 15, 5], [150, 70, 30], [220, 140, 80], [255, 200, 150], [240, 180, 130]];
+        const pos = tc * (stops.length - 1);
+        const sidx = Math.min(stops.length - 2, Math.floor(pos));
+        const frac = pos - sidx;
+        return [
+          stops[sidx][0] + (stops[sidx + 1][0] - stops[sidx][0]) * frac,
+          stops[sidx][1] + (stops[sidx + 1][1] - stops[sidx][1]) * frac,
+          stops[sidx][2] + (stops[sidx + 1][2] - stops[sidx][2]) * frac,
+        ];
+      } else {
+        const v = Math.round(tc * 255);
+        const highlight = tc > 0.85 ? (tc - 0.85) / 0.15 : 0;
+        return [
+          clamp(v + highlight * 40, 0, 255),
+          clamp(v + highlight * 40, 0, 255),
+          clamp(v + 10 + highlight * 40, 0, 255),
+        ];
+      }
+    };
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const i = idx * 4;
+        const mag = Math.sqrt(nxArr[idx] * nxArr[idx] + nyArr[idx] * nyArr[idx]);
+        const envU = nxArr[idx] / (mag + 0.001);
+        const envV = nyArr[idx] / (mag + 0.001);
+        const [cr, cg, cb] = getChromeTint(envU, envV);
+        data[i] = data[i] * (1 - reflectivity) + cr * reflectivity;
+        data[i + 1] = data[i + 1] * (1 - reflectivity) + cg * reflectivity;
+        data[i + 2] = data[i + 2] * (1 - reflectivity) + cb * reflectivity;
+      }
+    }
   },
 });

@@ -5,16 +5,52 @@ import type {
   Region,
   Overlay,
   TimelineClip,
+  TimelineTrack,
   EffectParamTrack,
   Keyframe,
 } from "../lib/effects/types";
-import type { MediaItem, Resolution } from "../lib/project";
-import { DEFAULT_RESOLUTION } from "../lib/project";
+import type { MediaItem, Resolution, SourceTransform } from "../lib/project";
+import { DEFAULT_RESOLUTION, DEFAULT_SOURCE_TRANSFORM } from "../lib/project";
 import { getEffectDefinition } from "../lib/effects/effect-registry";
+import type { PaletteKey } from "../lib/effects/palettes";
 
 function getDefaultParams(type: EffectType): Record<string, unknown> {
   const def = getEffectDefinition(type);
   return def ? { ...def.defaultParams } : {};
+}
+
+const MAX_HISTORY = 50;
+
+type HistoricalState = {
+  effects: Effect[];
+  regions: Region[];
+  overlays: Overlay[];
+  clips: TimelineClip[];
+  media: MediaItem[];
+  effectParamTracks: EffectParamTrack[];
+};
+
+function snapshotHistorical(state: HistoricalState): HistoricalState {
+  return {
+    effects: state.effects,
+    regions: state.regions,
+    overlays: state.overlays,
+    clips: state.clips,
+    media: state.media,
+    effectParamTracks: state.effectParamTracks,
+  };
+}
+
+function withHistory(
+  state: ProjectState,
+): Pick<ProjectState, "_historyPast" | "_historyFuture"> {
+  return {
+    _historyPast: [
+      ...state._historyPast.slice(-(MAX_HISTORY - 1)),
+      snapshotHistorical(state),
+    ],
+    _historyFuture: [],
+  };
 }
 
 interface ProjectState {
@@ -33,9 +69,19 @@ interface ProjectState {
   clips: TimelineClip[];
   /** Per-effect param animation tracks */
   effectParamTracks: EffectParamTrack[];
+  /** Named rows in the media section of the timeline */
+  mediaTracks: TimelineTrack[];
+  /** Named rows in the overlay section of the timeline */
+  overlayTracks: TimelineTrack[];
+
+  sourceTransform: SourceTransform;
+
+  _historyPast: HistoricalState[];
+  _historyFuture: HistoricalState[];
 
   setProjectName: (name: string) => void;
   setResolution: (resolution: Resolution) => void;
+  setSourceTransform: (transform: SourceTransform) => void;
   addMedia: (item: MediaItem) => void;
   removeMedia: (id: string) => void;
   selectMedia: (id: string) => void;
@@ -64,6 +110,16 @@ interface ProjectState {
   removeClip: (id: string) => void;
   updateClip: (id: string, updates: Partial<TimelineClip>) => void;
 
+  // Media track management
+  addMediaTrack: () => void;
+  removeMediaTrack: (id: string) => void;
+  renameMediaTrack: (id: string, name: string) => void;
+
+  // Overlay track management
+  addOverlayTrack: () => void;
+  removeOverlayTrack: (id: string) => void;
+  renameOverlayTrack: (id: string, name: string) => void;
+
   // Effect param track actions
   addEffectParamTrack: (track: EffectParamTrack) => void;
   removeEffectParamTrack: (id: string) => void;
@@ -71,11 +127,25 @@ interface ProjectState {
   updateKeyframe: (trackId: string, keyframeId: string, updates: Partial<Keyframe>) => void;
   removeKeyframe: (trackId: string, keyframeId: string) => void;
 
+  undo: () => void;
+  redo: () => void;
+
   saveProject: () => Promise<void>;
   loadProject: () => Promise<void>;
 }
 
 let effectIdCounter = 0;
+let trackIdCounter = 0;
+
+function defaultMediaTrack(): TimelineTrack {
+  return { id: `mt-${trackIdCounter++}`, name: "Video", type: "media" };
+}
+function defaultOverlayTrack(): TimelineTrack {
+  return { id: `ot-${trackIdCounter++}`, name: "Overlays", type: "overlay" };
+}
+
+export const selectCanUndo = (state: ProjectState) => state._historyPast.length > 0;
+export const selectCanRedo = (state: ProjectState) => state._historyFuture.length > 0;
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projectName: "Untitled Project",
@@ -90,12 +160,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isPlaying: false,
   clips: [],
   effectParamTracks: [],
+  mediaTracks: [defaultMediaTrack()],
+  overlayTracks: [defaultOverlayTrack()],
+  sourceTransform: DEFAULT_SOURCE_TRANSFORM,
+  _historyPast: [],
+  _historyFuture: [],
 
   setProjectName: (name) => set({ projectName: name }),
   setResolution: (resolution) => set({ resolution }),
+  setSourceTransform: (transform) => set({ sourceTransform: transform }),
 
   addMedia: (item) =>
     set((state) => ({
+      ...withHistory(state),
       media: [...state.media, item],
       selectedMediaId: state.selectedMediaId || item.id,
     })),
@@ -107,6 +184,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         URL.revokeObjectURL(item.path);
       }
       return {
+        ...withHistory(state),
         media: state.media.filter((m) => m.id !== id),
         selectedMediaId:
           state.selectedMediaId === id ? undefined : state.selectedMediaId,
@@ -127,6 +205,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     };
 
     set((state) => ({
+      ...withHistory(state),
       effects: [...state.effects, newEffect],
     }));
 
@@ -139,7 +218,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           const palette = (newEffect.params.palette as string) || "standard";
 
           if (palette in PALETTES) {
-            await initializeEmojiPalette(palette as any);
+            await initializeEmojiPalette(palette as PaletteKey);
           } else {
             console.warn(`Invalid palette "${palette}", using standard`);
             await initializeEmojiPalette("standard");
@@ -153,6 +232,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   updateEffect: (id, updates) => {
     set((state) => ({
+      ...withHistory(state),
       effects: state.effects.map((e) =>
         e.id === id ? { ...e, ...updates } : e,
       ),
@@ -172,7 +252,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           const palette = updates.params!.palette as string;
 
           if (palette in PALETTES) {
-            await initializeEmojiPalette(palette as any);
+            await initializeEmojiPalette(palette as PaletteKey);
           } else {
             console.warn(`Invalid palette "${palette}", using standard`);
             await initializeEmojiPalette("standard");
@@ -186,6 +266,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   removeEffect: (id) =>
     set((state) => ({
+      ...withHistory(state),
       effects: state.effects.filter((e) => e.id !== id),
       effectParamTracks: state.effectParamTracks.filter((t) => t.effectId !== id),
     })),
@@ -199,16 +280,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const [effect] = effects.splice(oldIndex, 1);
       effects.splice(newIndex, 0, effect);
 
-      return { effects };
+      return { ...withHistory(state), effects };
     }),
 
   addRegion: (region) =>
     set((state) => ({
+      ...withHistory(state),
       regions: [...state.regions, region],
     })),
 
   removeRegion: (id) =>
     set((state) => ({
+      ...withHistory(state),
       regions: state.regions.filter((r) => r.id !== id),
       effects: state.effects.filter((e) => e.regionId !== id),
     })),
@@ -222,11 +305,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   addOverlay: (overlay) =>
     set((state) => ({
+      ...withHistory(state),
       overlays: [...state.overlays, overlay],
     })),
 
   removeOverlay: (id) =>
     set((state) => ({
+      ...withHistory(state),
       overlays: state.overlays.filter((o) => o.id !== id),
       effects: state.effects.filter((e) => e.overlayId !== id),
     })),
@@ -246,23 +331,86 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   // Timeline clips
   addClip: (clip) =>
-    set((state) => ({ clips: [...state.clips, clip] })),
+    set((state) => ({ ...withHistory(state), clips: [...state.clips, clip] })),
   removeClip: (id) =>
-    set((state) => ({ clips: state.clips.filter((c) => c.id !== id) })),
+    set((state) => ({
+      ...withHistory(state),
+      clips: state.clips.filter((c) => c.id !== id),
+    })),
   updateClip: (id, updates) =>
     set((state) => ({
+      ...withHistory(state),
       clips: state.clips.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    })),
+
+  // Media track management
+  addMediaTrack: () =>
+    set((state) => ({
+      mediaTracks: [
+        ...state.mediaTracks,
+        { id: `mt-${trackIdCounter++}`, name: `Track ${state.mediaTracks.length + 1}`, type: "media" as const },
+      ],
+    })),
+
+  removeMediaTrack: (id) =>
+    set((state) => {
+      if (state.mediaTracks.length <= 1) return state;
+      const idx = state.mediaTracks.findIndex((t) => t.id === id);
+      if (idx === -1) return state;
+      return {
+        mediaTracks: state.mediaTracks.filter((t) => t.id !== id),
+        clips: state.clips
+          .filter((c) => c.trackIndex !== idx)
+          .map((c) => c.trackIndex > idx ? { ...c, trackIndex: c.trackIndex - 1 } : c),
+      };
+    }),
+
+  renameMediaTrack: (id, name) =>
+    set((state) => ({
+      mediaTracks: state.mediaTracks.map((t) => (t.id === id ? { ...t, name } : t)),
+    })),
+
+  // Overlay track management
+  addOverlayTrack: () =>
+    set((state) => ({
+      overlayTracks: [
+        ...state.overlayTracks,
+        { id: `ot-${trackIdCounter++}`, name: `Overlay ${state.overlayTracks.length + 1}`, type: "overlay" as const },
+      ],
+    })),
+
+  removeOverlayTrack: (id) =>
+    set((state) => {
+      if (state.overlayTracks.length <= 1) return state;
+      const idx = state.overlayTracks.findIndex((t) => t.id === id);
+      if (idx === -1) return state;
+      return {
+        overlayTracks: state.overlayTracks.filter((t) => t.id !== id),
+        overlays: state.overlays
+          .filter((o) => o.trackIndex !== idx)
+          .map((o) => o.trackIndex > idx ? { ...o, trackIndex: o.trackIndex - 1 } : o),
+      };
+    }),
+
+  renameOverlayTrack: (id, name) =>
+    set((state) => ({
+      overlayTracks: state.overlayTracks.map((t) => (t.id === id ? { ...t, name } : t)),
     })),
 
   // Effect param tracks
   addEffectParamTrack: (track) =>
-    set((state) => ({ effectParamTracks: [...state.effectParamTracks, track] })),
+    set((state) => ({
+      ...withHistory(state),
+      effectParamTracks: [...state.effectParamTracks, track],
+    })),
   removeEffectParamTrack: (id) =>
     set((state) => ({
+      ...withHistory(state),
       effectParamTracks: state.effectParamTracks.filter((t) => t.id !== id),
     })),
   addKeyframe: (trackId, keyframe) =>
     set((state) => ({
+      ...withHistory(state),
       effectParamTracks: state.effectParamTracks.map((t) =>
         t.id === trackId
           ? {
@@ -274,6 +422,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })),
   updateKeyframe: (trackId, keyframeId, updates) =>
     set((state) => ({
+      ...withHistory(state),
       effectParamTracks: state.effectParamTracks.map((t) =>
         t.id === trackId
           ? {
@@ -287,12 +436,41 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     })),
   removeKeyframe: (trackId, keyframeId) =>
     set((state) => ({
+      ...withHistory(state),
       effectParamTracks: state.effectParamTracks.map((t) =>
         t.id === trackId
           ? { ...t, keyframes: t.keyframes.filter((k) => k.id !== keyframeId) }
           : t,
       ),
     })),
+
+  undo: () =>
+    set((state) => {
+      if (state._historyPast.length === 0) return state;
+      const previous = state._historyPast[state._historyPast.length - 1];
+      return {
+        ...previous,
+        _historyPast: state._historyPast.slice(0, -1),
+        _historyFuture: [
+          snapshotHistorical(state),
+          ...state._historyFuture.slice(0, MAX_HISTORY - 1),
+        ],
+      };
+    }),
+
+  redo: () =>
+    set((state) => {
+      if (state._historyFuture.length === 0) return state;
+      const next = state._historyFuture[0];
+      return {
+        ...next,
+        _historyPast: [
+          ...state._historyPast.slice(-(MAX_HISTORY - 1)),
+          snapshotHistorical(state),
+        ],
+        _historyFuture: state._historyFuture.slice(1),
+      };
+    }),
 
   saveProject: async () => {
     const state = get();
@@ -314,6 +492,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       overlays: state.overlays,
       clips: state.clips,
       effectParamTracks: state.effectParamTracks,
+      mediaTracks: state.mediaTracks,
+      overlayTracks: state.overlayTracks,
+      sourceTransform: state.sourceTransform,
     };
 
     const res = await window.electron.file.writeText(
@@ -339,7 +520,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
 
     try {
-      const projectData = JSON.parse(res.data);
+      const projectData = JSON.parse(res.data) as Record<string, unknown>;
       const currentState = get();
       for (const m of currentState.media) {
         if (m.path.startsWith("blob:")) {
@@ -347,23 +528,52 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
       }
 
-      set({
-        projectName: projectData.projectName || "Untitled Project",
-        resolution: projectData.resolution || DEFAULT_RESOLUTION,
-        duration: projectData.duration || 10,
-        media: projectData.media || [],
-        effects: projectData.effects || [],
-        regions: projectData.regions || [],
-        overlays: projectData.overlays || [],
-        clips: projectData.clips || [],
-        effectParamTracks: projectData.effectParamTracks || [],
+      const loadedClips: TimelineClip[] = (projectData.clips as TimelineClip[]) || [];
+      const loadedOverlays: Overlay[] = (projectData.overlays as Overlay[]) || [];
 
+      // Migrate: if no saved tracks, auto-create enough rows to cover existing clips/overlays
+      let loadedMediaTracks: TimelineTrack[] = (projectData.mediaTracks as TimelineTrack[]) || [];
+      if (loadedMediaTracks.length === 0) {
+        const maxIdx = loadedClips.reduce((m: number, c: TimelineClip) => Math.max(m, c.trackIndex), 0);
+        loadedMediaTracks = Array.from({ length: Math.max(1, maxIdx + 1) }, (_, i) => ({
+          id: `mt-${trackIdCounter++}`,
+          name: i === 0 ? "Video" : `Track ${i + 1}`,
+          type: "media" as const,
+        }));
+      }
+
+      let loadedOverlayTracks: TimelineTrack[] = (projectData.overlayTracks as TimelineTrack[]) || [];
+      if (loadedOverlayTracks.length === 0) {
+        const maxIdx = loadedOverlays.reduce((m: number, o: Overlay) => Math.max(m, o.trackIndex), 0);
+        loadedOverlayTracks = Array.from({ length: Math.max(1, maxIdx + 1) }, (_, i) => ({
+          id: `ot-${trackIdCounter++}`,
+          name: i === 0 ? "Overlays" : `Overlay ${i + 1}`,
+          type: "overlay" as const,
+        }));
+      }
+
+      set({
+        projectName: (projectData.projectName as string) || "Untitled Project",
+        resolution: (projectData.resolution as Resolution) || DEFAULT_RESOLUTION,
+        duration: (projectData.duration as number) || 10,
+        media: (projectData.media as MediaItem[]) || [],
+        effects: (projectData.effects as Effect[]) || [],
+        regions: (projectData.regions as Region[]) || [],
+        overlays: loadedOverlays,
+        clips: loadedClips,
+        effectParamTracks: (projectData.effectParamTracks as EffectParamTrack[]) || [],
+        mediaTracks: loadedMediaTracks,
+        overlayTracks: loadedOverlayTracks,
+
+        sourceTransform: (projectData.sourceTransform as SourceTransform) || DEFAULT_SOURCE_TRANSFORM,
         currentTime: 0,
         isPlaying: false,
         selectedMediaId: undefined,
+        _historyPast: [],
+        _historyFuture: [],
       });
 
-      const effects = projectData.effects || [];
+      const effects = (projectData.effects as Effect[]) || [];
       for (const effect of effects) {
         if (effect.type === "emoji") {
           try {
@@ -373,7 +583,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             const { PALETTES } = await import("../lib/effects/palettes");
             const palette = (effect.params?.palette as string) || "standard";
             if (palette in PALETTES) {
-              await initializeEmojiPalette(palette as any);
+              await initializeEmojiPalette(palette as PaletteKey);
             } else {
               await initializeEmojiPalette("standard");
             }
