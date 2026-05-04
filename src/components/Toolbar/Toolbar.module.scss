@@ -46,6 +46,12 @@
   flex-shrink: 0;
 }
 
+.projectNameWrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .projectName {
   font-size: 12px;
   color: variables.$text-secondary;
@@ -54,6 +60,37 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  border-radius: variables.$radius-sm;
+  padding: 1px 3px;
+  transition: color variables.$transition-fast, background-color variables.$transition-fast;
+
+  &:hover {
+    color: variables.$text-primary;
+    background-color: variables.$bg-elevated;
+  }
+}
+
+.projectNameInput {
+  font-size: 12px;
+  color: variables.$text-primary;
+  font-family: variables.$font-mono;
+  background: variables.$bg-base;
+  border: 1px solid variables.$accent-primary;
+  border-radius: variables.$radius-sm;
+  padding: 1px 4px;
+  width: 180px;
+  outline: none;
+  box-shadow: 0 0 0 2px variables.$accent-glow;
+}
+
+.dirtyDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: variables.$accent-primary;
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .divider {

@@ -11,9 +11,11 @@ import Preview from "./Preview/Preview";
 import EffectsPanel from "./EffectsPanel/EffectsPanel";
 import { Timeline } from "./Timeline/Timeline";
 import ExportDialog from "./ExportDialog/ExportDialog";
+import WelcomeModal from "./WelcomeModal/WelcomeModal";
 import type { ExportSettings } from "./ExportDialog/ExportDialog";
 import { useProjectStore, selectCanUndo, selectCanRedo } from "../stores/projectStore";
 import { useUIStore } from "../stores/uiStore";
+import { useAppStore } from "../stores/appStore";
 import { usePhotoEditor } from "../hooks/usePhotoEditor";
 import { useVideoPlayer } from "../hooks/useVideoPlayer";
 import { useCameraPlayer } from "../hooks/useCameraPlayer";
@@ -34,6 +36,7 @@ const REGION_COLORS = ["#ff3366", "#33ccff", "#ffcc00", "#66ff66", "#cc66ff", "#
 function App() {
   const {
     projectName,
+    isDirty,
     media,
     selectedMediaId,
     effects,
@@ -72,7 +75,10 @@ function App() {
     updateKeyframe,
     removeKeyframe,
     saveProject,
+    saveProjectAs,
     loadProject,
+    newProject,
+    setProjectName,
     undo,
     redo,
     sourceTransform,
@@ -102,6 +108,8 @@ function App() {
     setEffectsPanelSize,
     setTimelineSize,
   } = useUIStore();
+
+  const { showWelcome, setShowWelcome } = useAppStore();
 
   const mediaBrowserRef = useRef<PanelImperativeHandle | null>(null);
   const effectsPanelRef = useRef<PanelImperativeHandle | null>(null);
@@ -347,6 +355,16 @@ function App() {
   const handleUndo = useCallback(() => undo(), [undo]);
   const handleRedo = useCallback(() => redo(), [redo]);
   const handleSave = useCallback(async () => saveProject(), [saveProject]);
+  const handleSaveAs = useCallback(async () => saveProjectAs(), [saveProjectAs]);
+
+  const handleNewProject = useCallback(() => {
+    if (isDirty && !window.confirm("You have unsaved changes. Discard them and create a new project?")) return;
+    newProject("Untitled Project");
+  }, [isDirty, newProject]);
+
+  const handleShowWelcome = useCallback(() => setShowWelcome(true), [setShowWelcome]);
+  const handleCloseWelcome = useCallback(() => setShowWelcome(false), [setShowWelcome]);
+
   const handlePlayPause = useCallback(() => {
     if (isPlaying) pause();
     else play();
@@ -404,12 +422,14 @@ function App() {
       undo: handleUndo,
       redo: handleRedo,
       save: handleSave,
+      saveAs: handleSaveAs,
+      newProject: handleNewProject,
       export: handleExport,
       playPause: handlePlayPause,
       canUndo,
       canRedo,
     }),
-    [handleUndo, handleRedo, handleSave, handleExport, handlePlayPause, canUndo, canRedo],
+    [handleUndo, handleRedo, handleSave, handleSaveAs, handleNewProject, handleExport, handlePlayPause, canUndo, canRedo],
   );
 
   useKeyboardShortcuts(shortcuts);
@@ -418,10 +438,15 @@ function App() {
     <div className={styles.app}>
       <Toolbar
         projectName={projectName}
+        isDirty={isDirty}
+        onProjectNameChange={setProjectName}
         onUndo={handleUndo}
         onRedo={handleRedo}
         onSave={handleSave}
+        onSaveAs={handleSaveAs}
         onOpen={loadProject}
+        onNewProject={handleNewProject}
+        onShowWelcome={handleShowWelcome}
         onExport={handleExport}
         canUndo={canUndo}
         canRedo={canRedo}
@@ -618,6 +643,8 @@ function App() {
           onCancel={() => setShowExportDialog(false)}
         />
       )}
+
+      {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
     </div>
   );
 }

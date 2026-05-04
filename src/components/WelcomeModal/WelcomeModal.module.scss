@@ -1,0 +1,419 @@
+@use "../../styles/variables";
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: variables.$z-modal;
+  backdrop-filter: blur(12px);
+}
+
+.dialog {
+  background: variables.$bg-surface;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-lg;
+  width: 560px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px variables.$border-secondary;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: variables.$spacing-md variables.$spacing-lg;
+  border-bottom: 1px solid variables.$border-secondary;
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: baseline;
+  gap: variables.$spacing-sm;
+}
+
+.logo {
+  font-family: variables.$font-mono;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: variables.$text-primary;
+  text-transform: uppercase;
+}
+
+.tagline {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-tertiary;
+  letter-spacing: 0.05em;
+}
+
+.closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-md;
+  cursor: pointer;
+  color: variables.$text-secondary;
+  transition: all variables.$transition-fast;
+
+  &:hover {
+    color: variables.$text-primary;
+    border-color: variables.$accent-primary;
+    background: variables.$accent-glow;
+  }
+}
+
+.body {
+  padding: variables.$spacing-lg;
+  display: flex;
+  flex-direction: column;
+  gap: variables.$spacing-lg;
+  overflow-y: auto;
+  flex: 1;
+}
+
+// ── First-time setup ──────────────────────────────────────────────────────────
+
+.setupSection {
+  display: flex;
+  flex-direction: column;
+  gap: variables.$spacing-md;
+  padding: variables.$spacing-lg;
+  background: variables.$bg-elevated;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-md;
+}
+
+.setupTitle {
+  font-family: variables.$font-mono;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: variables.$text-primary;
+  margin: 0;
+}
+
+.setupDescription {
+  font-family: variables.$font-mono;
+  font-size: 11px;
+  color: variables.$text-secondary;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.setupActions {
+  display: flex;
+  gap: variables.$spacing-sm;
+  align-items: center;
+}
+
+.dirPath {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-secondary;
+  background: variables.$bg-base;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-sm;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ── Action buttons ────────────────────────────────────────────────────────────
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: variables.$spacing-sm;
+}
+
+.actionBtn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: variables.$spacing-md;
+  background: variables.$bg-elevated;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-md;
+  cursor: pointer;
+  color: variables.$text-primary;
+  transition: all variables.$transition-fast;
+  text-align: left;
+
+  &:hover {
+    border-color: variables.$accent-primary;
+    background: variables.$accent-glow;
+  }
+}
+
+.actionIcon {
+  color: variables.$accent-primary;
+}
+
+.actionLabel {
+  font-family: variables.$font-mono;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.actionDesc {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-secondary;
+  line-height: 1.4;
+}
+
+// ── New project inline form ───────────────────────────────────────────────────
+
+.newProjectForm {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-sm;
+  padding: variables.$spacing-md;
+  background: variables.$bg-elevated;
+  border: 1px solid variables.$accent-primary;
+  border-radius: variables.$radius-md;
+  box-shadow: 0 0 0 2px variables.$accent-glow;
+}
+
+.newProjectInput {
+  flex: 1;
+  font-family: variables.$font-mono;
+  font-size: 12px;
+  color: variables.$text-primary;
+  background: variables.$bg-base;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-sm;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  outline: none;
+  transition: border-color variables.$transition-fast;
+
+  &:focus {
+    border-color: variables.$accent-primary;
+  }
+
+  &::placeholder {
+    color: variables.$text-tertiary;
+  }
+}
+
+// ── Recent projects ───────────────────────────────────────────────────────────
+
+.recentSection {
+  display: flex;
+  flex-direction: column;
+  gap: variables.$spacing-sm;
+}
+
+.sectionLabel {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: variables.$text-tertiary;
+}
+
+.recentList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recentItem {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-sm;
+  padding: variables.$spacing-sm variables.$spacing-md;
+  border-radius: variables.$radius-md;
+  cursor: pointer;
+  transition: background variables.$transition-fast;
+  border: 1px solid transparent;
+
+  &:hover {
+    background: variables.$bg-elevated;
+    border-color: variables.$border-primary;
+  }
+
+  &.missing {
+    opacity: 0.45;
+    cursor: default;
+
+    &:hover {
+      background: transparent;
+      border-color: transparent;
+    }
+  }
+}
+
+.recentInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.recentName {
+  font-family: variables.$font-mono;
+  font-size: 12px;
+  color: variables.$text-primary;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recentMeta {
+  display: flex;
+  gap: variables.$spacing-sm;
+  margin-top: 2px;
+}
+
+.recentPath {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-tertiary;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.recentDate {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-tertiary;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.missingBadge {
+  font-family: variables.$font-mono;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: variables.$warning;
+  flex-shrink: 0;
+}
+
+.removeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: none;
+  border-radius: variables.$radius-sm;
+  cursor: pointer;
+  color: variables.$text-tertiary;
+  opacity: 0;
+  transition: all variables.$transition-fast;
+  flex-shrink: 0;
+
+  .recentItem:hover & {
+    opacity: 1;
+  }
+
+  &:hover {
+    color: variables.$error;
+    background: rgba(255, 68, 68, 0.12);
+  }
+}
+
+.emptyRecent {
+  font-family: variables.$font-mono;
+  font-size: 11px;
+  color: variables.$text-tertiary;
+  text-align: center;
+  padding: variables.$spacing-lg 0;
+}
+
+// ── Footer ────────────────────────────────────────────────────────────────────
+
+.footer {
+  padding: variables.$spacing-sm variables.$spacing-lg;
+  border-top: 1px solid variables.$border-secondary;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.changeDir {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-tertiary;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: color variables.$transition-fast;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  &:hover {
+    color: variables.$accent-primary;
+  }
+}
+
+.dirLabel {
+  font-family: variables.$font-mono;
+  font-size: 10px;
+  color: variables.$text-tertiary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+
+// ── Generic button ────────────────────────────────────────────────────────────
+
+.btn {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-xs;
+  padding: variables.$spacing-xs variables.$spacing-md;
+  border-radius: variables.$radius-md;
+  font-family: variables.$font-mono;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all variables.$transition-fast;
+  white-space: nowrap;
+
+  &.primary {
+    background: variables.$accent-primary;
+    border: 1px solid variables.$accent-primary;
+    color: variables.$text-inverse;
+
+    &:hover {
+      background: variables.$accent-secondary;
+      border-color: variables.$accent-secondary;
+    }
+  }
+
+  &.secondary {
+    background: variables.$bg-elevated;
+    border: 1px solid variables.$border-primary;
+    color: variables.$text-secondary;
+
+    &:hover {
+      border-color: variables.$accent-primary;
+      color: variables.$text-primary;
+    }
+  }
+}

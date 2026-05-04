@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("dialog:openFile", options),
   saveFile: (options: Electron.SaveDialogOptions) =>
     ipcRenderer.invoke("dialog:saveFile", options),
+  selectDirectory: () =>
+    ipcRenderer.invoke("dialog:selectDirectory"),
   ffmpeg: {
     extractFrames: (videoPath: string, outputDir: string, fps?: number) =>
       ipcRenderer.invoke("ffmpeg:extractFrames", videoPath, outputDir, fps),
@@ -30,6 +32,10 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("file:readBinary", filePath),
     writeBinary: (filePath: string, data: Uint8Array | number[]) =>
       ipcRenderer.invoke("file:writeBinary", filePath, data),
+    exists: (filePath: string) =>
+      ipcRenderer.invoke("file:exists", filePath),
+    listDirectory: (dirPath: string, extension: string) =>
+      ipcRenderer.invoke("file:listDirectory", dirPath, extension),
   },
 });
 
@@ -40,6 +46,7 @@ export interface ElectronAPI {
   saveFile: (
     options: Electron.SaveDialogOptions
   ) => Promise<Electron.SaveDialogReturnValue>;
+  selectDirectory: () => Promise<Electron.OpenDialogReturnValue>;
   ffmpeg: {
     extractFrames: (
       videoPath: string,
@@ -102,6 +109,15 @@ export interface ElectronAPI {
     ) => Promise<{
       success: boolean;
       filePath?: string;
+      error?: string;
+    }>;
+    exists: (filePath: string) => Promise<{
+      success: boolean;
+      exists: boolean;
+    }>;
+    listDirectory: (dirPath: string, extension: string) => Promise<{
+      success: boolean;
+      files?: string[];
       error?: string;
     }>;
   };

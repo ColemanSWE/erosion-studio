@@ -43,8 +43,9 @@ function snapshotHistorical(state: HistoricalState): HistoricalState {
 
 function withHistory(
   state: ProjectState,
-): Pick<ProjectState, "_historyPast" | "_historyFuture"> {
+): Pick<ProjectState, "_historyPast" | "_historyFuture" | "isDirty"> {
   return {
+    isDirty: true,
     _historyPast: [
       ...state._historyPast.slice(-(MAX_HISTORY - 1)),
       snapshotHistorical(state),
@@ -55,6 +56,8 @@ function withHistory(
 
 interface ProjectState {
   projectName: string;
+  filePath: string | null;
+  isDirty: boolean;
   media: MediaItem[];
   selectedMediaId?: string;
   effects: Effect[];
@@ -131,7 +134,10 @@ interface ProjectState {
   redo: () => void;
 
   saveProject: () => Promise<void>;
-  loadProject: () => Promise<void>;
+  saveProjectAs: () => Promise<void>;
+  loadProject: (filePath?: string) => Promise<void>;
+  newProject: (name?: string) => void;
+  _writeProject: (filePath: string) => Promise<void>;
 }
 
 let effectIdCounter = 0;
@@ -149,6 +155,8 @@ export const selectCanRedo = (state: ProjectState) => state._historyFuture.lengt
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projectName: "Untitled Project",
+  filePath: null,
+  isDirty: false,
   media: [],
   selectedMediaId: undefined,
   effects: [],
@@ -166,7 +174,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   _historyPast: [],
   _historyFuture: [],
 
-  setProjectName: (name) => set({ projectName: name }),
+  setProjectName: (name) => set({ projectName: name, isDirty: true }),
   setResolution: (resolution) => set({ resolution }),
   setSourceTransform: (transform) => set({ sourceTransform: transform }),
 
@@ -474,13 +482,44 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   saveProject: async () => {
     const state = get();
+
+    let targetPath = state.filePath;
+    if (!targetPath) {
+      const { useAppStore } = await import("./appStore");
+      const projectsDirectory = useAppStore.getState().projectsDirectory;
+      const defaultPath = projectsDirectory
+        ? `${projectsDirectory}/${state.projectName || "project"}.eron`
+        : `${state.projectName || "project"}.eron`;
+      const result = await window.electron.saveFile({
+        title: "Save Project",
+        defaultPath,
+        filters: [{ name: "Erosion Project", extensions: ["eron"] }],
+      });
+      if (result.canceled || !result.filePath) return;
+      targetPath = result.filePath;
+    }
+
+    await get()._writeProject(targetPath);
+  },
+
+  saveProjectAs: async () => {
+    const state = get();
+    const { useAppStore } = await import("./appStore");
+    const projectsDirectory = useAppStore.getState().projectsDirectory;
+    const defaultPath = projectsDirectory
+      ? `${projectsDirectory}/${state.projectName || "project"}.eron`
+      : `${state.projectName || "project"}.eron`;
     const result = await window.electron.saveFile({
-      title: "Save Project",
-      defaultPath: `${state.projectName || "project"}.eron`,
+      title: "Save Project As",
+      defaultPath,
       filters: [{ name: "Erosion Project", extensions: ["eron"] }],
     });
     if (result.canceled || !result.filePath) return;
+    await get()._writeProject(result.filePath);
+  },
 
+  _writeProject: async (targetPath: string) => {
+    const state = get();
     const projectData = {
       version: 1,
       projectName: state.projectName,
@@ -498,22 +537,64 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     };
 
     const res = await window.electron.file.writeText(
-      result.filePath,
+      targetPath,
       JSON.stringify(projectData, null, 2),
     );
     if (!res.success) {
       console.error("Failed to save project:", res.error);
+      return;
     }
+
+    set({ filePath: targetPath, isDirty: false });
+
+    const { useAppStore } = await import("./appStore");
+    useAppStore.getState().addRecentProject({
+      name: state.projectName,
+      path: targetPath,
+      lastOpened: Date.now(),
+    });
   },
 
-  loadProject: async () => {
-    const result = await window.electron.openFile({
-      title: "Open Project",
-      filters: [{ name: "Erosion Project", extensions: ["eron"] }],
+  newProject: (name = "Untitled Project") => {
+    const state = get();
+    for (const m of state.media) {
+      if (m.path.startsWith("blob:")) URL.revokeObjectURL(m.path);
+    }
+    set({
+      projectName: name,
+      filePath: null,
+      isDirty: false,
+      media: [],
+      selectedMediaId: undefined,
+      effects: [],
+      regions: [],
+      overlays: [],
+      resolution: DEFAULT_RESOLUTION,
+      duration: 10,
+      currentTime: 0,
+      isPlaying: false,
+      clips: [],
+      effectParamTracks: [],
+      mediaTracks: [defaultMediaTrack()],
+      overlayTracks: [defaultOverlayTrack()],
+      sourceTransform: DEFAULT_SOURCE_TRANSFORM,
+      _historyPast: [],
+      _historyFuture: [],
     });
-    if (result.canceled || !result.filePaths.length) return;
+  },
 
-    const res = await window.electron.file.readText(result.filePaths[0]);
+  loadProject: async (filePath?: string) => {
+    let resolvedPath = filePath;
+    if (!resolvedPath) {
+      const result = await window.electron.openFile({
+        title: "Open Project",
+        filters: [{ name: "Erosion Project", extensions: ["eron"] }],
+      });
+      if (result.canceled || !result.filePaths.length) return;
+      resolvedPath = result.filePaths[0];
+    }
+
+    const res = await window.electron.file.readText(resolvedPath);
     if (!res.success || !res.data) {
       console.error("Failed to load project:", res.error);
       return;
@@ -552,8 +633,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }));
       }
 
+      const loadedName = (projectData.projectName as string) || "Untitled Project";
       set({
-        projectName: (projectData.projectName as string) || "Untitled Project",
+        projectName: loadedName,
+        filePath: resolvedPath,
+        isDirty: false,
         resolution: (projectData.resolution as Resolution) || DEFAULT_RESOLUTION,
         duration: (projectData.duration as number) || 10,
         media: (projectData.media as MediaItem[]) || [],
@@ -564,13 +648,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         effectParamTracks: (projectData.effectParamTracks as EffectParamTrack[]) || [],
         mediaTracks: loadedMediaTracks,
         overlayTracks: loadedOverlayTracks,
-
         sourceTransform: (projectData.sourceTransform as SourceTransform) || DEFAULT_SOURCE_TRANSFORM,
         currentTime: 0,
         isPlaying: false,
         selectedMediaId: undefined,
         _historyPast: [],
         _historyFuture: [],
+      });
+
+      const { useAppStore } = await import("./appStore");
+      useAppStore.getState().addRecentProject({
+        name: loadedName,
+        path: resolvedPath,
+        lastOpened: Date.now(),
       });
 
       const effects = (projectData.effects as Effect[]) || [];

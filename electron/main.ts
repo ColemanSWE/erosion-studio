@@ -100,3 +100,35 @@ ipcMain.handle("file:writeText", async (_, filePath: string, data: string) => {
     return { success: false, error: (err as Error).message };
   }
 });
+
+ipcMain.handle("dialog:selectDirectory", async () => {
+  if (!mainWindow) return { canceled: true };
+  return dialog.showOpenDialog(mainWindow, {
+    title: "Select Projects Folder",
+    properties: ["openDirectory", "createDirectory"],
+  });
+});
+
+ipcMain.handle("file:exists", async (_, filePath: string) => {
+  try {
+    await fs.access(filePath);
+    return { success: true, exists: true };
+  } catch {
+    return { success: true, exists: false };
+  }
+});
+
+ipcMain.handle("file:listDirectory", async (_, dirPath: string, extension: string) => {
+  if (!isAllowedPath(dirPath)) {
+    return { success: false, error: "Access denied: path outside allowed directories" };
+  }
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    const files = entries
+      .filter((e) => e.isFile() && e.name.endsWith(extension))
+      .map((e) => path.join(dirPath, e.name));
+    return { success: true, files };
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message };
+  }
+});

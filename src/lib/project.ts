@@ -1,5 +1,3 @@
-import type { Effect, Region, Overlay } from "./effects/types";
-
 export interface MediaItem {
   id: string;
   type: "image" | "video" | "camera";
@@ -36,49 +34,5 @@ export const DEFAULT_SOURCE_TRANSFORM: SourceTransform = {
   panY: 0,
 };
 
-export interface Project {
-  name: string;
-  media: MediaItem[];
-  effects: Effect[];
-  regions: Region[];
-  overlays: Overlay[];
-  resolution: Resolution;
-  duration: number;
-  currentTime: number;
-  version: string;
-}
 
-export function createEmptyProject(): Project {
-  return {
-    name: "Untitled Project",
-    media: [],
-    effects: [],
-    regions: [],
-    overlays: [],
-    resolution: DEFAULT_RESOLUTION,
-    duration: 60,
-    currentTime: 0,
-    version: "1.0",
-  };
-}
-
-export function serializeProject(project: Project): string {
-  return JSON.stringify(project, null, 2);
-}
-
-export function deserializeProject(json: string): Project {
-  const data = JSON.parse(json);
-
-  return {
-    name: data.name || "Untitled Project",
-    media: data.media || [],
-    effects: data.effects || [],
-    regions: data.regions || [],
-    overlays: data.overlays || [],
-    resolution: data.resolution || DEFAULT_RESOLUTION,
-    duration: data.duration || 60,
-    currentTime: data.currentTime || 0,
-    version: data.version || "1.0",
-  };
-}
 

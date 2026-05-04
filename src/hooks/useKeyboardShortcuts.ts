@@ -4,6 +4,8 @@ interface KeyboardShortcuts {
   undo: () => void;
   redo: () => void;
   save: () => void;
+  saveAs: () => void;
+  newProject: () => void;
   export: () => void;
   playPause: () => void;
   canUndo: boolean;
@@ -38,9 +40,15 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcuts) {
       ) {
         e.preventDefault();
         shortcuts.redo();
+      } else if (cmdOrCtrl && e.key === "s" && e.shiftKey) {
+        e.preventDefault();
+        shortcuts.saveAs();
       } else if (cmdOrCtrl && e.key === "s") {
         e.preventDefault();
         shortcuts.save();
+      } else if (cmdOrCtrl && e.key === "n" && !isEditableTarget(e.target)) {
+        e.preventDefault();
+        shortcuts.newProject();
       } else if (cmdOrCtrl && e.key === "e") {
         e.preventDefault();
         shortcuts.export();
