@@ -14,6 +14,7 @@ interface UIState {
   mediaBrowserSize: number;
   effectsPanelSize: number;
   timelineSize: number;
+  effectsSplitSize: number;
 
   toggleMediaBrowser: () => void;
   toggleEffectsPanel: () => void;
@@ -28,6 +29,7 @@ interface UIState {
   setMediaBrowserSize: (size: number) => void;
   setEffectsPanelSize: (size: number) => void;
   setTimelineSize: (size: number) => void;
+  setEffectsSplitSize: (size: number) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -44,6 +46,7 @@ export const useUIStore = create<UIState>()(
       mediaBrowserSize: 22,
       effectsPanelSize: 30,
       timelineSize: 35,
+      effectsSplitSize: 50,
 
       toggleMediaBrowser: () =>
         set((state) => ({ showMediaBrowser: !state.showMediaBrowser })),
@@ -63,6 +66,7 @@ export const useUIStore = create<UIState>()(
       setMediaBrowserSize: (size) => set({ mediaBrowserSize: size }),
       setEffectsPanelSize: (size) => set({ effectsPanelSize: size }),
       setTimelineSize: (size) => set({ timelineSize: size }),
+      setEffectsSplitSize: (size) => set({ effectsSplitSize: size }),
     }),
     {
       name: "erosion-ui-state",
@@ -71,6 +75,7 @@ export const useUIStore = create<UIState>()(
         mediaBrowserSize: state.mediaBrowserSize,
         effectsPanelSize: state.effectsPanelSize,
         timelineSize: state.timelineSize,
+        effectsSplitSize: state.effectsSplitSize,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<UIState>;
@@ -79,6 +84,7 @@ export const useUIStore = create<UIState>()(
           mediaBrowserSize: Math.max(12, p.mediaBrowserSize ?? current.mediaBrowserSize),
           effectsPanelSize: Math.max(14, p.effectsPanelSize ?? current.effectsPanelSize),
           timelineSize: Math.max(12, p.timelineSize ?? current.timelineSize),
+          effectsSplitSize: Math.min(90, Math.max(10, p.effectsSplitSize ?? current.effectsSplitSize)),
         };
       },
     }

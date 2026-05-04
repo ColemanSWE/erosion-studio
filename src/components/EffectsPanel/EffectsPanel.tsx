@@ -9,10 +9,12 @@ import {
   Search,
   Type,
 } from "lucide-react";
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 import EffectParams from "./EffectParams";
 import styles from "./EffectsPanel.module.scss";
 import type { Effect, EffectType, Region, Overlay } from "../../lib/effects/types";
 import { isStyleEffect, getAllEffects } from "../../lib/effects/effect-registry";
+import { useUIStore } from "../../stores/uiStore";
 
 const FONT_OPTIONS = [
   { label: "Inter", value: "Inter, sans-serif" },
@@ -64,6 +66,9 @@ function EffectsPanel({
   onUpdateOverlay,
   onAddTextOverlay,
 }: EffectsPanelProps) {
+  const effectsSplitSize = useUIStore((s) => s.effectsSplitSize);
+  const setEffectsSplitSize = useUIStore((s) => s.setEffectsSplitSize);
+
   const allDefs = getAllEffects();
   const EFFECT_CATEGORIES = allDefs.reduce((acc, def) => {
     if (!acc[def.category]) acc[def.category] = [];
@@ -202,6 +207,11 @@ function EffectsPanel({
         />
       </div>
 
+      <PanelGroup orientation="vertical" className={styles.panelSplit} onLayoutChanged={(layout) => {
+        const size = layout["effects-browser"];
+        if (size !== undefined) setEffectsSplitSize(size);
+      }}>
+      <Panel id="effects-browser" defaultSize={`${effectsSplitSize}%`} minSize="10">
       <div className={styles.categories}>
         {Object.entries(EFFECT_CATEGORIES).map(([category, effectTypes]) => {
           const filteredEffects = effectTypes.filter((type) =>
@@ -250,7 +260,9 @@ function EffectsPanel({
           );
         })}
       </div>
-
+      </Panel>
+      <PanelResizeHandle />
+      <Panel defaultSize="50" minSize="10">
       <div className={styles.activeEffects}>
         <div className={styles.activeHeader}>
           <h4>Active</h4>
@@ -419,6 +431,8 @@ function EffectsPanel({
         )}
 
       </div>
+      </Panel>
+      </PanelGroup>
     </aside>
   );
 }

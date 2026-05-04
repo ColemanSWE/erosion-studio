@@ -111,22 +111,22 @@ function App() {
     const panel = mediaBrowserRef.current;
     if (!panel) return;
     if (showMediaBrowser) panel.collapse();
-    else panel.expand();
-  }, [showMediaBrowser]);
+    else panel.resize(`${mediaBrowserSize}%`);
+  }, [showMediaBrowser, mediaBrowserSize]);
 
   const handleToggleEffectsPanel = useCallback(() => {
     const panel = effectsPanelRef.current;
     if (!panel) return;
     if (showEffectsPanel) panel.collapse();
-    else panel.expand();
-  }, [showEffectsPanel]);
+    else panel.resize(`${effectsPanelSize}%`);
+  }, [showEffectsPanel, effectsPanelSize]);
 
   const handleToggleTimeline = useCallback(() => {
     const panel = timelinePanelRef.current;
     if (!panel) return;
     if (showTimeline) panel.collapse();
-    else panel.expand();
-  }, [showTimeline]);
+    else panel.resize(`${timelineSize}%`);
+  }, [showTimeline, timelineSize]);
 
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
 
@@ -435,18 +435,33 @@ function App() {
         onToggleTimeline={handleToggleTimeline}
       />
 
-      <PanelGroup orientation="vertical" className={styles.panelGroupVertical}>
-        <Panel minSize={40} className={styles.mainPanel}>
-          <PanelGroup orientation="horizontal">
+      <PanelGroup
+        orientation="vertical"
+        className={styles.panelGroupVertical}
+        onLayoutChanged={(layout) => {
+          const tlSize = layout["timeline"]?.asPercentage;
+          if (tlSize !== undefined && tlSize >= 12) setTimelineSize(tlSize);
+        }}
+      >
+        <Panel minSize="40" className={styles.mainPanel}>
+          <PanelGroup
+            orientation="horizontal"
+            onLayoutChanged={(layout) => {
+              const mbSize = layout["media-browser"]?.asPercentage;
+              const epSize = layout["effects-panel"]?.asPercentage;
+              if (mbSize !== undefined && mbSize >= 12) setMediaBrowserSize(mbSize);
+              if (epSize !== undefined && epSize >= 14) setEffectsPanelSize(epSize);
+            }}
+          >
             <Panel
+              id="media-browser"
               panelRef={mediaBrowserRef}
-              defaultSize={mediaBrowserSize}
-              minSize={12}
+              defaultSize={`${mediaBrowserSize}%`}
+              minSize="12"
               collapsible
               onResize={(size) => {
-                const pct = size.asPercentage;
-                setShowMediaBrowser(pct > 0);
-                if (pct >= 12) setMediaBrowserSize(pct);
+                const visible = size.asPercentage > 0;
+                if (visible !== showMediaBrowser) setShowMediaBrowser(visible);
               }}
             >
               <MediaBrowser
@@ -460,7 +475,7 @@ function App() {
               />
             </Panel>
             <PanelResizeHandle />
-            <Panel minSize={30}>
+            <Panel minSize="30">
               <Preview
                 width={resolution.width}
                 height={resolution.height}
@@ -519,14 +534,14 @@ function App() {
             </Panel>
             <PanelResizeHandle />
             <Panel
+              id="effects-panel"
               panelRef={effectsPanelRef}
-              defaultSize={effectsPanelSize}
-              minSize={14}
+              defaultSize={`${effectsPanelSize}%`}
+              minSize="14"
               collapsible
               onResize={(size) => {
-                const pct = size.asPercentage;
-                setShowEffectsPanel(pct > 0);
-                if (pct >= 14) setEffectsPanelSize(pct);
+                const visible = size.asPercentage > 0;
+                if (visible !== showEffectsPanel) setShowEffectsPanel(visible);
               }}
             >
               <EffectsPanel
@@ -551,14 +566,14 @@ function App() {
         </Panel>
         <PanelResizeHandle />
         <Panel
+          id="timeline"
           panelRef={timelinePanelRef}
-          defaultSize={timelineSize}
-          minSize={12}
+          defaultSize={`${timelineSize}%`}
+          minSize="12"
           collapsible
           onResize={(size) => {
-            const pct = size.asPercentage;
-            setShowTimeline(pct > 0);
-            if (pct >= 12) setTimelineSize(pct);
+            const visible = size.asPercentage > 0;
+            if (visible !== showTimeline) setShowTimeline(visible);
           }}
         >
           <Timeline

@@ -93,7 +93,7 @@ canvas {
 }
 
 // react-resizable-panels handle styling
-[data-panel-resize-handle-id] {
+[data-separator] {
   position: relative;
   background: variables.$border-secondary;
   transition: background variables.$transition-fast;
@@ -109,12 +109,12 @@ canvas {
   }
 
   &:hover::after,
-  &[data-resize-handle-active]::after {
+  &[data-separator="active"]::after {
     opacity: 1;
   }
 }
 
-[data-panel-resize-handle-id][data-panel-group-direction="horizontal"] {
+[data-separator][aria-orientation="vertical"] {
   width: 3px;
   cursor: col-resize;
 
@@ -125,7 +125,7 @@ canvas {
   }
 }
 
-[data-panel-resize-handle-id][data-panel-group-direction="vertical"] {
+[data-separator][aria-orientation="horizontal"] {
   height: 3px;
   cursor: row-resize;
 
