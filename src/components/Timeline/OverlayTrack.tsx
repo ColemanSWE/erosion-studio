@@ -1,5 +1,6 @@
-import React, { useState, useRef, useCallback } from "react";
-import { Type, Image as ImageIcon, Trash2 } from "lucide-react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Type, Image as ImageIcon, Trash2, Copy, Scissors } from "lucide-react";
 import type { Overlay, TimelineClip, TimelineTrack } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
 import { collectSnapTargets, applySnap } from "../../lib/timeline";
@@ -30,6 +31,14 @@ interface DragState {
   trackIndex: number;
 }
 
+interface ContextMenuState {
+  overlayId: string;
+  x: number;
+  y: number;
+}
+
+let overlayIdCounter = 0;
+
 export function OverlayTrack({
   overlays,
   clips,
@@ -51,6 +60,7 @@ export function OverlayTrack({
   const [isDragOver, setIsDragOver] = useState(false);
   const [newMediaGhostX, setNewMediaGhostX] = useState<number | null>(null);
   const [draggingState, setDraggingState] = useState<DragState | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
   const draggingStateRef = useRef<DragState | null>(null);
@@ -111,9 +121,17 @@ export function OverlayTrack({
       const overlay = overlays.find((o) => o.id === overlayId);
       if (!overlay) return;
 
-      onSelectOverlay(overlayId);
+      // Cmd+drag = duplicate overlay and drag the copy
+      let activeDragId = overlayId;
+      if (e.metaKey || e.ctrlKey) {
+        const newId = `overlay-${Date.now()}-${overlayIdCounter++}`;
+        onAddOverlay({ ...overlay, id: newId });
+        activeDragId = newId;
+      }
+
+      onSelectOverlay(activeDragId);
       dragMoveRef.current = {
-        overlayId,
+        overlayId: activeDragId,
         startX: e.clientX,
         startY: e.clientY,
         origStart: overlay.startTime,
@@ -153,7 +171,7 @@ export function OverlayTrack({
           );
 
           onSnapLine(magnetTime);
-          setDragging({ overlayId: r.overlayId, startTime: finalStart, trackIndex: newTrackIndex });
+          setDragging({ overlayId: activeDragId, startTime: finalStart, trackIndex: newTrackIndex });
         });
       };
 
@@ -180,7 +198,7 @@ export function OverlayTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [overlays, clips, zoom, rowHeight, currentTime, snapEnabled, tracks, onUpdateOverlay, onSelectOverlay, onSnapLine],
+    [overlays, clips, zoom, rowHeight, currentTime, snapEnabled, tracks, onUpdateOverlay, onAddOverlay, onSelectOverlay, onSnapLine],
   );
 
   // ─── Resize handles ───────────────────────────────────────────────────────
@@ -251,6 +269,45 @@ export function OverlayTrack({
     },
     [overlays, clips, media, zoom, currentTime, snapEnabled, onUpdateOverlay, onSnapLine],
   );
+
+  // ─── Context menu ─────────────────────────────────────────────────────────
+  const openContextMenu = useCallback((e: React.MouseEvent, overlayId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelectOverlay(overlayId);
+    setContextMenu({ overlayId, x: e.clientX, y: e.clientY });
+  }, [onSelectOverlay]);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const handleDuplicate = useCallback((overlayId: string) => {
+    const overlay = overlays.find((o) => o.id === overlayId);
+    if (!overlay) return;
+    const newId = `overlay-${Date.now()}-${overlayIdCounter++}`;
+    onAddOverlay({
+      ...overlay,
+      id: newId,
+      startTime: overlay.endTime,
+      endTime: overlay.endTime + (overlay.endTime - overlay.startTime),
+    });
+    closeContextMenu();
+  }, [overlays, onAddOverlay, closeContextMenu]);
+
+  const handleSplit = useCallback((overlayId: string) => {
+    const overlay = overlays.find((o) => o.id === overlayId);
+    if (!overlay || currentTime <= overlay.startTime || currentTime >= overlay.endTime) return;
+    const newId = `overlay-${Date.now()}-${overlayIdCounter++}`;
+    onUpdateOverlay(overlayId, { endTime: currentTime });
+    onAddOverlay({ ...overlay, id: newId, startTime: currentTime });
+    closeContextMenu();
+  }, [overlays, currentTime, onUpdateOverlay, onAddOverlay, closeContextMenu]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => closeContextMenu();
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [contextMenu, closeContextMenu]);
 
   // ─── New media drop from MediaBrowser ────────────────────────────────────
   const handleDragOver = useCallback(
@@ -379,6 +436,7 @@ export function OverlayTrack({
             }}
             tabIndex={0}
             onMouseDown={(e) => startOverlayDrag(e, overlay.id)}
+            onContextMenu={(e) => openContextMenu(e, overlay.id)}
             onKeyDown={(e) => {
               if (e.key === "Delete" || e.key === "Backspace") {
                 onRemoveOverlay(overlay.id);
@@ -440,6 +498,43 @@ export function OverlayTrack({
             Add overlays from the toolbar or drag media here
           </span>
         </div>
+      )}
+
+      {contextMenu && createPortal(
+        <div
+          className={styles.contextMenu}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => handleDuplicate(contextMenu.overlayId)}
+          >
+            <Copy size={13} />
+            Duplicate
+          </button>
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => handleSplit(contextMenu.overlayId)}
+            title="Split at playhead position"
+          >
+            <Scissors size={13} />
+            Split at Playhead
+          </button>
+          <div className={styles.contextMenuSeparator} />
+          <button
+            className={`${styles.contextMenuItem} ${styles.danger}`}
+            onClick={() => {
+              onRemoveOverlay(contextMenu.overlayId);
+              onSelectOverlay(null);
+              closeContextMenu();
+            }}
+          >
+            <Trash2 size={13} />
+            Delete
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );

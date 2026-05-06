@@ -92,7 +92,9 @@ function Preview({
   const [canvasBounds, setCanvasBounds] = useState<CanvasBounds | null>(null);
   const panDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
 
-  const [dragState, setDragState] = useState<{
+  // Drag state lives in a ref so mousedown→first-mousemove is synchronous.
+  // useState would defer the update to the next render, dropping the first few pixels.
+  const dragStateRef = useRef<{
     id: string;
     type: "move" | "resize";
     handle?: "nw" | "ne" | "sw" | "se";
@@ -100,6 +102,7 @@ function Preview({
     startY: number;
     initialOverlay: Overlay;
   } | null>(null);
+  const [isDraggingOverlay, setIsDraggingOverlay] = useState(false);
 
   useEffect(() => {
     if (canvasRef.current && onCanvasReady) {
@@ -219,44 +222,10 @@ function Preview({
       return;
     }
 
+    if (!isDrawingRegion || !startPoint) return;
+
     const normalized = mouseToNormalized(e.clientX, e.clientY);
     if (!normalized) return;
-
-    if (dragState) {
-      e.stopPropagation();
-      const dx = normalized.x - dragState.startX;
-      const dy = normalized.y - dragState.startY;
-      
-      const { initialOverlay, type, handle } = dragState;
-      let { x, y, width, height } = initialOverlay;
-
-      if (type === "move") {
-        x = Math.max(0, Math.min(1 - width, x + dx));
-        y = Math.max(0, Math.min(1 - height, y + dy));
-      } else if (type === "resize" && handle) {
-        if (handle.includes("e")) width = Math.max(0.01, Math.min(1 - x, width + dx));
-        if (handle.includes("s")) height = Math.max(0.01, Math.min(1 - y, height + dy));
-        if (handle.includes("w")) {
-          const newW = width - dx;
-          if (newW >= 0.01 && x + dx >= 0) {
-            width = newW;
-            x += dx;
-          }
-        }
-        if (handle.includes("n")) {
-          const newH = height - dy;
-          if (newH >= 0.01 && y + dy >= 0) {
-            height = newH;
-            y += dy;
-          }
-        }
-      }
-
-      onOverlayUpdate?.(dragState.id, { x, y, width, height });
-      return;
-    }
-
-    if (!isDrawingRegion || !startPoint) return;
     
     const x = Math.min(startPoint.x, normalized.x);
     const y = Math.min(startPoint.y, normalized.y);
@@ -269,11 +238,6 @@ function Preview({
   const handleMouseUp = () => {
     if (panDragRef.current) {
       panDragRef.current = null;
-      return;
-    }
-
-    if (dragState) {
-      setDragState(null);
       return;
     }
 
@@ -301,22 +265,65 @@ function Preview({
     }
   };
 
-  const handleOverlayMouseDown = (overlay: Overlay, e: React.MouseEvent, type: "move" | "resize" = "move", handle?: "nw" | "ne" | "sw" | "se") => {
+  const handleOverlayMouseDown = useCallback((overlay: Overlay, e: React.MouseEvent, type: "move" | "resize" = "move", handle?: "nw" | "ne" | "sw" | "se") => {
     e.stopPropagation();
+    e.preventDefault();
     onOverlaySelect?.(overlay.id);
-    
+
     const normalized = mouseToNormalized(e.clientX, e.clientY);
-    if (normalized) {
-      setDragState({
-        id: overlay.id,
-        type,
-        handle,
-        startX: normalized.x,
-        startY: normalized.y,
-        initialOverlay: { ...overlay },
-      });
-    }
-  };
+    if (!normalized) return;
+
+    // Synchronous ref update — available to the first mousemove without waiting for a React render
+    dragStateRef.current = {
+      id: overlay.id,
+      type,
+      handle,
+      startX: normalized.x,
+      startY: normalized.y,
+      initialOverlay: { ...overlay },
+    };
+    setIsDraggingOverlay(true);
+
+    const onMove = (me: MouseEvent) => {
+      const ds = dragStateRef.current;
+      if (!ds) return;
+      const norm = mouseToNormalized(me.clientX, me.clientY);
+      if (!norm) return;
+
+      const dx = norm.x - ds.startX;
+      const dy = norm.y - ds.startY;
+      let { x, y, width: w, height: h } = ds.initialOverlay;
+
+      if (ds.type === "move") {
+        x = Math.max(0, Math.min(1 - w, x + dx));
+        y = Math.max(0, Math.min(1 - h, y + dy));
+      } else if (ds.type === "resize" && ds.handle) {
+        if (ds.handle.includes("e")) w = Math.max(0.02, Math.min(1 - x, w + dx));
+        if (ds.handle.includes("s")) h = Math.max(0.02, Math.min(1 - y, h + dy));
+        if (ds.handle.includes("w")) {
+          const nw = w - dx;
+          if (nw >= 0.02 && x + dx >= 0) { w = nw; x += dx; }
+        }
+        if (ds.handle.includes("n")) {
+          const nh = h - dy;
+          if (nh >= 0.02 && y + dy >= 0) { h = nh; y += dy; }
+        }
+      }
+
+      onOverlayUpdate?.(ds.id, { x, y, width: w, height: h });
+    };
+
+    const onUp = () => {
+      dragStateRef.current = null;
+      setIsDraggingOverlay(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onOverlaySelect, onOverlayUpdate]);
 
   const isFillMode = sourceTransform?.mode === "fill";
 
@@ -377,7 +384,9 @@ function Preview({
                 height: `${overlay.height * 100}%`,
                 borderColor: overlay.isEffectZone ? '#00ffcc' : '#ffffff',
                 borderStyle: overlay.isEffectZone ? 'dashed' : 'solid',
-                cursor: dragState ? (dragState.type === 'move' ? 'grabbing' : 'crosshair') : 'grab',
+                cursor: isDraggingOverlay && dragStateRef.current?.id === overlay.id
+                ? (dragStateRef.current?.type === 'move' ? 'grabbing' : 'nwse-resize')
+                : 'grab',
               }}
               onMouseDown={(e) => handleOverlayMouseDown(overlay, e, "move")}
             >

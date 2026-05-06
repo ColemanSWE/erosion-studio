@@ -496,6 +496,7 @@ export function Timeline({
                   expanded={expandedEffects[effect.id] ?? false}
                   onToggleExpanded={() => toggleEffectExpanded(effect.id)}
                   onUpdateEffect={onUpdateEffect}
+                  onRemoveEffect={onRemoveEffect}
                   onAddParamTrack={onAddEffectParamTrack}
                   _onRemoveParamTrack={onRemoveEffectParamTrack}
                   onAddKeyframe={onAddKeyframe}

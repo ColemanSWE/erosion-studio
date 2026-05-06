@@ -1,5 +1,6 @@
-import React, { useState, useRef, useCallback } from "react";
-import { Film, Image, Camera, Trash2 } from "lucide-react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Film, Image, Camera, Trash2, Copy, Scissors } from "lucide-react";
 import type { TimelineClip, Overlay, TimelineTrack } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
 import { collectSnapTargets, applySnap } from "../../lib/timeline";
@@ -31,6 +32,12 @@ interface DragState {
   trackIndex: number;
 }
 
+interface ContextMenuState {
+  clipId: string;
+  x: number;
+  y: number;
+}
+
 let clipIdCounter = 0;
 
 export function MediaTrack({
@@ -53,6 +60,7 @@ export function MediaTrack({
   const [newMediaGhostX, setNewMediaGhostX] = useState<number | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [draggingState, setDraggingState] = useState<DragState | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
   // Ref mirror of draggingState for stable access in async handlers
@@ -127,9 +135,17 @@ export function MediaTrack({
       const clip = clips.find((c) => c.id === clipId);
       if (!clip) return;
 
-      setSelectedClipId(clipId);
+      // Cmd+drag = duplicate the clip and drag the copy
+      let activeDragId = clipId;
+      if (e.metaKey || e.ctrlKey) {
+        const newId = `clip-${Date.now()}-${clipIdCounter++}`;
+        onAddClip({ ...clip, id: newId });
+        activeDragId = newId;
+      }
+
+      setSelectedClipId(activeDragId);
       dragMoveRef.current = {
-        clipId,
+        clipId: activeDragId,
         startX: e.clientX,
         startY: e.clientY,
         origStart: clip.startTime,
@@ -205,7 +221,7 @@ export function MediaTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [clips, overlays, zoom, rowHeight, numTracks, currentTime, snapEnabled, tracks, onUpdateClip, onSnapLine],
+    [clips, overlays, zoom, rowHeight, numTracks, currentTime, snapEnabled, tracks, onUpdateClip, onAddClip, onSnapLine],
   );
 
   // ─── Resize handles ───────────────────────────────────────────────────────
@@ -278,6 +294,44 @@ export function MediaTrack({
     },
     [clips, overlays, media, zoom, duration, currentTime, snapEnabled, onUpdateClip, onSnapLine],
   );
+
+  // ─── Context menu ─────────────────────────────────────────────────────────
+  const openContextMenu = useCallback((e: React.MouseEvent, clipId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedClipId(clipId);
+    setContextMenu({ clipId, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const handleDuplicateClip = useCallback((clipId: string) => {
+    const clip = clips.find((c) => c.id === clipId);
+    if (!clip) return;
+    const newId = `clip-${Date.now()}-${clipIdCounter++}`;
+    // Place duplicate right after the original
+    onAddClip({ ...clip, id: newId, startTime: clip.endTime, endTime: clip.endTime + (clip.endTime - clip.startTime) });
+    closeContextMenu();
+  }, [clips, onAddClip, closeContextMenu]);
+
+  const handleSplitClip = useCallback((clipId: string) => {
+    const clip = clips.find((c) => c.id === clipId);
+    if (!clip || currentTime <= clip.startTime || currentTime >= clip.endTime) return;
+    const newId = `clip-${Date.now()}-${clipIdCounter++}`;
+    onUpdateClip(clipId, { endTime: currentTime });
+    onAddClip({ ...clip, id: newId, startTime: currentTime });
+    closeContextMenu();
+  }, [clips, currentTime, onUpdateClip, onAddClip, closeContextMenu]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => closeContextMenu();
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    return () => {
+      window.removeEventListener("mousedown", close);
+    };
+  }, [contextMenu, closeContextMenu]);
 
   // ─── New media drop from MediaBrowser ────────────────────────────────────
   const handleDragOver = useCallback(
@@ -412,6 +466,7 @@ export function MediaTrack({
             } as React.CSSProperties}
             tabIndex={0}
             onMouseDown={(e) => startClipDrag(e, clip.id)}
+            onContextMenu={(e) => openContextMenu(e, clip.id)}
             onKeyDown={(e) => {
               if (e.key === "Delete" || e.key === "Backspace") {
                 onRemoveClip(clip.id);
@@ -469,6 +524,43 @@ export function MediaTrack({
             Drag media here — use multiple rows to overlap clips (for transitions)
           </span>
         </div>
+      )}
+
+      {contextMenu && createPortal(
+        <div
+          className={styles.contextMenu}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => handleDuplicateClip(contextMenu.clipId)}
+          >
+            <Copy size={13} />
+            Duplicate
+          </button>
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => handleSplitClip(contextMenu.clipId)}
+            title="Split at playhead position"
+          >
+            <Scissors size={13} />
+            Split at Playhead
+          </button>
+          <div className={styles.contextMenuSeparator} />
+          <button
+            className={`${styles.contextMenuItem} ${styles.danger}`}
+            onClick={() => {
+              onRemoveClip(contextMenu.clipId);
+              setSelectedClipId(null);
+              closeContextMenu();
+            }}
+          >
+            <Trash2 size={13} />
+            Delete
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );

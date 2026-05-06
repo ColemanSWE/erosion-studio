@@ -1,5 +1,6 @@
-import React, { useState, useRef, useCallback } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { ChevronDown, ChevronRight, Trash2, RotateCcw } from "lucide-react";
 import type {
   Effect,
   EffectParamTrack,
@@ -23,6 +24,7 @@ interface EffectTrackProps {
   expanded: boolean;
   onToggleExpanded: () => void;
   onUpdateEffect: (id: string, updates: Partial<Effect>) => void;
+  onRemoveEffect: (id: string) => void;
   onAddParamTrack: (track: EffectParamTrack) => void;
   _onRemoveParamTrack: (id: string) => void;
   onAddKeyframe: (trackId: string, kf: Keyframe) => void;
@@ -46,6 +48,7 @@ export function EffectTrack({
   expanded,
   onToggleExpanded,
   onUpdateEffect,
+  onRemoveEffect,
   onAddParamTrack,
   _onRemoveParamTrack,
   onAddKeyframe,
@@ -70,6 +73,23 @@ export function EffectTrack({
     () => collectSnapTargets(clips, overlays, currentTime),
     [clips, overlays, currentTime],
   );
+
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const openContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => closeContextMenu();
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [contextMenu, closeContextMenu]);
 
   // ─── Drag whole bar ───────────────────────────────────────────────────────
   const handleBarDrag = useCallback(
@@ -190,6 +210,7 @@ export function EffectTrack({
           className={`${styles.effectBar} ${!effect.startTime && !effect.endTime ? styles.effectBarFull : ""}`}
           style={{ left: barLeft, width: barWidth }}
           onMouseDown={handleBarDrag}
+          onContextMenu={openContextMenu}
         >
           <div
             className={`${styles.effectBarHandle} ${styles.left}`}
@@ -290,6 +311,38 @@ export function EffectTrack({
           })}
         </div>
       )}
+    {contextMenu && createPortal(
+      <div
+        className={styles.contextMenu}
+        style={{ left: contextMenu.x, top: contextMenu.y }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {(effect.startTime != null || effect.endTime != null) && (
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => {
+              onUpdateEffect(effect.id, { startTime: undefined, endTime: undefined });
+              closeContextMenu();
+            }}
+          >
+            <RotateCcw size={13} />
+            Reset Time Range
+          </button>
+        )}
+        <div className={styles.contextMenuSeparator} />
+        <button
+          className={`${styles.contextMenuItem} ${styles.danger}`}
+          onClick={() => {
+            onRemoveEffect(effect.id);
+            closeContextMenu();
+          }}
+        >
+          <Trash2 size={13} />
+          Delete Effect
+        </button>
+      </div>,
+      document.body
+    )}
     </div>
   );
 }

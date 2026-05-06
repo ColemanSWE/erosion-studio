@@ -631,3 +631,47 @@
     border-color: variables.$timeline-keyframe;
   }
 }
+
+// ─── Clip context menu ────────────────────────────────────────────────────────
+.contextMenu {
+  position: fixed;
+  z-index: 1000;
+  background: variables.$bg-elevated;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-md;
+  padding: 4px 0;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: all;
+}
+
+.contextMenuItem {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-sm;
+  padding: 6px variables.$spacing-md;
+  font-size: 12px;
+  font-family: variables.$font-mono;
+  color: variables.$text-secondary;
+  cursor: pointer;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  transition: background-color variables.$transition-fast, color variables.$transition-fast;
+
+  &:hover {
+    background: variables.$bg-overlay;
+    color: variables.$text-primary;
+  }
+
+  &.danger:hover {
+    color: variables.$error;
+  }
+}
+
+.contextMenuSeparator {
+  height: 1px;
+  background: variables.$border-secondary;
+  margin: 3px 0;
+}
