@@ -3,6 +3,7 @@ import { renderWithEffects } from "../lib/effects/effects-renderer";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, requiresFaceDetection, type FaceBounds } from "../lib/effects/face-detector";
 import type { SourceTransform } from "../lib/project";
+import { GifDecoder } from "../lib/gif-decoder";
 import { useRenderContext } from "./useRenderContext";
 
 interface ActiveVideo {
@@ -11,11 +12,36 @@ interface ActiveVideo {
   clipStartTime: number;
 }
 
+interface OverlayImage {
+  id: string;
+  path: string;
+}
+
+type OverlayImageSource = HTMLImageElement | ImageBitmap;
+
+function isGifPath(path: string): boolean {
+  return path.toLowerCase().endsWith(".gif");
+}
+
+function resolveSrc(path: string): string {
+  if (
+    path.startsWith("data:") ||
+    path.startsWith("blob:") ||
+    path.startsWith("http://") ||
+    path.startsWith("https://") ||
+    path.startsWith("file://")
+  ) {
+    return path;
+  }
+  return `file://${path}`;
+}
+
 interface UseVideoPlayerOptions {
   canvas: HTMLCanvasElement | null;
   effects: Effect[];
   activeVideos: ActiveVideo[];
   overlayVideos?: ActiveVideo[];
+  overlayImages?: OverlayImage[];
   isPlaying: boolean;
   currentTime: number;
   regions?: Region[];
@@ -47,6 +73,7 @@ export function useVideoPlayer({
   effects,
   activeVideos,
   overlayVideos = [],
+  overlayImages = [],
   isPlaying,
   currentTime,
   regions = [],
@@ -55,7 +82,15 @@ export function useVideoPlayer({
   onDurationChange,
   sourceTransform,
 }: UseVideoPlayerOptions) {
+  const canvasRef = useRef(canvas);
+  canvasRef.current = canvas;
+
   const videosMapRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const overlayImagesMapRef = useRef<Map<string, OverlayImageSource>>(new Map());
+  const gifDecodersRef = useRef<Map<string, GifDecoder>>(new Map());
+  const loadingGifsRef = useRef<Set<string>>(new Set());
+  const wantedImageIdsRef = useRef<Set<string>>(new Set());
+
   const animationFrameRef = useRef<number>();
   const tickRef = useRef(0);
   const faceBoundsRef = useRef<FaceBounds[]>([]);
@@ -67,6 +102,7 @@ export function useVideoPlayer({
   const effectsRef = useRef(effects);
   const activeVideosRef = useRef(activeVideos);
   const overlayVideosRef = useRef(overlayVideos);
+  const overlayImagesRef = useRef(overlayImages);
   const regionsRef = useRef(regions);
   const overlaysRef = useRef(overlays);
   const onTimeUpdateRef = useRef(onTimeUpdate);
@@ -76,6 +112,7 @@ export function useVideoPlayer({
   effectsRef.current = effects;
   activeVideosRef.current = activeVideos;
   overlayVideosRef.current = overlayVideos;
+  overlayImagesRef.current = overlayImages;
   regionsRef.current = regions;
   overlaysRef.current = overlays;
   onTimeUpdateRef.current = onTimeUpdate;
@@ -90,6 +127,8 @@ export function useVideoPlayer({
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
       }
+      for (const decoder of gifDecodersRef.current.values()) decoder.dispose();
+      gifDecodersRef.current.clear();
     };
   }, []);
 
@@ -112,7 +151,9 @@ export function useVideoPlayer({
     const primaryVideo = videosMapRef.current.get(primaryVideoDef.id);
 
     if (!ctx || !primaryVideo || primaryVideo.readyState < 2) {
-      animationFrameRef.current = requestAnimationFrame(render);
+      if (!primaryVideo?.error) {
+        animationFrameRef.current = requestAnimationFrame(render);
+      }
       return;
     }
 
@@ -136,6 +177,15 @@ export function useVideoPlayer({
 
     const frameStart = performance.now();
     const FRAME_BUDGET_MS = 33;
+
+    // Advance animated GIF overlay frames
+    const now = performance.now();
+    for (const [id, decoder] of gifDecodersRef.current.entries()) {
+      const advanced = await decoder.tick(now);
+      if (advanced && decoder.bitmap) {
+        overlayImagesMapRef.current.set(id, decoder.bitmap);
+      }
+    }
 
     const ema = emaFrameTimeRef.current;
     const skipEffects = ema > FRAME_BUDGET_MS * 4;
@@ -165,7 +215,10 @@ export function useVideoPlayer({
           timelineFrames: secondaryFrames,
           glPipeline: glPipelineRef.current ?? undefined,
           overlays: overlaysRef.current,
-          getOverlaySource: (mediaId) => videosMapRef.current.get(mediaId) || null,
+          getOverlaySource: (id) =>
+            videosMapRef.current.get(id) ||
+            overlayImagesMapRef.current.get(id) ||
+            null,
           sourceTransform: sourceTransformRef.current,
         },
         effectsRef.current.filter((e) => e.active),
@@ -192,6 +245,54 @@ export function useVideoPlayer({
   useEffect(() => {
     renderRef.current = render;
   }, [render]);
+
+  // ── Image overlay lifecycle (static images + animated GIFs) ──────────────
+  useEffect(() => {
+    const map = overlayImagesMapRef.current;
+    const gifDecoders = gifDecodersRef.current;
+    const loadingGifs = loadingGifsRef.current;
+    const ids = new Set(overlayImages.map((i) => i.id));
+    wantedImageIdsRef.current = ids;
+
+    for (const [id] of map.entries()) {
+      if (!ids.has(id)) map.delete(id);
+    }
+    for (const [id, decoder] of gifDecoders.entries()) {
+      if (!ids.has(id)) { decoder.dispose(); gifDecoders.delete(id); }
+    }
+    for (const id of loadingGifs) {
+      if (!ids.has(id)) loadingGifs.delete(id);
+    }
+
+    for (const imgDef of overlayImages) {
+      if (map.has(imgDef.id) || gifDecoders.has(imgDef.id) || loadingGifs.has(imgDef.id)) continue;
+
+      if (isGifPath(imgDef.path)) {
+        loadingGifs.add(imgDef.id);
+        GifDecoder.create(imgDef.path)
+          .then((decoder) => {
+            loadingGifs.delete(imgDef.id);
+            if (!wantedImageIdsRef.current.has(imgDef.id)) { decoder.dispose(); return; }
+            gifDecoders.set(imgDef.id, decoder);
+            if (decoder.bitmap) map.set(imgDef.id, decoder.bitmap);
+            renderRef.current?.();
+          })
+          .catch((err) => {
+            loadingGifs.delete(imgDef.id);
+            console.error("Failed to load overlay GIF:", imgDef.path, err);
+          });
+      } else {
+        const img = new Image();
+        if (!imgDef.path.startsWith("blob:") && !imgDef.path.startsWith("data:")) {
+          img.crossOrigin = "anonymous";
+        }
+        img.onload = () => renderRef.current?.();
+        img.onerror = () => console.error("Failed to load overlay image:", imgDef.path);
+        img.src = resolveSrc(imgDef.path);
+        map.set(imgDef.id, img);
+      }
+    }
+  }, [overlayImages]);
 
   // ── Video elements lifecycle ───────────────────────────────────────────────
   useEffect(() => {
@@ -238,6 +339,24 @@ export function useVideoPlayer({
 
         video.onerror = () => {
           console.error("Failed to load video:", vDef.path, "resolved as:", src);
+          if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = undefined;
+          }
+          const c = canvasRef.current;
+          if (!c) return;
+          const ctx2d = c.getContext("2d");
+          if (!ctx2d) return;
+          const fs = Math.max(12, Math.floor(c.height / 22));
+          ctx2d.fillStyle = "#141414";
+          ctx2d.fillRect(0, 0, c.width, c.height);
+          ctx2d.textAlign = "center";
+          ctx2d.fillStyle = "#555";
+          ctx2d.font = `${fs}px monospace`;
+          ctx2d.fillText("Video format not supported", c.width / 2, c.height / 2 - fs * 0.8);
+          ctx2d.fillStyle = "#3a3a3a";
+          ctx2d.font = `${Math.max(10, Math.floor(fs * 0.75))}px monospace`;
+          ctx2d.fillText("Re-encode to H.264 MP4 to play in preview", c.width / 2, c.height / 2 + fs * 0.8);
         };
 
         video.src = src;

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from "react";
 import { Type, Image as ImageIcon, Trash2 } from "lucide-react";
 import type { Overlay, TimelineClip, TimelineTrack } from "../../lib/effects/types";
+import type { MediaItem } from "../../lib/project";
 import { collectSnapTargets, applySnap } from "../../lib/timeline";
 import styles from "./Timeline.module.scss";
 
@@ -8,11 +9,13 @@ interface OverlayTrackProps {
   overlays: Overlay[];
   clips: TimelineClip[];
   tracks: TimelineTrack[];
+  media: MediaItem[];
   zoom: number;
   duration: number;
   currentTime: number;
   rowHeight: number;
   snapEnabled: boolean;
+  minWidth: number;
   onAddOverlay: (overlay: Overlay) => void;
   onUpdateOverlay: (id: string, updates: Partial<Overlay>) => void;
   onRemoveOverlay: (id: string) => void;
@@ -31,11 +34,13 @@ export function OverlayTrack({
   overlays,
   clips,
   tracks,
+  media,
   zoom,
   duration,
   currentTime,
   rowHeight,
   snapEnabled,
+  minWidth,
   onAddOverlay,
   onUpdateOverlay,
   onRemoveOverlay,
@@ -70,6 +75,7 @@ export function OverlayTrack({
     startX: number;
     origStart: number;
     origEnd: number;
+    mediaDuration: number | null;
   } | null>(null);
 
   const lastResizeX = useRef(0);
@@ -77,7 +83,7 @@ export function OverlayTrack({
 
   const numTracks = Math.max(
     tracks.length,
-    ...overlays.map((o) => o.trackIndex + 1),
+    ...overlays.filter((o) => isFinite(o.trackIndex)).map((o) => o.trackIndex + 1),
     ...(draggingState ? [draggingState.trackIndex + 1] : []),
   );
   const totalHeight = numTracks * rowHeight;
@@ -142,19 +148,11 @@ export function OverlayTrack({
           const newTrackIndex = Math.max(0, Math.min(currentNumTracks, r.origTrack + trackDelta));
 
           const snapTargets = collectSnapTargets(clips, overlays, currentTime, undefined, r.overlayId);
-          const { snappedTime: snappedStart, magnetTime: magnetStart } = applySnap(
+          const { snappedTime: finalStart, magnetTime } = applySnap(
             rawStart, snapTargets, zoom, snapEnabled,
           );
-          const { snappedTime: snappedEnd, magnetTime: magnetEnd } = applySnap(
-            rawStart + overlayDuration, snapTargets, zoom, snapEnabled,
-          );
 
-          let finalStart = snappedStart;
-          if (!magnetStart && magnetEnd) {
-            finalStart = Math.max(0, snappedEnd - overlayDuration);
-          }
-
-          onSnapLine(magnetStart ?? magnetEnd ?? null);
+          onSnapLine(magnetTime);
           setDragging({ overlayId: r.overlayId, startTime: finalStart, trackIndex: newTrackIndex });
         });
       };
@@ -193,12 +191,20 @@ export function OverlayTrack({
       const overlay = overlays.find((o) => o.id === overlayId);
       if (!overlay) return;
 
+      const mediaItem = overlay.mediaId ? media.find((m) => m.id === overlay.mediaId) : null;
+      const isImage = mediaItem?.type === "image";
+      const mediaDuration =
+        !isImage && mediaItem?.duration && mediaItem.duration > 0 && isFinite(mediaItem.duration)
+          ? mediaItem.duration
+          : null;
+
       resizingRef.current = {
         overlayId,
         side,
         startX: e.clientX,
         origStart: overlay.startTime,
         origEnd: overlay.endTime,
+        mediaDuration,
       };
 
       const snapTargets = collectSnapTargets(clips, overlays, currentTime, undefined, overlayId);
@@ -216,10 +222,14 @@ export function OverlayTrack({
 
           onSnapLine(magnetTime);
           if (r.side === "left") {
-            const newStart = Math.max(0, Math.min(r.origEnd - 0.1, snappedTime));
+            const maxStart = r.mediaDuration != null
+              ? r.origEnd - r.mediaDuration
+              : -Infinity;
+            const newStart = Math.max(0, Math.max(maxStart, Math.min(r.origEnd - 0.1, snappedTime)));
             onUpdateOverlay(r.overlayId, { startTime: newStart });
           } else {
-            const newEnd = Math.max(r.origStart + 0.1, snappedTime);
+            const maxEnd = r.mediaDuration != null ? r.origStart + r.mediaDuration : Infinity;
+            const newEnd = Math.max(r.origStart + 0.1, Math.min(maxEnd, snappedTime));
             onUpdateOverlay(r.overlayId, { endTime: newEnd });
           }
         });
@@ -239,7 +249,7 @@ export function OverlayTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [overlays, clips, zoom, currentTime, snapEnabled, onUpdateOverlay, onSnapLine],
+    [overlays, clips, media, zoom, currentTime, snapEnabled, onUpdateOverlay, onSnapLine],
   );
 
   // ─── New media drop from MediaBrowser ────────────────────────────────────
@@ -282,7 +292,7 @@ export function OverlayTrack({
       const { snappedTime: startTime } = applySnap(rawStart, snapTargets, zoom, snapEnabled);
       const defaultDuration =
         item.duration && isFinite(item.duration) ? item.duration : item.type === "image" ? 5 : 10;
-      const endTime = Math.min(duration, startTime + defaultDuration);
+      const endTime = startTime + defaultDuration;
       const trackIndex = yToTrackIndex(e.clientY);
 
       onAddOverlay({
@@ -303,15 +313,19 @@ export function OverlayTrack({
     [zoom, duration, clips, overlays, currentTime, snapEnabled, yToTrackIndex, onAddOverlay],
   );
 
-  const maxEnd = overlays.reduce((max, o) => Math.max(max, o.endTime), duration);
-  const totalWidth = Math.max(maxEnd * zoom + 120, 400);
+  const maxEnd = overlays.reduce(
+    (max, o) => (isFinite(o.endTime) ? Math.max(max, o.endTime) : max),
+    duration,
+  );
+  const safeMinWidth = isFinite(minWidth) ? minWidth : 0;
+  const totalWidth = Math.max(maxEnd * zoom + 120, safeMinWidth, 400);
   const getTrackColor = (trackIndex: number) => `hsl(${320 - trackIndex * 30}, 60%, 45%)`;
 
   return (
     <div
       ref={dropRef}
       className={`${styles.dropZone} ${isDragOver ? styles.dragOver : ""}`}
-      style={{ width: totalWidth, height: totalHeight, position: "relative" }}
+      style={{ minWidth: totalWidth, width: totalWidth, height: totalHeight, position: "relative" }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -345,7 +359,8 @@ export function OverlayTrack({
         const renderStart = isDragging ? draggingState!.startTime : overlay.startTime;
         const renderTrack = isDragging ? draggingState!.trackIndex : overlay.trackIndex;
         const left = renderStart * zoom;
-        const width = Math.max(4, (overlay.endTime - overlay.startTime) * zoom);
+        const overlaySpan = overlay.endTime - overlay.startTime;
+        const width = Math.max(4, isFinite(overlaySpan) ? overlaySpan * zoom : 0);
         const top = renderTrack * rowHeight;
         const isSelected = selectedOverlayId === overlay.id;
         const color = getTrackColor(overlay.trackIndex);

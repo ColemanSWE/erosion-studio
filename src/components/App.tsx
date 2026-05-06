@@ -232,6 +232,7 @@ function App() {
     effects: resolvedEffects,
     activeVideos: videoSources,
     overlayVideos,
+    overlayImages,
     isPlaying,
     currentTime,
     regions,

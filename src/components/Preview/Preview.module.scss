@@ -110,6 +110,21 @@
   white-space: nowrap;
 }
 
+.resizeHandle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: variables.$bg-base;
+  border: 1.5px solid variables.$text-primary;
+  pointer-events: all;
+  z-index: 11;
+
+  &.nw { top: -5px; left: -5px; cursor: nw-resize; }
+  &.ne { top: -5px; right: -5px; cursor: ne-resize; }
+  &.sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+  &.se { bottom: -5px; right: -5px; cursor: se-resize; }
+}
+
 .drawingRect {
   position: absolute;
   border: 1px dashed variables.$accent-primary;

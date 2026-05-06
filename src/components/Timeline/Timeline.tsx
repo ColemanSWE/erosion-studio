@@ -230,14 +230,23 @@ export function Timeline({
   }, []);
 
   const activeEffects = effects.filter((e) => e.active);
-  const maxClipEnd = clips.reduce((max, c) => Math.max(max, c.endTime), duration);
+  const maxClipEnd = clips.reduce(
+    (max, c) => (isFinite(c.endTime) ? Math.max(max, c.endTime) : max),
+    duration,
+  );
   const effectiveDuration = Math.max(duration, maxClipEnd);
   const totalWidth = Math.max(effectiveDuration * zoom + 500, 800);
 
-  const numMediaRows = Math.max(mediaTracks.length, ...clips.map((c) => c.trackIndex + 1));
+  const numMediaRows = Math.max(
+    mediaTracks.length,
+    ...clips.filter((c) => isFinite(c.trackIndex)).map((c) => c.trackIndex + 1),
+  );
   const MEDIA_TRACK_H = numMediaRows * trackHeight;
 
-  const numOverlayRows = Math.max(overlayTracks.length, ...overlays.map((o) => o.trackIndex + 1));
+  const numOverlayRows = Math.max(
+    overlayTracks.length,
+    ...overlays.filter((o) => isFinite(o.trackIndex)).map((o) => o.trackIndex + 1),
+  );
   const OVERLAY_TRACK_H = numOverlayRows * trackHeight;
 
   // ─── Labels column ────────────────────────────────────────────────────────
@@ -440,6 +449,7 @@ export function Timeline({
                 currentTime={currentTime}
                 rowHeight={trackHeight}
                 snapEnabled={snapEnabled}
+                minWidth={totalWidth}
                 onAddClip={onAddClip}
                 onUpdateClip={onUpdateClip}
                 onRemoveClip={onRemoveClip}
@@ -453,8 +463,10 @@ export function Timeline({
                 overlays={overlays}
                 clips={clips}
                 tracks={overlayTracks}
+                media={media}
                 zoom={zoom}
                 duration={duration}
+                minWidth={totalWidth}
                 currentTime={currentTime}
                 rowHeight={trackHeight}
                 snapEnabled={snapEnabled}

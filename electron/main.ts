@@ -89,6 +89,7 @@ ipcMain.handle("file:readText", async (_, filePath: string) => {
   }
 });
 
+
 ipcMain.handle("file:writeText", async (_, filePath: string, data: string) => {
   if (!isAllowedPath(filePath)) {
     return { success: false, error: "Access denied: path outside allowed directories" };

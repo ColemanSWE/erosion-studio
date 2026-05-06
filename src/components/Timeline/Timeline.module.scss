@@ -373,21 +373,24 @@
   height: calc(100% - 8px);
   background: variables.$timeline-clip;
   border: 1px solid variables.$timeline-clip-border;
+  border-left: 3px solid var(--clip-accent, variables.$timeline-clip-border);
   border-radius: variables.$radius-sm;
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 6px 0 5px;
   cursor: grab;
   overflow: hidden;
   min-width: 4px;
-  transition: border-color variables.$transition-fast;
+  transition: border-color variables.$transition-fast, box-shadow variables.$transition-fast;
 
   &:hover {
     border-color: variables.$timeline-clip-hover;
+    border-left-color: var(--clip-accent, variables.$timeline-clip-hover);
   }
 
   &.selected {
     border-color: variables.$accent-primary;
+    border-left-color: variables.$accent-primary;
     background: variables.$timeline-clip-hover;
     box-shadow: 0 0 0 1px variables.$accent-glow;
   }
@@ -396,18 +399,47 @@
     cursor: grabbing;
     opacity: 0.85;
     border-color: variables.$accent-primary;
+    border-left-color: variables.$accent-primary;
     z-index: 8;
   }
+}
+
+.clipInner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.clipIcon {
+  flex-shrink: 0;
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .clipName {
   font-family: variables.$font-mono;
   font-size: 9px;
-  color: rgba(0, 229, 255, 0.6);
+  color: rgba(255, 255, 255, 0.75);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.clipDuration {
+  font-family: variables.$font-mono;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  pointer-events: none;
+  flex-shrink: 0;
+  margin-right: 4px;
 }
 
 .removeClipBtn {

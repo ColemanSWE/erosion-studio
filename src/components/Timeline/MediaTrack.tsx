@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from "react";
-import { Film, Trash2 } from "lucide-react";
+import { Film, Image, Camera, Trash2 } from "lucide-react";
 import type { TimelineClip, Overlay, TimelineTrack } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
 import { collectSnapTargets, applySnap } from "../../lib/timeline";
@@ -18,6 +18,7 @@ interface MediaTrackProps {
   currentTime: number;
   rowHeight: number;
   snapEnabled: boolean;
+  minWidth: number;
   onAddClip: (clip: TimelineClip) => void;
   onUpdateClip: (id: string, updates: Partial<TimelineClip>) => void;
   onRemoveClip: (id: string) => void;
@@ -42,6 +43,7 @@ export function MediaTrack({
   currentTime,
   rowHeight,
   snapEnabled,
+  minWidth,
   onAddClip,
   onUpdateClip,
   onRemoveClip,
@@ -76,6 +78,7 @@ export function MediaTrack({
     startX: number;
     origStart: number;
     origEnd: number;
+    mediaDuration: number | null;
   } | null>(null);
 
   const lastResizeX = useRef(0);
@@ -83,7 +86,7 @@ export function MediaTrack({
 
   const numTracks = Math.max(
     tracks.length,
-    ...clips.map((c) => c.trackIndex + 1),
+    ...clips.filter((c) => isFinite(c.trackIndex)).map((c) => c.trackIndex + 1),
     ...(draggingState ? [draggingState.trackIndex + 1] : []),
   );
   const totalHeight = numTracks * rowHeight;
@@ -170,19 +173,11 @@ export function MediaTrack({
           );
 
           const snapTargets = collectSnapTargets(clips, overlays, currentTime, r.clipId);
-          const { snappedTime: snappedStart, magnetTime: magnetStart } = applySnap(
+          const { snappedTime: finalStart, magnetTime } = applySnap(
             rawStart, snapTargets, zoom, snapEnabled,
           );
-          const { snappedTime: snappedEnd, magnetTime: magnetEnd } = applySnap(
-            rawStart + clipDuration, snapTargets, zoom, snapEnabled,
-          );
 
-          let finalStart = snappedStart;
-          if (!magnetStart && magnetEnd) {
-            finalStart = Math.max(0, snappedEnd - clipDuration);
-          }
-
-          onSnapLine(magnetStart ?? magnetEnd ?? null);
+          onSnapLine(magnetTime);
           setDragging({ clipId: r.clipId, startTime: finalStart, trackIndex: newTrackIndex });
         });
       };
@@ -221,12 +216,20 @@ export function MediaTrack({
       const clip = clips.find((c) => c.id === clipId);
       if (!clip) return;
 
+      const mediaItem = media.find((m) => m.id === clip.mediaId);
+      const isImage = mediaItem?.type === "image";
+      const mediaDuration =
+        !isImage && mediaItem?.duration && mediaItem.duration > 0 && isFinite(mediaItem.duration)
+          ? mediaItem.duration
+          : null;
+
       resizingRef.current = {
         clipId,
         side,
         startX: e.clientX,
         origStart: clip.startTime,
         origEnd: clip.endTime,
+        mediaDuration,
       };
 
       const snapTargets = collectSnapTargets(clips, overlays, currentTime, clipId);
@@ -244,10 +247,16 @@ export function MediaTrack({
 
           onSnapLine(magnetTime);
           if (r.side === "left") {
-            const newStart = Math.max(0, Math.min(r.origEnd - 0.1, snappedTime));
+            const maxStart = r.mediaDuration != null
+              ? r.origEnd - r.mediaDuration
+              : -Infinity;
+            const newStart = Math.max(0, Math.max(maxStart, Math.min(r.origEnd - 0.1, snappedTime)));
             onUpdateClip(r.clipId, { startTime: newStart });
           } else {
-            const newEnd = Math.max(r.origStart + 0.1, Math.min(duration, snappedTime));
+            const maxEnd = r.mediaDuration != null
+              ? r.origStart + r.mediaDuration
+              : duration;
+            const newEnd = Math.max(r.origStart + 0.1, Math.min(maxEnd, snappedTime));
             onUpdateClip(r.clipId, { endTime: newEnd });
           }
         });
@@ -267,7 +276,7 @@ export function MediaTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [clips, overlays, zoom, duration, currentTime, snapEnabled, onUpdateClip, onSnapLine],
+    [clips, overlays, media, zoom, duration, currentTime, snapEnabled, onUpdateClip, onSnapLine],
   );
 
   // ─── New media drop from MediaBrowser ────────────────────────────────────
@@ -309,7 +318,7 @@ export function MediaTrack({
       const snapTargets = collectSnapTargets(clips, overlays, currentTime);
       const { snappedTime: startTime } = applySnap(rawStart, snapTargets, zoom, snapEnabled);
       const clipDuration = getMediaDuration(item.id);
-      const endTime = Math.min(duration, startTime + clipDuration);
+      const endTime = startTime + clipDuration;
       const trackIndex = yToTrackIndex(e.clientY);
 
       onAddClip({
@@ -323,8 +332,12 @@ export function MediaTrack({
     [zoom, duration, clips, overlays, currentTime, snapEnabled, onAddClip, getMediaDuration, yToTrackIndex],
   );
 
-  const maxClipEnd = clips.reduce((max, c) => Math.max(max, c.endTime), duration);
-  const totalWidth = Math.max(maxClipEnd * zoom + 120, 400);
+  const maxClipEnd = clips.reduce(
+    (max, c) => (isFinite(c.endTime) ? Math.max(max, c.endTime) : max),
+    duration,
+  );
+  const safeMinWidth = isFinite(minWidth) ? minWidth : 0;
+  const totalWidth = Math.max(maxClipEnd * zoom + 120, safeMinWidth, 400);
 
   const trackHues = [210, 160, 40, 300, 20];
   const getTrackColor = (trackIndex: number) =>
@@ -334,7 +347,7 @@ export function MediaTrack({
     <div
       ref={dropRef}
       className={`${styles.dropZone} ${isDragOver ? styles.dragOver : ""}`}
-      style={{ width: totalWidth, height: totalHeight, position: "relative" }}
+      style={{ minWidth: totalWidth, width: totalWidth, height: totalHeight, position: "relative" }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -374,16 +387,29 @@ export function MediaTrack({
         const renderStart = isDragging ? draggingState!.startTime : clip.startTime;
         const renderTrack = isDragging ? draggingState!.trackIndex : clip.trackIndex;
         const left = renderStart * zoom;
-        const width = Math.max(4, (clip.endTime - clip.startTime) * zoom);
+        const clipSpan = isFinite(clip.endTime - clip.startTime) ? clip.endTime - clip.startTime : 0;
+        const clipW = Math.max(4, clipSpan * zoom);
         const top = renderTrack * rowHeight;
         const isSelected = selectedClipId === clip.id;
         const color = getTrackColor(clip.trackIndex);
+        const clipDurationSec = clipSpan;
+        const mediaItem = media.find((m) => m.id === clip.mediaId);
+        const MediaIcon = mediaItem?.type === "video" ? Film
+          : mediaItem?.type === "camera" ? Camera
+          : Image;
 
         return (
           <div
             key={clip.id}
             className={`${styles.clip} ${isSelected ? styles.selected : ""} ${isDragging ? styles.dragging : ""}`}
-            style={{ left, width, top, height: rowHeight - 4, background: color }}
+            style={{
+              left,
+              width: clipW,
+              top,
+              height: rowHeight - 4,
+              background: `linear-gradient(90deg, ${color} 0%, color-mix(in srgb, ${color} 70%, #000) 100%)`,
+              "--clip-accent": color,
+            } as React.CSSProperties}
             tabIndex={0}
             onMouseDown={(e) => startClipDrag(e, clip.id)}
             onKeyDown={(e) => {
@@ -398,10 +424,15 @@ export function MediaTrack({
               className={`${styles.clipHandle} ${styles.left}`}
               onMouseDown={(e) => startResize(e, clip.id, "left")}
             />
-            <span className={styles.clipName}>
-              <span style={{ opacity: 0.6, fontSize: 9 }}>T{clip.trackIndex + 1} </span>
-              {getMediaName(clip.mediaId)}
-            </span>
+            <div className={styles.clipInner}>
+              <MediaIcon size={9} className={styles.clipIcon} color="rgba(255,255,255,0.65)" />
+              <span className={styles.clipName}>{getMediaName(clip.mediaId)}</span>
+            </div>
+            {clipW > 60 && (
+              <span className={styles.clipDuration}>
+                {clipDurationSec.toFixed(1)}s
+              </span>
+            )}
 
             <button
               className={styles.removeClipBtn}

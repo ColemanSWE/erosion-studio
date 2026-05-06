@@ -36,7 +36,6 @@ function blockScore(
 }
 
 // Diamond search: large diamond → small diamond refinement.
-// Faster than full search, good quality for compounding MV fields.
 function diamondSearch(
   current: Uint8ClampedArray,
   reference: Uint8ClampedArray,
@@ -73,7 +72,6 @@ function diamondSearch(
   let cx = Math.round(predictDx);
   let cy = Math.round(predictDy);
 
-  // Coarse pass: jump by step size toward minimum
   for (let radius = searchRange; radius >= step * 2; radius = Math.floor(radius / 2)) {
     let bestScore = Infinity;
     let bestDx = cx;
@@ -89,7 +87,6 @@ function diamondSearch(
     cy = bestDy;
   }
 
-  // Fine pass: small diamond around best candidate
   {
     let bestScore = blockScore(current, reference, width, height, startX, startY, endX, endY, cx, cy, 1);
     let bestDx = cx;
@@ -167,6 +164,86 @@ class DatamoshEngine {
     }
   }
 
+  // Bilinearly interpolate motion vector at pixel (x, y) across block centers.
+  // Block center for block (bx, by) is at pixel (bx*bs + bs/2, by*bs + bs/2).
+  // This eliminates the hard 16x16 grid boundaries that create the mosaic look.
+  sampleMV(x: number, y: number, blockSize: number): { vx: number; vy: number } {
+    const { width, height, mvX, mvY } = this;
+    if (!mvX || !mvY) return { vx: 0, vy: 0 };
+
+    const blocksX = Math.ceil(width / blockSize);
+    const blocksY = Math.ceil(height / blockSize);
+    const half = blockSize * 0.5;
+
+    // Position in block-center space
+    const fx = (x - half) / blockSize;
+    const fy = (y - half) / blockSize;
+
+    const bx0 = Math.floor(fx);
+    const by0 = Math.floor(fy);
+    const bx1 = bx0 + 1;
+    const by1 = by0 + 1;
+
+    const wx = fx - bx0;
+    const wy = fy - by0;
+
+    const clampBx = (v: number) => Math.max(0, Math.min(blocksX - 1, v));
+    const clampBy = (v: number) => Math.max(0, Math.min(blocksY - 1, v));
+
+    const i00 = clampBy(by0) * blocksX + clampBx(bx0);
+    const i10 = clampBy(by0) * blocksX + clampBx(bx1);
+    const i01 = clampBy(by1) * blocksX + clampBx(bx0);
+    const i11 = clampBy(by1) * blocksX + clampBx(bx1);
+
+    const vx = (1 - wy) * ((1 - wx) * mvX[i00] + wx * mvX[i10])
+             + wy       * ((1 - wx) * mvX[i01] + wx * mvX[i11]);
+    const vy = (1 - wy) * ((1 - wx) * mvY[i00] + wx * mvY[i10])
+             + wy       * ((1 - wx) * mvY[i01] + wx * mvY[i11]);
+
+    return { vx, vy };
+  }
+
+  // Direct warp: sample moshBuffer displaced by interpolated MVs, write result
+  // back. Used by transition mode -- the secondary clip's motion animates the
+  // primary clip's pixels without any pixel blending from the secondary source.
+  warpDirect(
+    blockSize: number,
+    mvScale: number,
+    channelShift: number,
+    decayFactor: number
+  ): void {
+    const { width, height, moshBuffer, iFrame } = this;
+    if (!moshBuffer || !iFrame) return;
+    const temp = new Uint8ClampedArray(moshBuffer);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const di = (y * width + x) * 4;
+        const { vx, vy } = this.sampleMV(x, y, blockSize);
+        const dx = vx * mvScale;
+        const dy = vy * mvScale;
+
+        const shift = channelShift;
+        const r = bilinearSample(temp, width, height, x + dx + shift, y + dy, 0);
+        const g = bilinearSample(temp, width, height, x + dx,         y + dy, 1);
+        const b = bilinearSample(temp, width, height, x + dx - shift, y + dy, 2);
+
+        if (decayFactor > 0) {
+          const t = 1 - decayFactor;
+          moshBuffer[di]     = Math.round(r * t + iFrame[di]     * decayFactor);
+          moshBuffer[di + 1] = Math.round(g * t + iFrame[di + 1] * decayFactor);
+          moshBuffer[di + 2] = Math.round(b * t + iFrame[di + 2] * decayFactor);
+        } else {
+          moshBuffer[di]     = Math.round(r);
+          moshBuffer[di + 1] = Math.round(g);
+          moshBuffer[di + 2] = Math.round(b);
+        }
+        moshBuffer[di + 3] = 255;
+      }
+    }
+  }
+
+  // Warp with optional bleed from an external source buffer (smear/bloom modes).
   warpMoshBuffer(
     blockSize: number,
     mvScale: number,
@@ -175,44 +252,27 @@ class DatamoshEngine {
     bleedData: Uint8ClampedArray | null,
     bleedFactor: number
   ): void {
-    const { width, height, moshBuffer, iFrame, mvX, mvY } = this;
-    if (!moshBuffer || !iFrame || !mvX || !mvY) return;
-
-    const blocksX = Math.ceil(width / blockSize);
-    const blocksY = Math.ceil(height / blockSize);
+    const { width, height, moshBuffer, iFrame } = this;
+    if (!moshBuffer || !iFrame) return;
     const temp = new Uint8ClampedArray(moshBuffer);
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const bx = Math.min(blocksX - 1, Math.floor(x / blockSize));
-        const by = Math.min(blocksY - 1, Math.floor(y / blockSize));
-        const bi = by * blocksX + bx;
         const di = (y * width + x) * 4;
+        const { vx, vy } = this.sampleMV(x, y, blockSize);
+        const dx = vx * mvScale;
+        const dy = vy * mvScale;
 
-        const baseDx = mvX[bi] * mvScale;
-        const baseDy = mvY[bi] * mvScale;
-
-        // Per-channel MV offset for chromatic fringing
         const shift = channelShift;
-        const r = bilinearSample(temp, width, height, x + baseDx + shift, y + baseDy, 0);
-        const g = bilinearSample(temp, width, height, x + baseDx, y + baseDy, 1);
-        const b = bilinearSample(temp, width, height, x + baseDx - shift, y + baseDy, 2);
+        const r = bilinearSample(temp, width, height, x + dx + shift, y + dy, 0);
+        const g = bilinearSample(temp, width, height, x + dx,         y + dy, 1);
+        const b = bilinearSample(temp, width, height, x + dx - shift, y + dy, 2);
 
-        const iDecay = decayFactor;
-        const sBleed = bleedFactor;
-        const keep = 1 - iDecay - sBleed;
+        const keep = 1 - decayFactor - bleedFactor;
 
-        const ir = iFrame[di];
-        const ig = iFrame[di + 1];
-        const ib = iFrame[di + 2];
-
-        const sr = bleedData ? bleedData[di] : 0;
-        const sg = bleedData ? bleedData[di + 1] : 0;
-        const sb = bleedData ? bleedData[di + 2] : 0;
-
-        moshBuffer[di]     = Math.round(r * keep + ir * iDecay + sr * sBleed);
-        moshBuffer[di + 1] = Math.round(g * keep + ig * iDecay + sg * sBleed);
-        moshBuffer[di + 2] = Math.round(b * keep + ib * iDecay + sb * sBleed);
+        moshBuffer[di]     = Math.round(r * keep + iFrame[di]     * decayFactor + (bleedData ? bleedData[di]     : 0) * bleedFactor);
+        moshBuffer[di + 1] = Math.round(g * keep + iFrame[di + 1] * decayFactor + (bleedData ? bleedData[di + 1] : 0) * bleedFactor);
+        moshBuffer[di + 2] = Math.round(b * keep + iFrame[di + 2] * decayFactor + (bleedData ? bleedData[di + 2] : 0) * bleedFactor);
         moshBuffer[di + 3] = 255;
       }
     }
@@ -298,15 +358,14 @@ registerEffect({
       return;
     }
 
-    const mvScale = intensity / 50; // 0..2
-    const decayFactor = decay * 0.05; // keep small so buffer doesn't collapse
-    const searchStep = quality === "fast" ? 4 : quality === "high" ? 1 : 2;
+    const mvScale    = intensity / 50;
+    const decayFactor = decay * 0.05;
+    const searchStep  = quality === "fast" ? 4 : quality === "high" ? 1 : 2;
 
     const secondary = timelineFrames && timelineFrames.length > 0 ? timelineFrames[0] : null;
     const secData = secondary ? secondary.data as Uint8ClampedArray : null;
     const hasSecondary = secData !== null && secData.length === data.length;
 
-    // Transition edge detection: secondary clip just appeared → freeze I-frame
     const justStartedTransition = hasSecondary && !engine.hadSecondary;
     if (justStartedTransition || freeze) {
       engine.iFrame!.set(data);
@@ -319,71 +378,64 @@ registerEffect({
     // ── Mode dispatch ────────────────────────────────────────────────────────
 
     if (mode === "smear") {
-      // Estimate MVs: current frame vs previous frame (single-source)
       engine.estimateMVs(
         data, engine.prevFrame!,
-        blockSize, searchRange, searchStep,
-        momentum
+        blockSize, searchRange, searchStep, momentum
       );
-      engine.warpMoshBuffer(
-        blockSize, mvScale, channelShift,
-        decayFactor,
-        null, 0
-      );
+      engine.warpMoshBuffer(blockSize, mvScale, channelShift, decayFactor, null, 0);
 
     } else if (mode === "transition") {
       if (hasSecondary) {
+        // Drive warping from secondary clip's own motion. The secondary clip's
+        // MVs are applied to the primary clip's pixels -- the secondary "emerges"
+        // through its own movement patterns without direct pixel blending.
         const ref = engine.prevSecondary ?? engine.prevFrame!;
         engine.estimateMVs(
           secData!, ref,
-          blockSize, searchRange, searchStep,
-          momentum
+          blockSize, searchRange, searchStep, momentum
         );
-        const bleedFactor = (bleed * 0.002); // slow bleed from secondary
-        engine.warpMoshBuffer(
-          blockSize, mvScale, channelShift,
-          decayFactor,
-          secData, bleedFactor
-        );
+        // Direct warp: no three-way blend. Optional bleed adds a faint ghost of
+        // the secondary for artistic control (default bleed=0.2 → 0.02 per frame).
+        engine.warpDirect(blockSize, mvScale, channelShift, decayFactor);
+        if (bleed > 0) {
+          // Light additive ghost from secondary on top of the warped buffer
+          const bleedAmt = bleed * 0.02;
+          const mb = engine.moshBuffer!;
+          for (let i = 0; i < mb.length - 3; i += 4) {
+            mb[i]     = Math.min(255, Math.round(mb[i]     * (1 - bleedAmt) + secData![i]     * bleedAmt));
+            mb[i + 1] = Math.min(255, Math.round(mb[i + 1] * (1 - bleedAmt) + secData![i + 1] * bleedAmt));
+            mb[i + 2] = Math.min(255, Math.round(mb[i + 2] * (1 - bleedAmt) + secData![i + 2] * bleedAmt));
+          }
+        }
         if (!engine.prevSecondary) {
           engine.prevSecondary = new Uint8ClampedArray(secData!);
         } else {
           engine.prevSecondary.set(secData!);
         }
       } else {
-        // Outside transition: keep I-frame and mosh buffer current
+        // No secondary: keep mosh buffer current so it's ready when overlap begins
         engine.iFrame!.set(data);
         engine.moshBuffer!.set(data);
         engine.prevSecondary = null;
       }
 
     } else if (mode === "bloom") {
-      const ref = engine.prevFrame!;
       engine.estimateMVs(
-        data, ref,
-        blockSize, searchRange, searchStep,
-        momentum
+        data, engine.prevFrame!,
+        blockSize, searchRange, searchStep, momentum
       );
-      // Continuously bleed live source into mosh buffer
-      const bleedFactor = bleed * 0.008;
-      engine.warpMoshBuffer(
-        blockSize, mvScale, channelShift,
-        decayFactor,
-        data, bleedFactor
-      );
+      // Tuned bleed rate: at default bleed=0.2, bleedFactor=0.016 per frame,
+      // which is perceptible over ~60 frames without overwhelming the warp.
+      const bleedFactor = bleed * 0.08;
+      engine.warpMoshBuffer(blockSize, mvScale, channelShift, decayFactor, data, bleedFactor);
 
     } else if (mode === "glitch") {
       engine.estimateMVs(
         data, engine.prevFrame!,
-        blockSize, searchRange, searchStep,
-        momentum
+        blockSize, searchRange, searchStep, momentum
       );
       engine.glitchMVs(blockSize, intensity);
-      engine.warpMoshBuffer(
-        blockSize, mvScale, channelShift,
-        decayFactor,
-        null, 0
-      );
+      engine.warpMoshBuffer(blockSize, mvScale, channelShift, decayFactor, null, 0);
     }
 
     data.set(engine.moshBuffer!);
