@@ -4,52 +4,88 @@ import type { ProcessConfig } from "./effect-registry";
 type WorkerMessage = { id: number; buffer: Uint8ClampedArray; effects: Effect[]; config: ProcessConfig };
 type WorkerResponse = { id: number; buffer: Uint8ClampedArray; error?: string };
 
-let worker: Worker | null = null;
-let nextId = 0;
-const pending = new Map<number, { resolve: (buf: Uint8ClampedArray) => void; reject: (err: unknown) => void }>();
+const POOL_SIZE = 4;
 
-function getWorker(): Worker | null {
-  if (worker) return worker;
+interface PoolWorker {
+  worker: Worker;
+  busy: boolean;
+}
+
+const pool: Array<PoolWorker | null> = Array(POOL_SIZE).fill(null);
+let nextId = 0;
+let roundRobinIdx = 0;
+
+const pending = new Map<number, {
+  resolve: (buf: Uint8ClampedArray) => void;
+  reject: (err: unknown) => void;
+  workerIdx: number;
+}>();
+
+function makeWorker(idx: number): PoolWorker | null {
   try {
-    worker = new Worker(
-      new URL("./effects-worker.ts", import.meta.url),
-      { type: "module" }
-    );
-    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+    const w = new Worker(new URL("./effects-worker.ts", import.meta.url), { type: "module" });
+    const entry: PoolWorker = { worker: w, busy: false };
+
+    w.onmessage = (e: MessageEvent<WorkerResponse>) => {
       const { id, buffer, error } = e.data;
       const p = pending.get(id);
-      if (!p) {
-        console.warn(`Worker: received response for unknown request id=${id}`);
-        return;
-      }
+      if (!p) return;
       pending.delete(id);
-      if (error) {
-        console.error("Worker effect processing error:", error);
-      }
+      pool[p.workerIdx]!.busy = false;
+      if (error) console.error("Worker effect processing error:", error);
       p.resolve(buffer);
     };
-    worker.onerror = (err) => {
-      for (const p of pending.values()) p.reject(err);
-      pending.clear();
-      worker = null;
+
+    w.onerror = (err) => {
+      for (const [pid, p] of pending.entries()) {
+        if (p.workerIdx === idx) {
+          pending.delete(pid);
+          p.reject(err);
+        }
+      }
+      pool[idx] = null;
     };
-    return worker;
+
+    return entry;
   } catch {
     return null;
   }
 }
 
+function getIdleWorkerIdx(): number {
+  // Prefer an idle worker; fall back to round-robin.
+  for (let i = 0; i < POOL_SIZE; i++) {
+    const idx = (roundRobinIdx + i) % POOL_SIZE;
+    const entry = pool[idx];
+    if (entry && !entry.busy) {
+      roundRobinIdx = (idx + 1) % POOL_SIZE;
+      return idx;
+    }
+  }
+  const idx = roundRobinIdx % POOL_SIZE;
+  roundRobinIdx = (roundRobinIdx + 1) % POOL_SIZE;
+  return idx;
+}
+
+function getWorkerAt(idx: number): PoolWorker | null {
+  if (!pool[idx]) pool[idx] = makeWorker(idx);
+  return pool[idx];
+}
+
 export function processEffectsInWorker(
   buffer: Uint8ClampedArray,
   effects: Effect[],
-  config: ProcessConfig
+  config: ProcessConfig,
 ): Promise<Uint8ClampedArray> {
-  const w = getWorker();
-  if (!w) return Promise.reject(new Error("Worker unavailable"));
+  const workerIdx = getIdleWorkerIdx();
+  const entry = getWorkerAt(workerIdx);
+  if (!entry) return Promise.reject(new Error("Worker unavailable"));
 
   const id = nextId++;
+  entry.busy = true;
+
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    pending.set(id, { resolve, reject, workerIdx });
     const configCopy: ProcessConfig = {
       ...config,
       timelineFrames: undefined,
@@ -57,17 +93,19 @@ export function processEffectsInWorker(
       handBounds: config.handBounds,
       poseBounds: config.poseBounds,
     };
-    w.postMessage(
+    entry.worker.postMessage(
       { id, buffer, effects, config: configCopy } as WorkerMessage,
-      [buffer.buffer]
+      [buffer.buffer],
     );
   });
 }
 
 export function disposeEffectsWorker(): void {
-  if (worker) {
-    worker.terminate();
-    worker = null;
+  for (let i = 0; i < POOL_SIZE; i++) {
+    if (pool[i]) {
+      pool[i]!.worker.terminate();
+      pool[i] = null;
+    }
   }
   for (const p of pending.values()) p.reject(new Error("Worker disposed"));
   pending.clear();

@@ -9,7 +9,8 @@ import type {
   Overlay,
 } from "../../lib/effects/types";
 import { getEffectDefinition } from "../../lib/effects/effect-registry";
-import { collectSnapTargets, applySnap } from "../../lib/timeline";
+import { collectSnapTargets, applySnap, type SnapTarget } from "../../lib/timeline";
+import { useDragHandler, useResizeHandler } from "../../hooks/useDragHandler";
 import styles from "./Timeline.module.scss";
 
 interface EffectTrackProps {
@@ -92,85 +93,57 @@ export function EffectTrack({
   }, [contextMenu, closeContextMenu]);
 
   // ─── Drag whole bar ───────────────────────────────────────────────────────
+  const barDragRef = useRef<{ origStart: number; origEnd: number; snapTargets: SnapTarget[] } | null>(null);
+
+  const barDragCore = useDragHandler(
+    (dx) => {
+      const d = barDragRef.current;
+      if (!d) return;
+      const clipLen = d.origEnd - d.origStart;
+      const rawStart = d.origStart + dx / zoom;
+      const { snappedTime: snappedStart, magnetTime: ms } = applySnap(rawStart, d.snapTargets, zoom, snapEnabled);
+      const { snappedTime: snappedEnd, magnetTime: me2 } = applySnap(rawStart + clipLen, d.snapTargets, zoom, snapEnabled);
+      let finalStart = ms ? snappedStart : me2 ? Math.max(0, snappedEnd - clipLen) : snappedStart;
+      finalStart = Math.max(0, Math.min(duration - clipLen, finalStart));
+      onSnapLine(ms ?? me2 ?? null);
+      onUpdateEffect(effect.id, { startTime: finalStart, endTime: finalStart + clipLen });
+    },
+    () => { barDragRef.current = null; onSnapLine(null); },
+  );
+
   const handleBarDrag = useCallback(
     (e: React.MouseEvent) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const origStart = startTime;
-      const origEnd = endTime;
-      const clipLen = origEnd - origStart;
-      let lastX = startX;
-      let rafId: number | null = null;
-      const snapTargets = buildSnapTargets();
-
-      const onMove = (me: MouseEvent) => {
-        lastX = me.clientX;
-        if (rafId !== null) return;
-        rafId = requestAnimationFrame(() => {
-          rafId = null;
-          const rawStart = origStart + (lastX - startX) / zoom;
-          const { snappedTime: snappedStart, magnetTime: ms } = applySnap(rawStart, snapTargets, zoom, snapEnabled);
-          const { snappedTime: snappedEnd, magnetTime: me2 } = applySnap(rawStart + clipLen, snapTargets, zoom, snapEnabled);
-
-          let finalStart = snappedStart;
-          if (!ms && me2) finalStart = Math.max(0, snappedEnd - clipLen);
-          finalStart = Math.max(0, Math.min(duration - clipLen, finalStart));
-
-          onSnapLine(ms ?? me2 ?? null);
-          onUpdateEffect(effect.id, { startTime: finalStart, endTime: finalStart + clipLen });
-        });
-      };
-      const onUp = () => {
-        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-        onSnapLine(null);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+      barDragRef.current = { origStart: startTime, origEnd: endTime, snapTargets: buildSnapTargets() };
+      barDragCore(e);
     },
-    [startTime, endTime, zoom, duration, effect.id, snapEnabled, buildSnapTargets, onUpdateEffect, onSnapLine],
+    [startTime, endTime, buildSnapTargets, barDragCore],
   );
 
   // ─── Resize handles ───────────────────────────────────────────────────────
+  const barResizeRef = useRef<{ origStart: number; origEnd: number; side: "left" | "right"; snapTargets: SnapTarget[] } | null>(null);
+
+  const barResizeCore = useResizeHandler(
+    (dx) => {
+      const d = barResizeRef.current;
+      if (!d) return;
+      const rawTime = (d.side === "left" ? d.origStart : d.origEnd) + dx / zoom;
+      const { snappedTime, magnetTime } = applySnap(rawTime, d.snapTargets, zoom, snapEnabled);
+      onSnapLine(magnetTime);
+      if (d.side === "left") {
+        onUpdateEffect(effect.id, { startTime: Math.max(0, Math.min(d.origEnd - 0.1, snappedTime)) });
+      } else {
+        onUpdateEffect(effect.id, { endTime: Math.max(d.origStart + 0.1, Math.min(duration, snappedTime)) });
+      }
+    },
+    () => { barResizeRef.current = null; onSnapLine(null); },
+  );
+
   const startBarResize = useCallback(
     (e: React.MouseEvent, side: "left" | "right") => {
-      e.preventDefault();
-      e.stopPropagation();
-      const startX = e.clientX;
-      const origStart = startTime;
-      const origEnd = endTime;
-      let lastX = startX;
-      let rafId: number | null = null;
-      const snapTargets = buildSnapTargets();
-
-      const onMove = (me: MouseEvent) => {
-        lastX = me.clientX;
-        if (rafId !== null) return;
-        rafId = requestAnimationFrame(() => {
-          rafId = null;
-          const rawTime = (side === "left" ? origStart : origEnd) + (lastX - startX) / zoom;
-          const { snappedTime, magnetTime } = applySnap(rawTime, snapTargets, zoom, snapEnabled);
-          onSnapLine(magnetTime);
-          if (side === "left") {
-            const newStart = Math.max(0, Math.min(origEnd - 0.1, snappedTime));
-            onUpdateEffect(effect.id, { startTime: newStart });
-          } else {
-            const newEnd = Math.max(origStart + 0.1, Math.min(duration, snappedTime));
-            onUpdateEffect(effect.id, { endTime: newEnd });
-          }
-        });
-      };
-      const onUp = () => {
-        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-        onSnapLine(null);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+      barResizeRef.current = { origStart: startTime, origEnd: endTime, side, snapTargets: buildSnapTargets() };
+      barResizeCore(e);
     },
-    [startTime, endTime, zoom, duration, effect.id, snapEnabled, buildSnapTargets, onUpdateEffect, onSnapLine],
+    [startTime, endTime, buildSnapTargets, barResizeCore],
   );
 
   // ─── Keyframe actions ─────────────────────────────────────────────────────
@@ -348,7 +321,6 @@ export function EffectTrack({
 }
 
 // ─── Keyframe Marker ─────────────────────────────────────────────────────────
-import type { SnapTarget } from "../../lib/timeline";
 
 interface KeyframeMarkerProps {
   kf: Keyframe;
@@ -386,37 +358,25 @@ function KeyframeMarker({
   onSnapLine,
 }: KeyframeMarkerProps) {
   const markerRef = useRef<HTMLDivElement>(null);
+  const kfDragRef = useRef<{ origTime: number }>({ origTime: 0 });
+
+  const kfDragCore = useDragHandler(
+    (dx) => {
+      const rawTime = Math.max(0, Math.min(duration, kfDragRef.current.origTime + dx / zoom));
+      const { snappedTime, magnetTime } = applySnap(rawTime, snapTargets, zoom, snapEnabled);
+      onSnapLine(magnetTime);
+      onUpdate({ time: snappedTime });
+    },
+    () => { onSnapLine(null); },
+  );
 
   const startDrag = useCallback(
     (e: React.MouseEvent) => {
-      e.preventDefault();
       e.stopPropagation();
-      const startX = e.clientX;
-      const origTime = kf.time;
-      let lastX = startX;
-      let rafId: number | null = null;
-
-      const onMove = (me: MouseEvent) => {
-        lastX = me.clientX;
-        if (rafId !== null) return;
-        rafId = requestAnimationFrame(() => {
-          rafId = null;
-          const rawTime = Math.max(0, Math.min(duration, origTime + (lastX - startX) / zoom));
-          const { snappedTime, magnetTime } = applySnap(rawTime, snapTargets, zoom, snapEnabled);
-          onSnapLine(magnetTime);
-          onUpdate({ time: snappedTime });
-        });
-      };
-      const onUp = () => {
-        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-        onSnapLine(null);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+      kfDragRef.current = { origTime: kf.time };
+      kfDragCore(e);
     },
-    [kf.time, zoom, duration, snapTargets, snapEnabled, onUpdate, onSnapLine],
+    [kf.time, kfDragCore],
   );
 
   return (

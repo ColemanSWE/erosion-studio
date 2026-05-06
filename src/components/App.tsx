@@ -12,6 +12,7 @@ import EffectsPanel from "./EffectsPanel/EffectsPanel";
 import { Timeline } from "./Timeline/Timeline";
 import ExportDialog from "./ExportDialog/ExportDialog";
 import WelcomeModal from "./WelcomeModal/WelcomeModal";
+import { CameraHud } from "./Preview/CameraHud";
 import type { ExportSettings } from "./ExportDialog/ExportDialog";
 import { useProjectStore, selectCanUndo, selectCanRedo } from "../stores/projectStore";
 import { useUIStore } from "../stores/uiStore";
@@ -24,10 +25,10 @@ import { useExport } from "../hooks/useExport";
 import { usePlayback } from "../hooks/usePlayback";
 import { useFileImport } from "../hooks/useFileImport";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useAppActions } from "../hooks/useAppActions";
+import { resolveRenderSources } from "../hooks/useRenderSources";
 import type { Region } from "../lib/effects/types";
 import styles from "./App.module.scss";
-import previewStyles from "./Preview/Preview.module.scss";
-import { Camera, Video, Square as StopIcon } from "lucide-react";
 import { resolveEffectsAtTime } from "../lib/timeline";
 import "../lib/effects/processors";
 
@@ -142,69 +143,17 @@ function App() {
   const { liveTimeRef } = usePlayback({ isPlaying, currentTime, duration, setCurrentTime, pause });
 
   // ─── Timeline rendering logic ─────────────────────────────────────────────
-  const activeClips = clips
-    .filter((c) => currentTime >= c.startTime && currentTime <= c.endTime)
-    .sort((a, b) => a.startTime - b.startTime);
-
-  const activeMediaList = activeClips
-    .map((c) => ({
-      clip: c,
-      media: media.find((m) => m.id === c.mediaId),
-      isFallback: false,
-    }))
-    .filter(
-      (m): m is { clip: (typeof activeClips)[number]; media: NonNullable<ReturnType<typeof media.find>>; isFallback: boolean } =>
-        m.media != null,
-    );
-
-  const selectedMedia = media.find((m) => m.id === selectedMediaId);
-
-  const renderSources =
-    activeMediaList.length > 0
-      ? activeMediaList
-      : selectedMedia
-        ? [{ clip: undefined, media: selectedMedia, isFallback: true }]
-        : [];
-
   const resolvedEffects = resolveEffectsAtTime(effects, effectParamTracks, currentTime);
 
-  const isCamera = renderSources.length > 0 && renderSources[0].media?.type === "camera";
-  const isVideo = renderSources.length > 0 && renderSources.some((s) => s.media?.type === "video");
-
-  const imageSources = renderSources
-    .filter((s) => s.media.type === "image")
-    .map((s) => ({
-      id: s.clip ? s.clip.id : s.media.id,
-      path: s.media.path,
-    }));
-
-  const videoSources = renderSources
-    .filter((s) => s.media.type === "video")
-    .map((s) => ({
-      id: s.clip ? s.clip.id : s.media.id,
-      path: s.media.path,
-      clipStartTime: s.clip ? s.clip.startTime : 0,
-    }));
-
-  const activeOverlays = overlays.filter(
-    (o) => currentTime >= o.startTime && currentTime <= o.endTime,
+  const resolveEffectsForTime = useCallback(
+    (time: number) => resolveEffectsAtTime(effects, effectParamTracks, time),
+    [effects, effectParamTracks],
   );
 
-  const overlayVideos = activeOverlays
-    .filter((o) => o.type === "video" && o.mediaId)
-    .map((o) => {
-      const mediaItem = media.find((m) => m.id === o.mediaId);
-      return { id: o.id, path: mediaItem?.path || "", clipStartTime: o.startTime };
-    })
-    .filter((o) => o.path);
-
-  const overlayImages = activeOverlays
-    .filter((o) => o.type === "image" && o.mediaId)
-    .map((o) => {
-      const mediaItem = media.find((m) => m.id === o.mediaId);
-      return { id: o.id, path: mediaItem?.path || "" };
-    })
-    .filter((o) => o.path);
+  const { videoSources, imageSources, activeOverlays, overlayVideos, overlayImages, isCamera, isVideo } = useMemo(
+    () => resolveRenderSources(clips, media, overlays, currentTime, selectedMediaId),
+    [clips, media, overlays, currentTime, selectedMediaId],
+  );
 
   // ─── Rendering hooks ─────────────────────────────────────────────────────
   const { exportImage } = usePhotoEditor({
@@ -229,6 +178,7 @@ function App() {
 
   useVideoPlayer({
     canvas,
+    resolveEffects: resolveEffectsForTime,
     effects: resolvedEffects,
     activeVideos: videoSources,
     overlayVideos,
@@ -316,7 +266,7 @@ function App() {
       const exportDuration =
         clips.length > 0
           ? Math.max(...clips.map((c) => c.endTime))
-          : selectedMedia?.duration ?? duration;
+          : media.find((m) => m.id === selectedMediaId)?.duration ?? duration;
 
       if (fmt === "png" || fmt === "jpeg") {
         result = await exportImageFile(canvas, fmt === "jpeg" ? "jpeg" : "png");
@@ -353,34 +303,8 @@ function App() {
   };
 
   // ─── Actions ──────────────────────────────────────────────────────────────
-  const handleUndo = useCallback(() => undo(), [undo]);
-  const handleRedo = useCallback(() => redo(), [redo]);
-  const handleSave = useCallback(async () => saveProject(), [saveProject]);
-  const handleSaveAs = useCallback(async () => saveProjectAs(), [saveProjectAs]);
-
-  const handleNewProject = useCallback(() => {
-    if (isDirty && !window.confirm("You have unsaved changes. Discard them and create a new project?")) return;
-    newProject("Untitled Project");
-  }, [isDirty, newProject]);
-
-  // ─── Native menu actions ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (!window.electron?.onMenuAction) return;
-    const unsubscribe = window.electron.onMenuAction((action) => {
-      switch (action) {
-        case "new-project": handleNewProject(); break;
-        case "open-project": loadProject(); break;
-        case "save-project": handleSave(); break;
-        case "save-project-as": handleSaveAs(); break;
-        case "undo": handleUndo(); break;
-        case "redo": handleRedo(); break;
-      }
-    });
-    return unsubscribe;
-  }, [handleNewProject, loadProject, handleSave, handleSaveAs, handleUndo, handleRedo]);
-
-  const handleShowWelcome = useCallback(() => setShowWelcome(true), [setShowWelcome]);
-  const handleCloseWelcome = useCallback(() => setShowWelcome(false), [setShowWelcome]);
+  const { handleUndo, handleRedo, handleSave, handleSaveAs, handleNewProject, handleShowWelcome, handleCloseWelcome } =
+    useAppActions({ isDirty, undo, redo, saveProject, saveProjectAs, loadProject, newProject, setShowWelcome });
 
   const handlePlayPause = useCallback(() => {
     if (isPlaying) pause();
@@ -481,7 +405,7 @@ function App() {
         orientation="vertical"
         className={styles.panelGroupVertical}
         onLayoutChanged={(layout) => {
-          const tlSize = layout["timeline"]?.asPercentage;
+          const tlSize = layout["timeline"];
           if (tlSize !== undefined && tlSize >= 12) setTimelineSize(tlSize);
         }}
       >
@@ -489,8 +413,8 @@ function App() {
           <PanelGroup
             orientation="horizontal"
             onLayoutChanged={(layout) => {
-              const mbSize = layout["media-browser"]?.asPercentage;
-              const epSize = layout["effects-panel"]?.asPercentage;
+              const mbSize = layout["media-browser"];
+              const epSize = layout["effects-panel"];
               if (mbSize !== undefined && mbSize >= 12) setMediaBrowserSize(mbSize);
               if (epSize !== undefined && epSize >= 14) setEffectsPanelSize(epSize);
             }}
@@ -535,41 +459,13 @@ function App() {
                 onSourceTransformChange={setSourceTransform}
                 captureHud={
                   isCamera ? (
-                    <div className={previewStyles.captureHud}>
-                      <button
-                        className={`${previewStyles.captureBtn} ${previewStyles.snap}`}
-                        onClick={snapPhoto}
-                        title="Snap photo from canvas (effects included)"
-                      >
-                        <Camera size={13} />
-                        Snap
-                      </button>
-                      {captureMode === "idle" ? (
-                        <button
-                          className={`${previewStyles.captureBtn} ${previewStyles.record}`}
-                          onClick={startRecording}
-                          title="Start recording (effects included)"
-                        >
-                          <Video size={13} />
-                          Record
-                        </button>
-                      ) : (
-                        <>
-                          <span className={previewStyles.recTimer}>
-                            {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:
-                            {String(recSeconds % 60).padStart(2, "0")}
-                          </span>
-                          <button
-                            className={`${previewStyles.captureBtn} ${previewStyles.record} ${previewStyles.recording}`}
-                            onClick={stopRecording}
-                            title="Stop recording"
-                          >
-                            <StopIcon size={13} />
-                            Stop
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    <CameraHud
+                      captureMode={captureMode}
+                      recSeconds={recSeconds}
+                      onSnap={snapPhoto}
+                      onStartRecording={startRecording}
+                      onStopRecording={stopRecording}
+                    />
                   ) : undefined
                 }
               />

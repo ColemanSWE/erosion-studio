@@ -131,6 +131,7 @@ export interface Overlay {
   color?: string;
   fontSize?: number;
   fontFamily?: string;
+  opacity?: number; // 0–1, default 1
   isEffectZone?: boolean; // If true, it acts as a mask and isn't drawn directly
 }
 

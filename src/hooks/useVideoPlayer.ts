@@ -38,6 +38,7 @@ function resolveSrc(path: string): string {
 
 interface UseVideoPlayerOptions {
   canvas: HTMLCanvasElement | null;
+  resolveEffects?: (time: number) => Effect[];
   effects: Effect[];
   activeVideos: ActiveVideo[];
   overlayVideos?: ActiveVideo[];
@@ -51,10 +52,6 @@ interface UseVideoPlayerOptions {
   sourceTransform?: SourceTransform;
 }
 
-/** Resolve a video path to a URL the HTML video element can load.
- *  - blob: / data: / http: → pass through as-is
- *  - Absolute paths → file:// (works when webSecurity: false in Electron)
- */
 function resolveVideoSrc(videoPath: string): string {
   if (
     videoPath.startsWith("blob:") ||
@@ -70,6 +67,7 @@ function resolveVideoSrc(videoPath: string): string {
 
 export function useVideoPlayer({
   canvas,
+  resolveEffects,
   effects,
   activeVideos,
   overlayVideos = [],
@@ -92,13 +90,20 @@ export function useVideoPlayer({
   const wantedImageIdsRef = useRef<Set<string>>(new Set());
 
   const animationFrameRef = useRef<number>();
+  const gifTickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef(0);
   const faceBoundsRef = useRef<FaceBounds[]>([]);
+  const faceDetectionRunningRef = useRef(false);
   const emaFrameTimeRef = useRef(0);
 
-  // Refs for all volatile props — keeps the render callback identity stable across frames.
-  // Without this, every re-render caused by setCurrentTime would create a new `render`
-  // function, which would cause the play/pause effect to cancel and restart the RAF loop.
+  // P4: dirty-checking refs — skip rendering when video frame + effects are unchanged
+  const lastVideoTimeRef = useRef(-1);
+  const lastEffectsRef = useRef<Effect[] | null>(null);
+  const lastRegionsRef = useRef<Region[] | null>(null);
+  const lastOverlaysRef = useRef<Overlay[] | null>(null);
+
+  // Refs for volatile props — keeps render callback stable across re-renders.
+  const resolveEffectsRef = useRef(resolveEffects);
   const effectsRef = useRef(effects);
   const activeVideosRef = useRef(activeVideos);
   const overlayVideosRef = useRef(overlayVideos);
@@ -109,6 +114,7 @@ export function useVideoPlayer({
   const sourceTransformRef = useRef(sourceTransform);
   const currentTimeRef = useRef(currentTime);
 
+  resolveEffectsRef.current = resolveEffects;
   effectsRef.current = effects;
   activeVideosRef.current = activeVideos;
   overlayVideosRef.current = overlayVideos;
@@ -127,6 +133,10 @@ export function useVideoPlayer({
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
       }
+      if (gifTickIntervalRef.current) {
+        clearInterval(gifTickIntervalRef.current);
+        gifTickIntervalRef.current = null;
+      }
       for (const decoder of gifDecodersRef.current.values()) decoder.dispose();
       gifDecodersRef.current.clear();
     };
@@ -138,10 +148,6 @@ export function useVideoPlayer({
   isPlayingRef.current = isPlaying;
   const renderRef = useRef<(() => Promise<void>) | null>(null);
 
-  // `canvas` is the only dep — all other values are read from refs so this
-  // function keeps the same identity for the entire mount. This prevents the
-  // play/pause effect (which lists `render` as a dep) from canceling and
-  // restarting the RAF loop on every frame.
   const render = useCallback(async () => {
     const currentActiveVideos = activeVideosRef.current;
     if (!canvas || currentActiveVideos.length === 0) return;
@@ -165,6 +171,25 @@ export function useVideoPlayer({
     const videoW = primaryVideo.videoWidth || canvas.width;
     const videoH = primaryVideo.videoHeight || canvas.height;
 
+    // P4: skip rendering when the video frame and all reactive state are unchanged.
+    const currentVideoTime = primaryVideo.currentTime;
+    const hasNewVideoFrame = Math.abs(currentVideoTime - lastVideoTimeRef.current) > 0.0001;
+    const effectsUnchanged =
+      effectsRef.current === lastEffectsRef.current &&
+      regionsRef.current === lastRegionsRef.current &&
+      overlaysRef.current === lastOverlaysRef.current;
+
+    if (isPlayingRef.current && !hasNewVideoFrame && effectsUnchanged) {
+      tickRef.current++;
+      animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
+      return;
+    }
+
+    if (hasNewVideoFrame) lastVideoTimeRef.current = currentVideoTime;
+    lastEffectsRef.current = effectsRef.current;
+    lastRegionsRef.current = regionsRef.current;
+    lastOverlaysRef.current = overlaysRef.current;
+
     const secondaryFrames: ImageData[] = [];
     for (let i = 1; i < currentActiveVideos.length; i++) {
       const secDef = currentActiveVideos[i];
@@ -178,27 +203,25 @@ export function useVideoPlayer({
     const frameStart = performance.now();
     const FRAME_BUDGET_MS = 33;
 
-    // Advance animated GIF overlay frames
-    const now = performance.now();
-    for (const [id, decoder] of gifDecodersRef.current.entries()) {
-      const advanced = await decoder.tick(now);
-      if (advanced && decoder.bitmap) {
-        overlayImagesMapRef.current.set(id, decoder.bitmap);
-      }
-    }
-
     const ema = emaFrameTimeRef.current;
     const skipEffects = ema > FRAME_BUDGET_MS * 4;
     const throttleEffects = !skipEffects && ema > FRAME_BUDGET_MS * 2 && tickRef.current % 2 !== 0;
 
     if (!skipEffects && !throttleEffects) {
-      if (tickRef.current % 10 === 0 && requiresFaceDetection(effectsRef.current)) {
-        try {
-          faceBoundsRef.current = await detectFaces(primaryVideo);
-        } catch {
-          faceBoundsRef.current = [];
-        }
+      // P3: fire-and-forget face detection — cache last result, update asynchronously.
+      if (tickRef.current % 10 === 0 && requiresFaceDetection(effectsRef.current) && !faceDetectionRunningRef.current) {
+        faceDetectionRunningRef.current = true;
+        detectFaces(primaryVideo)
+          .then((bounds) => { faceBoundsRef.current = bounds; })
+          .catch(() => { faceBoundsRef.current = []; })
+          .finally(() => { faceDetectionRunningRef.current = false; });
       }
+
+      // P2: resolve effects using accurate video time (not throttled store time).
+      const liveTime = primaryVideoDef.clipStartTime + primaryVideo.currentTime;
+      const liveEffects = resolveEffectsRef.current
+        ? resolveEffectsRef.current(liveTime)
+        : effectsRef.current.filter(e => e.active);
 
       await renderWithEffects(
         {
@@ -221,7 +244,7 @@ export function useVideoPlayer({
             null,
           sourceTransform: sourceTransformRef.current,
         },
-        effectsRef.current.filter((e) => e.active),
+        liveEffects,
         regionsRef.current,
         overlaysRef.current,
       );
@@ -245,6 +268,37 @@ export function useVideoPlayer({
   useEffect(() => {
     renderRef.current = render;
   }, [render]);
+
+  // ── GIF frame advancement — runs on a dedicated interval, not in the RAF loop ──
+  useEffect(() => {
+    if (gifTickIntervalRef.current) {
+      clearInterval(gifTickIntervalRef.current);
+      gifTickIntervalRef.current = null;
+    }
+
+    gifTickIntervalRef.current = setInterval(() => {
+      const now = performance.now();
+      let anyAdvanced = false;
+      for (const [id, decoder] of gifDecodersRef.current.entries()) {
+        decoder.tick(now).then((advanced) => {
+          if (advanced && decoder.bitmap) {
+            overlayImagesMapRef.current.set(id, decoder.bitmap);
+            anyAdvanced = true;
+          }
+        });
+      }
+      if (anyAdvanced && !isPlayingRef.current) {
+        renderRef.current?.();
+      }
+    }, 33);
+
+    return () => {
+      if (gifTickIntervalRef.current) {
+        clearInterval(gifTickIntervalRef.current);
+        gifTickIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   // ── Image overlay lifecycle (static images + animated GIFs) ──────────────
   useEffect(() => {
@@ -373,8 +427,6 @@ export function useVideoPlayer({
   }, [activeVideos, overlayVideos]);
 
   // ── Play / pause ──────────────────────────────────────────────────────────
-  // `render` is stable (depends only on `canvas`), so this effect only fires
-  // when isPlaying actually changes — not on every frame.
   useEffect(() => {
     if (isPlaying) {
       for (const video of videosMapRef.current.values()) {
@@ -391,9 +443,6 @@ export function useVideoPlayer({
   }, [isPlaying, render]);
 
   // ── Seek (scrubbing while paused) ─────────────────────────────────────────
-  // During playback, videos run natively — no manual seeking needed.
-  // The early return eliminates all per-frame work when this effect fires from
-  // a throttled store update while playing.
   useEffect(() => {
     if (isPlaying) return;
 
@@ -409,6 +458,8 @@ export function useVideoPlayer({
     }
 
     if (seeked) {
+      // Reset dirty-check so the seeked frame always renders.
+      lastVideoTimeRef.current = -1;
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       render();
     }

@@ -1,30 +1,7 @@
-import { useState } from "react";
-import {
-  Plus,
-  ChevronDown,
-  ChevronRight,
-  GripVertical,
-  Trash2,
-  Square,
-  Search,
-  Type,
-} from "lucide-react";
-import EffectParams from "./EffectParams";
+import { EffectsCatalog } from "./EffectsCatalog";
+import { ActiveEffectsStack } from "./ActiveEffectsStack";
 import styles from "./EffectsPanel.module.scss";
 import type { Effect, EffectType, Region, Overlay } from "../../lib/effects/types";
-import { isStyleEffect, getAllEffects } from "../../lib/effects/effect-registry";
-const FONT_OPTIONS = [
-  { label: "Inter", value: "Inter, sans-serif" },
-  { label: "JetBrains Mono", value: "'JetBrains Mono', monospace" },
-  { label: "MingLiU", value: "MingLiU, 'Noto Serif TC', 'Songti SC', STSong, serif" },
-  { label: "Noto Serif TC", value: "'Noto Serif TC', serif" },
-  { label: "Space Mono", value: "'Space Mono', monospace" },
-  { label: "VT323", value: "VT323, monospace" },
-  { label: "Bebas Neue", value: "'Bebas Neue', sans-serif" },
-  { label: "Courier New", value: "'Courier New', Courier, monospace" },
-  { label: "Georgia", value: "Georgia, serif" },
-  { label: "Arial Black", value: "'Arial Black', sans-serif" },
-];
 
 interface EffectsPanelProps {
   effects: Effect[];
@@ -44,8 +21,6 @@ interface EffectsPanelProps {
   onAddTextOverlay: () => void;
 }
 
-
-
 function EffectsPanel({
   effects,
   regions,
@@ -63,384 +38,37 @@ function EffectsPanel({
   onUpdateOverlay,
   onAddTextOverlay,
 }: EffectsPanelProps) {
-  const allDefs = getAllEffects();
-  const EFFECT_CATEGORIES = allDefs.reduce((acc, def) => {
-    if (!acc[def.category]) acc[def.category] = [];
-    acc[def.category].push(def.type);
-    return acc;
-  }, {} as Record<string, string[]>);
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [expandedCategories, setExpandedCategories] = useState<
-    Record<string, boolean>
-  >({});
-  const [expandedEffects, setExpandedEffects] = useState<
-    Record<string, boolean>
-  >({});
-
-  const toggleCategory = (category: string) => {
-    setExpandedCategories((prev) => ({
-      ...prev,
-      [category]: !prev[category],
-    }));
-  };
-
-  const toggleEffect = (effectId: string) => {
-    setExpandedEffects((prev) => ({
-      ...prev,
-      [effectId]: !prev[effectId],
-    }));
-  };
-
-  const handleAddEffect = (type: EffectType) => {
-    onAddEffect(type, activeRegionId || undefined, activeOverlayId || undefined);
-  };
-
-  const isStyleEffectDisabled = activeRegionId !== null || activeOverlayId !== null;
-
-  const globalEffects = effects.filter((e) => !e.regionId && !e.overlayId);
-  const regionEffectsMap = new Map<string, Effect[]>();
-  const overlayEffectsMap = new Map<string, Effect[]>();
-  
-  effects.forEach((effect) => {
-    if (effect.regionId) {
-      if (!regionEffectsMap.has(effect.regionId)) {
-        regionEffectsMap.set(effect.regionId, []);
-      }
-      regionEffectsMap.get(effect.regionId)!.push(effect);
-    } else if (effect.overlayId) {
-      if (!overlayEffectsMap.has(effect.overlayId)) {
-        overlayEffectsMap.set(effect.overlayId, []);
-      }
-      overlayEffectsMap.get(effect.overlayId)!.push(effect);
-    }
-  });
-
-  const renderEffectCard = (effect: Effect, index: number) => (
-    <div
-      key={effect.id}
-      className={styles.effectCard}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        const draggedId = e.dataTransfer.getData("text/plain");
-        if (draggedId && draggedId !== effect.id) {
-          onReorderEffect(draggedId, index);
-        }
-      }}
-    >
-      <div className={styles.effectCardHeader}>
-        <button
-          className={styles.dragHandle}
-          title="Drag to reorder"
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.setData("text/plain", effect.id);
-            e.dataTransfer.effectAllowed = "move";
-            const cardElement = e.currentTarget.parentElement?.parentElement;
-            if (cardElement) {
-              e.dataTransfer.setDragImage(cardElement, 20, 20);
-            }
-          }}
-        >
-          <GripVertical size={14} />
-        </button>
-        <input
-          type="checkbox"
-          checked={effect.active}
-          onChange={(e) =>
-            onUpdateEffect(effect.id, { active: e.target.checked })
-          }
-        />
-        <button
-          className={styles.expandButton}
-          onClick={() => toggleEffect(effect.id)}
-        >
-          {expandedEffects[effect.id] ? (
-            <ChevronDown size={14} />
-          ) : (
-            <ChevronRight size={14} />
-          )}
-        </button>
-        <span>{formatEffectName(effect.type)}</span>
-        <button
-          className={styles.removeButton}
-          onClick={() => onRemoveEffect(effect.id)}
-          title="Remove effect"
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
-
-      {expandedEffects[effect.id] && (
-        <EffectParams
-          effect={effect}
-          onUpdate={(updates) => onUpdateEffect(effect.id, updates)}
-        />
-      )}
-    </div>
-  );
-
   return (
     <aside className={styles.effectsPanel}>
       <div className={styles.header}>
         <h3>Effects</h3>
       </div>
 
-      <div className={styles.searchContainer}>
-        <Search size={14} className={styles.searchIcon} />
-        <input
-          type="text"
-          placeholder="Search effects..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className={styles.searchInput}
-        />
-      </div>
-
       <div className={styles.scrollContent}>
-      <div className={styles.categories}>
-        {Object.entries(EFFECT_CATEGORIES).map(([category, effectTypes]) => {
-          const filteredEffects = effectTypes.filter((type) =>
-            formatEffectName(type).toLowerCase().includes(searchQuery.toLowerCase())
-          );
-
-          if (filteredEffects.length === 0) return null;
-
-          return (
-            <div key={category} className={styles.category}>
-              <button
-                className={styles.categoryHeader}
-                onClick={() => toggleCategory(category)}
-              >
-                {expandedCategories[category] || searchQuery ? (
-                  <ChevronDown size={16} />
-                ) : (
-                  <ChevronRight size={16} />
-                )}
-                <span>
-                  {category.charAt(0).toUpperCase() + category.slice(1)}
-                </span>
-                <span className={styles.count}>{filteredEffects.length}</span>
-              </button>
-
-              {(expandedCategories[category] || searchQuery) && (
-                <div className={styles.effectList}>
-                  {filteredEffects.map((type) => {
-                    const disabled = isStyleEffectDisabled && isStyleEffect(type as EffectType);
-                    return (
-                      <button
-                        key={type}
-                        className={styles.effectButton}
-                        onClick={() => handleAddEffect(type as EffectType)}
-                        disabled={disabled}
-                        title={disabled ? "Style effects can only be applied globally" : undefined}
-                      >
-                        <Plus size={14} />
-                        <span>{formatEffectName(type)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className={styles.activeEffects}>
-        <div className={styles.activeHeader}>
-          <h4>Active</h4>
-          <span className={styles.count}>
-            {effects.filter((e) => e.active).length}
-          </span>
-        </div>
-
-        <div className={styles.actionButtons}>
-          <button className={styles.actionButton} onClick={onAddTextOverlay}>
-            <Type size={13} />
-            <span>Add Text</span>
-          </button>
-          <button className={styles.actionButton} onClick={onStartDrawingRegion}>
-            <Square size={13} />
-            <span>Draw Region</span>
-          </button>
-        </div>
-
-        {activeOverlayId && (
-          <div className={styles.overlayPropsSection}>
-            <div className={styles.overlayPropsHeader}>
-              <h5>Overlay Properties</h5>
-            </div>
-            {overlays.filter(o => o.id === activeOverlayId).map(overlay => (
-              <div key={overlay.id} className={styles.overlayPropsBody}>
-                {overlay.type === 'text' && (
-                  <>
-                    <div className={styles.paramRow}>
-                      <span className={styles.paramLabel}>Text</span>
-                      <input
-                        type="text"
-                        className={styles.textInput}
-                        value={overlay.text || ""}
-                        onChange={(e) => onUpdateOverlay(overlay.id, { text: e.target.value })}
-                      />
-                    </div>
-                    <div className={styles.paramRow}>
-                      <span className={styles.paramLabel}>Font</span>
-                      <select
-                        className={styles.fontSelect}
-                        value={overlay.fontFamily || "Inter, sans-serif"}
-                        onChange={(e) => onUpdateOverlay(overlay.id, { fontFamily: e.target.value })}
-                      >
-                        {FONT_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value} style={{ fontFamily: opt.value }}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className={styles.paramRow}>
-                      <span className={styles.paramLabel}>Color</span>
-                      <input
-                        type="color"
-                        className={styles.colorInput}
-                        value={overlay.color || "#ffffff"}
-                        onChange={(e) => onUpdateOverlay(overlay.id, { color: e.target.value })}
-                      />
-                    </div>
-                    <div className={styles.paramRow}>
-                      <span className={styles.paramLabel}>Size</span>
-                      <input
-                        type="range"
-                        className={styles.sizeSlider}
-                        min={1}
-                        max={30}
-                        step={1}
-                        value={Math.round((overlay.fontSize ?? 0.08) * 100)}
-                        onChange={(e) => onUpdateOverlay(overlay.id, { fontSize: Number(e.target.value) / 100 })}
-                      />
-                      <span className={styles.sliderValue}>{Math.round((overlay.fontSize ?? 0.08) * 100)}%</span>
-                    </div>
-                  </>
-                )}
-                <div className={styles.paramRow}>
-                  <label className={styles.checkboxLabel}>
-                    <input
-                      type="checkbox"
-                      checked={!!overlay.isEffectZone}
-                      onChange={(e) => onUpdateOverlay(overlay.id, { isEffectZone: e.target.checked })}
-                    />
-                    Use as Effect Zone
-                  </label>
-                </div>
-                {overlay.isEffectZone && (
-                  <p className={styles.zoneHint}>
-                    The text is now filled with the video behind it. Select the zone in the stack below and add effects to transform what shows through.
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {effects.length === 0 ? (
-          <div className={styles.empty}>
-            <p>No effects applied</p>
-            <p className={styles.hint}>Add effects from categories above</p>
-          </div>
-        ) : (
-          <div className={styles.effectStack}>
-            <div
-              className={`${styles.regionGroup} ${activeRegionId === null && activeOverlayId === null ? styles.active : ''}`}
-              onClick={() => onSelectRegion(null)}
-            >
-              <div className={styles.regionHeader}>
-                <span>Global</span>
-                <span className={styles.count}>{globalEffects.length}</span>
-              </div>
-              {globalEffects.map((effect, index) => renderEffectCard(effect, index))}
-            </div>
-
-            {regions.map((region) => {
-              const regionEffects = regionEffectsMap.get(region.id) || [];
-              return (
-                <div
-                  key={region.id}
-                  className={`${styles.regionGroup} ${activeRegionId === region.id ? styles.active : ''}`}
-                  onClick={() => onSelectRegion(region.id)}
-                >
-                  <div className={styles.regionHeader}>
-                    <div className={styles.regionHeaderLeft}>
-                      <div
-                        className={styles.colorDot}
-                        style={{ backgroundColor: region.color }}
-                      />
-                      <span>{region.name}</span>
-                    </div>
-                    <div className={styles.regionHeaderRight}>
-                      <span className={styles.count}>{regionEffects.length}</span>
-                      <button
-                        className={styles.deleteRegionButton}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemoveRegion(region.id);
-                        }}
-                        title="Delete region"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                  {regionEffects.map((effect, index) => renderEffectCard(effect, index))}
-                </div>
-              );
-            })}
-
-            {overlays.filter(o => o.isEffectZone || activeOverlayId === o.id).map((overlay) => {
-              const overlayEffects = overlayEffectsMap.get(overlay.id) || [];
-              if (overlayEffects.length === 0 && activeOverlayId !== overlay.id) return null;
-              const isActive = activeOverlayId === overlay.id;
-              return (
-                <div
-                  key={overlay.id}
-                  className={`${styles.regionGroup} ${isActive ? styles.active : ''}`}
-                  onClick={() => onSelectOverlay(isActive ? null : overlay.id)}
-                >
-                  <div className={styles.regionHeader}>
-                    <div className={styles.regionHeaderLeft}>
-                      <div
-                        className={styles.colorDot}
-                        style={{ backgroundColor: overlay.color || '#ccc' }}
-                      />
-                      <span>[Zone] {overlay.name}</span>
-                    </div>
-                    <div className={styles.regionHeaderRight}>
-                      <span className={styles.count}>{overlayEffects.length}</span>
-                    </div>
-                  </div>
-                  {overlayEffects.length === 0 && isActive && (
-                    <p className={styles.zoneHint}>Add effects from the panel above — they will be applied to the video showing through the text.</p>
-                  )}
-                  {overlayEffects.map((effect, index) => renderEffectCard(effect, index))}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-      </div>
+        <EffectsCatalog
+          activeRegionId={activeRegionId}
+          activeOverlayId={activeOverlayId}
+          onAddEffect={onAddEffect}
+        />
+        <ActiveEffectsStack
+          effects={effects}
+          regions={regions}
+          overlays={overlays}
+          activeRegionId={activeRegionId}
+          activeOverlayId={activeOverlayId}
+          onUpdateEffect={onUpdateEffect}
+          onRemoveEffect={onRemoveEffect}
+          onReorderEffect={onReorderEffect}
+          onRemoveRegion={onRemoveRegion}
+          onSelectRegion={onSelectRegion}
+          onSelectOverlay={onSelectOverlay}
+          onStartDrawingRegion={onStartDrawingRegion}
+          onUpdateOverlay={onUpdateOverlay}
+          onAddTextOverlay={onAddTextOverlay}
+        />
       </div>
     </aside>
   );
-}
-
-function formatEffectName(type: string): string {
-  return type
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }
 
 export default EffectsPanel;
