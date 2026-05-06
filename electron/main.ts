@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, Menu } from "electron";
 import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
@@ -50,8 +50,110 @@ function createWindow() {
   });
 }
 
+function send(channel: string) {
+  mainWindow?.webContents.send("menu:action", channel);
+}
+
+function buildMenu() {
+  const isMac = process.platform === "darwin";
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    // macOS app menu (first item is always the app name)
+    ...(isMac
+      ? ([
+          {
+            role: "appMenu" as const,
+          },
+        ] satisfies Electron.MenuItemConstructorOptions[])
+      : []),
+
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "New Project",
+          accelerator: "CmdOrCtrl+N",
+          click: () => send("new-project"),
+        },
+        { type: "separator" },
+        {
+          label: "Open Project…",
+          accelerator: "CmdOrCtrl+O",
+          click: () => send("open-project"),
+        },
+        { type: "separator" },
+        {
+          label: "Save",
+          accelerator: "CmdOrCtrl+S",
+          click: () => send("save-project"),
+        },
+        {
+          label: "Save As…",
+          accelerator: "CmdOrCtrl+Shift+S",
+          click: () => send("save-project-as"),
+        },
+        { type: "separator" },
+        isMac ? { role: "close" as const } : { role: "quit" as const },
+      ],
+    },
+
+    {
+      label: "Edit",
+      submenu: [
+        {
+          label: "Undo",
+          accelerator: "CmdOrCtrl+Z",
+          click: () => send("undo"),
+        },
+        {
+          label: "Redo",
+          accelerator: "CmdOrCtrl+Shift+Z",
+          click: () => send("redo"),
+        },
+        { type: "separator" },
+        { role: "cut" as const },
+        { role: "copy" as const },
+        { role: "paste" as const },
+        { role: "selectAll" as const },
+      ],
+    },
+
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" as const },
+        { role: "forceReload" as const },
+        { role: "toggleDevTools" as const },
+        { type: "separator" },
+        { role: "resetZoom" as const },
+        { role: "zoomIn" as const },
+        { role: "zoomOut" as const },
+        { type: "separator" },
+        { role: "togglefullscreen" as const },
+      ],
+    },
+
+    {
+      role: "window" as const,
+      submenu: [
+        { role: "minimize" as const },
+        { role: "zoom" as const },
+        ...(isMac
+          ? [
+              { type: "separator" as const },
+              { role: "front" as const },
+            ]
+          : [{ role: "close" as const }]),
+      ],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 app.whenReady().then(() => {
   setupFFmpegHandlers();
+  buildMenu();
   createWindow();
 
   app.on("activate", () => {

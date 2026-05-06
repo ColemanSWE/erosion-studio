@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("electron", {
+  onMenuAction: (cb: (action: string) => void) => {
+    ipcRenderer.on("menu:action", (_event, action: string) => cb(action));
+    return () => ipcRenderer.removeAllListeners("menu:action");
+  },
   openFile: (options: Electron.OpenDialogOptions) =>
     ipcRenderer.invoke("dialog:openFile", options),
   saveFile: (options: Electron.SaveDialogOptions) =>
@@ -40,6 +44,7 @@ contextBridge.exposeInMainWorld("electron", {
 });
 
 export interface ElectronAPI {
+  onMenuAction: (cb: (action: string) => void) => () => void;
   openFile: (
     options: Electron.OpenDialogOptions
   ) => Promise<Electron.OpenDialogReturnValue>;

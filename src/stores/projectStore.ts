@@ -584,10 +584,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   loadProject: async (filePath?: string) => {
+    try {
     let resolvedPath = filePath;
     if (!resolvedPath) {
       const result = await window.electron.openFile({
         title: "Open Project",
+        properties: ["openFile"],
         filters: [{ name: "Erosion Project", extensions: ["eron"] }],
       });
       if (result.canceled || !result.filePaths.length) return;
@@ -684,6 +686,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
     } catch (e) {
       console.error("Failed to parse project file:", e);
+    }
+    } catch (e) {
+      console.error("Failed to open project:", e);
     }
   },
 }));

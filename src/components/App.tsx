@@ -363,6 +363,22 @@ function App() {
     newProject("Untitled Project");
   }, [isDirty, newProject]);
 
+  // ─── Native menu actions ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!window.electron?.onMenuAction) return;
+    const unsubscribe = window.electron.onMenuAction((action) => {
+      switch (action) {
+        case "new-project": handleNewProject(); break;
+        case "open-project": loadProject(); break;
+        case "save-project": handleSave(); break;
+        case "save-project-as": handleSaveAs(); break;
+        case "undo": handleUndo(); break;
+        case "redo": handleRedo(); break;
+      }
+    });
+    return unsubscribe;
+  }, [handleNewProject, loadProject, handleSave, handleSaveAs, handleUndo, handleRedo]);
+
   const handleShowWelcome = useCallback(() => setShowWelcome(true), [setShowWelcome]);
   const handleCloseWelcome = useCallback(() => setShowWelcome(false), [setShowWelcome]);
 
