@@ -229,6 +229,16 @@ function applyRegionEffects(
   }
   }
 
+  // Ensure every isEffectZone overlay is processed even when it has no overlay-scoped
+  // effects — this allows text overlays to show video fill without requiring an effect.
+  if (overlays) {
+    for (const overlay of overlays) {
+      if (overlay.isEffectZone && !overlayGroups.has(overlay.id)) {
+        overlayGroups.set(overlay.id, []);
+      }
+    }
+  }
+
   for (const [overlayId, overlayEffectList] of overlayGroups) {
     const overlay = overlays?.find((o) => o.id === overlayId);
     if (!overlay) continue;
@@ -307,7 +317,10 @@ export function drawOverlay(
   if (overlay.type === "text" && overlay.text) {
     ctx.save();
     ctx.fillStyle = overlay.color || "#ffffff";
-    const fontSize = overlay.fontSize ? overlay.fontSize * drawHeight : h * 0.8;
+    // overlay.fontSize is a fraction of the full video height (sourceHeight in mask pass,
+    // drawHeight in normal pass). Fall back to 80% of the overlay's own rendered height.
+    const heightRef = isMaskPass ? sourceHeight : drawHeight;
+    const fontSize = overlay.fontSize ? overlay.fontSize * heightRef : h * 0.8;
     ctx.font = `bold ${fontSize}px ${overlay.fontFamily || "Inter, sans-serif"}`;
     ctx.textBaseline = "top";
     ctx.textAlign = "center";

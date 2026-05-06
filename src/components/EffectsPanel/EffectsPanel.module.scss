@@ -53,16 +53,14 @@
   }
 }
 
-.panelSplit {
+.scrollContent {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .categories {
-  height: 100%;
   border-bottom: 1px solid variables.$border-primary;
-  overflow-y: auto;
 }
 
 .category {
@@ -138,10 +136,8 @@
 
 .activeEffects {
   border-top: 1px solid variables.$border-primary;
-  height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .activeHeader {
@@ -202,8 +198,6 @@
 
 .effectStack {
   padding: variables.$spacing-xs;
-  overflow-y: auto;
-  flex: 1;
 }
 
 .regionGroup {
@@ -449,6 +443,45 @@
     outline: none;
     border-color: variables.$accent-primary;
   }
+}
+
+.sizeSlider {
+  flex: 1;
+  height: 3px;
+  padding: 0;
+  background-color: variables.$border-primary;
+  border: none;
+  border-radius: 99px;
+  appearance: none;
+  cursor: pointer;
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    background-color: variables.$accent-primary;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 4px variables.$accent-glow;
+  }
+
+  &::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    background-color: variables.$accent-primary;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+}
+
+.sliderValue {
+  font-size: 10px;
+  font-family: variables.$font-mono;
+  color: variables.$accent-primary;
+  min-width: 28px;
+  text-align: right;
 }
 
 .zoneHint {

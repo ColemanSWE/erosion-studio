@@ -414,13 +414,13 @@ export function useVideoPlayer({
     }
   }, [currentTime, activeVideos, overlayVideos, isPlaying, render]);
 
-  // ── Re-render on effects/regions change ──────────────────────────────────
+  // ── Re-render on effects/regions/overlays change ─────────────────────────
   useEffect(() => {
     if (videosMapRef.current.size > 0 && canvas && !isPlaying) {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       render();
     }
-  }, [effects, regions, render, canvas, isPlaying]);
+  }, [effects, regions, overlays, render, canvas, isPlaying]);
 
   return {};
 }

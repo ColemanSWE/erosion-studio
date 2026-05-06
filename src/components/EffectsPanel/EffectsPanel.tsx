@@ -9,13 +9,10 @@ import {
   Search,
   Type,
 } from "lucide-react";
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 import EffectParams from "./EffectParams";
 import styles from "./EffectsPanel.module.scss";
 import type { Effect, EffectType, Region, Overlay } from "../../lib/effects/types";
 import { isStyleEffect, getAllEffects } from "../../lib/effects/effect-registry";
-import { useUIStore } from "../../stores/uiStore";
-
 const FONT_OPTIONS = [
   { label: "Inter", value: "Inter, sans-serif" },
   { label: "JetBrains Mono", value: "'JetBrains Mono', monospace" },
@@ -66,9 +63,6 @@ function EffectsPanel({
   onUpdateOverlay,
   onAddTextOverlay,
 }: EffectsPanelProps) {
-  const effectsSplitSize = useUIStore((s) => s.effectsSplitSize);
-  const setEffectsSplitSize = useUIStore((s) => s.setEffectsSplitSize);
-
   const allDefs = getAllEffects();
   const EFFECT_CATEGORIES = allDefs.reduce((acc, def) => {
     if (!acc[def.category]) acc[def.category] = [];
@@ -207,11 +201,7 @@ function EffectsPanel({
         />
       </div>
 
-      <PanelGroup orientation="vertical" className={styles.panelSplit} onLayoutChanged={(layout) => {
-        const size = layout["effects-browser"];
-        if (size !== undefined) setEffectsSplitSize(size);
-      }}>
-      <Panel id="effects-browser" defaultSize={`${effectsSplitSize}%`} minSize="10">
+      <div className={styles.scrollContent}>
       <div className={styles.categories}>
         {Object.entries(EFFECT_CATEGORIES).map(([category, effectTypes]) => {
           const filteredEffects = effectTypes.filter((type) =>
@@ -260,9 +250,6 @@ function EffectsPanel({
           );
         })}
       </div>
-      </Panel>
-      <PanelResizeHandle />
-      <Panel defaultSize="50" minSize="10">
       <div className={styles.activeEffects}>
         <div className={styles.activeHeader}>
           <h4>Active</h4>
@@ -323,6 +310,19 @@ function EffectsPanel({
                         onChange={(e) => onUpdateOverlay(overlay.id, { color: e.target.value })}
                       />
                     </div>
+                    <div className={styles.paramRow}>
+                      <span className={styles.paramLabel}>Size</span>
+                      <input
+                        type="range"
+                        className={styles.sizeSlider}
+                        min={1}
+                        max={30}
+                        step={1}
+                        value={Math.round((overlay.fontSize ?? 0.08) * 100)}
+                        onChange={(e) => onUpdateOverlay(overlay.id, { fontSize: Number(e.target.value) / 100 })}
+                      />
+                      <span className={styles.sliderValue}>{Math.round((overlay.fontSize ?? 0.08) * 100)}%</span>
+                    </div>
                   </>
                 )}
                 <div className={styles.paramRow}>
@@ -337,7 +337,7 @@ function EffectsPanel({
                 </div>
                 {overlay.isEffectZone && (
                   <p className={styles.zoneHint}>
-                    Select this zone in the Active stack below, then add effects from the panel above to fill the text shape.
+                    The text is now filled with the video behind it. Select the zone in the stack below and add effects to transform what shows through.
                   </p>
                 )}
               </div>
@@ -421,7 +421,7 @@ function EffectsPanel({
                     </div>
                   </div>
                   {overlayEffects.length === 0 && isActive && (
-                    <p className={styles.zoneHint}>Add effects from the panel above — they will fill this zone&apos;s shape.</p>
+                    <p className={styles.zoneHint}>Add effects from the panel above — they will be applied to the video showing through the text.</p>
                   )}
                   {overlayEffects.map((effect, index) => renderEffectCard(effect, index))}
                 </div>
@@ -431,8 +431,7 @@ function EffectsPanel({
         )}
 
       </div>
-      </Panel>
-      </PanelGroup>
+      </div>
     </aside>
   );
 }
