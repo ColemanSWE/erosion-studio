@@ -443,11 +443,14 @@ export function useVideoPlayer({
   }, [isPlaying, render]);
 
   // ── Seek (scrubbing while paused) ─────────────────────────────────────────
+  // activeVideos/overlayVideos are read from refs (always current) so we don't
+  // need them as deps — avoids triggering on every new-array-reference from
+  // resolveRenderSources (e.g. during preview overlay position drags).
   useEffect(() => {
     if (isPlaying) return;
 
     let seeked = false;
-    const allVideos = [...activeVideos, ...overlayVideos];
+    const allVideos = [...activeVideosRef.current, ...overlayVideosRef.current];
     for (const vDef of allVideos) {
       const video = videosMapRef.current.get(vDef.id);
       const localTime = currentTimeRef.current - vDef.clipStartTime;
@@ -463,7 +466,8 @@ export function useVideoPlayer({
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       render();
     }
-  }, [currentTime, activeVideos, overlayVideos, isPlaying, render]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, isPlaying, render]);
 
   // ── Re-render on effects/regions/overlays change ─────────────────────────
   useEffect(() => {

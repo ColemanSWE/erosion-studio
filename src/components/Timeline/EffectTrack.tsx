@@ -95,8 +95,8 @@ export function EffectTrack({
   // ─── Drag whole bar ───────────────────────────────────────────────────────
   const barDragRef = useRef<{ origStart: number; origEnd: number; snapTargets: SnapTarget[] } | null>(null);
 
-  const barDragCore = useDragHandler(
-    (dx) => {
+  const onBarDrag = useCallback(
+    (dx: number) => {
       const d = barDragRef.current;
       if (!d) return;
       const clipLen = d.origEnd - d.origStart;
@@ -108,8 +108,15 @@ export function EffectTrack({
       onSnapLine(ms ?? me2 ?? null);
       onUpdateEffect(effect.id, { startTime: finalStart, endTime: finalStart + clipLen });
     },
-    () => { barDragRef.current = null; onSnapLine(null); },
+    [zoom, snapEnabled, duration, effect.id, onUpdateEffect, onSnapLine],
   );
+
+  const onBarDragEnd = useCallback(
+    () => { barDragRef.current = null; onSnapLine(null); },
+    [onSnapLine],
+  );
+
+  const barDragCore = useDragHandler(onBarDrag, onBarDragEnd);
 
   const handleBarDrag = useCallback(
     (e: React.MouseEvent) => {
@@ -122,8 +129,8 @@ export function EffectTrack({
   // ─── Resize handles ───────────────────────────────────────────────────────
   const barResizeRef = useRef<{ origStart: number; origEnd: number; side: "left" | "right"; snapTargets: SnapTarget[] } | null>(null);
 
-  const barResizeCore = useResizeHandler(
-    (dx) => {
+  const onBarResize = useCallback(
+    (dx: number) => {
       const d = barResizeRef.current;
       if (!d) return;
       const rawTime = (d.side === "left" ? d.origStart : d.origEnd) + dx / zoom;
@@ -135,8 +142,15 @@ export function EffectTrack({
         onUpdateEffect(effect.id, { endTime: Math.max(d.origStart + 0.1, Math.min(duration, snappedTime)) });
       }
     },
-    () => { barResizeRef.current = null; onSnapLine(null); },
+    [zoom, snapEnabled, duration, effect.id, onUpdateEffect, onSnapLine],
   );
+
+  const onBarResizeEnd = useCallback(
+    () => { barResizeRef.current = null; onSnapLine(null); },
+    [onSnapLine],
+  );
+
+  const barResizeCore = useResizeHandler(onBarResize, onBarResizeEnd);
 
   const startBarResize = useCallback(
     (e: React.MouseEvent, side: "left" | "right") => {
@@ -360,15 +374,19 @@ function KeyframeMarker({
   const markerRef = useRef<HTMLDivElement>(null);
   const kfDragRef = useRef<{ origTime: number }>({ origTime: 0 });
 
-  const kfDragCore = useDragHandler(
-    (dx) => {
+  const onKfDrag = useCallback(
+    (dx: number) => {
       const rawTime = Math.max(0, Math.min(duration, kfDragRef.current.origTime + dx / zoom));
       const { snappedTime, magnetTime } = applySnap(rawTime, snapTargets, zoom, snapEnabled);
       onSnapLine(magnetTime);
       onUpdate({ time: snappedTime });
     },
-    () => { onSnapLine(null); },
+    [duration, zoom, snapTargets, snapEnabled, onSnapLine, onUpdate],
   );
+
+  const onKfDragEnd = useCallback(() => { onSnapLine(null); }, [onSnapLine]);
+
+  const kfDragCore = useDragHandler(onKfDrag, onKfDragEnd);
 
   const startDrag = useCallback(
     (e: React.MouseEvent) => {

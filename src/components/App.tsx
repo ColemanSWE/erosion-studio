@@ -139,8 +139,24 @@ function App() {
 
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
 
+  // ─── Effective project duration ──────────────────────────────────────────
+  // The store's `duration` reflects the loaded video file length.  When clips
+  // or overlays extend past it (e.g. extra clips, long text overlays) the
+  // playhead and effect-clip clamping must use the full project span instead.
+  const effectiveDuration = useMemo(() => {
+    const maxClip = clips.reduce(
+      (max, c) => (isFinite(c.endTime) ? Math.max(max, c.endTime) : max),
+      0,
+    );
+    const maxOverlay = overlays.reduce(
+      (max, o) => (isFinite(o.endTime) ? Math.max(max, o.endTime) : max),
+      0,
+    );
+    return Math.max(duration, maxClip, maxOverlay);
+  }, [duration, clips, overlays]);
+
   // ─── Playback heartbeat ───────────────────────────────────────────────────
-  const { liveTimeRef } = usePlayback({ isPlaying, currentTime, duration, setCurrentTime, pause });
+  const { liveTimeRef } = usePlayback({ isPlaying, currentTime, duration: effectiveDuration, setCurrentTime, pause });
 
   // ─── Timeline rendering logic ─────────────────────────────────────────────
   const resolvedEffects = resolveEffectsAtTime(effects, effectParamTracks, currentTime);
@@ -522,7 +538,7 @@ function App() {
             selectedOverlayId={activeOverlayId}
             effectParamTracks={effectParamTracks}
             currentTime={currentTime}
-            duration={duration}
+            duration={effectiveDuration}
             isPlaying={isPlaying}
             liveTimeRef={liveTimeRef}
             onAddClip={addClip}

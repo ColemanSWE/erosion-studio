@@ -146,7 +146,7 @@ export async function renderWithEffects(
         glRegions.length > 0 ? glRegions : undefined,
       );
 
-      applyRegionEffects(
+      const compositedOverlayIds = applyRegionEffects(
         bufferCtx, regionEffects.filter(e => e.overlayId), regions, overlays,
         sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight,
         1.0, context, tick, true,
@@ -157,7 +157,7 @@ export async function renderWithEffects(
       ctx.drawImage(buffer, drawX, drawY, drawWidth, drawHeight);
 
       for (const overlay of overlays) {
-        if (!overlay.isEffectZone) {
+        if (!overlay.isEffectZone && !compositedOverlayIds.has(overlay.id)) {
           drawOverlay(ctx, overlay, context, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
         }
       }
@@ -191,6 +191,7 @@ export async function renderWithEffects(
       }
     }
 
+    let compositedOverlayIds = new Set<string>();
     if (regionEffects.length > 0 || hasOverlayMasks) {
       const regionOnlyEffects = regionEffects.filter(e => e.regionId);
       const glRegions = (context.glPipeline && regionOnlyEffects.length > 0)
@@ -205,7 +206,7 @@ export async function renderWithEffects(
           0, 0, sourceWidth, sourceHeight, sourceWidth, sourceHeight, glRegions,
         );
       }
-      applyRegionEffects(
+      compositedOverlayIds = applyRegionEffects(
         bufferCtx, regionEffects, regions, overlays,
         sourceWidth, sourceHeight, drawX, drawY, canvasWidth, canvasHeight,
         scale, context, tick, !!(glRegions && glRegions.length > 0),
@@ -215,7 +216,7 @@ export async function renderWithEffects(
     ctx.drawImage(buffer, drawX, drawY, drawWidth, drawHeight);
 
     for (const overlay of overlays) {
-      if (!overlay.isEffectZone) {
+      if (!overlay.isEffectZone && !compositedOverlayIds.has(overlay.id)) {
         drawOverlay(ctx, overlay, context, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
       }
     }

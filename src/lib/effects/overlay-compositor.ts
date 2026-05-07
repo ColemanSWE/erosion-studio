@@ -55,6 +55,13 @@ export function drawOverlay(
   }
 }
 
+/**
+ * Applies region and overlay effects to the buffer.
+ *
+ * Returns a Set of overlay IDs whose content (including applied effects) has
+ * already been composited into bufferCtx. The caller should skip plain
+ * drawOverlay calls for these overlays to avoid drawing them twice.
+ */
 export function applyRegionEffects(
   bufferCtx: CanvasRenderingContext2D,
   regionEffects: Effect[],
@@ -70,8 +77,10 @@ export function applyRegionEffects(
   context: RenderContext,
   tick: number,
   overlayEffectsOnly = false,
-): void {
-  if (regionEffects.length === 0 && !overlays?.some(o => o.isEffectZone)) return;
+): Set<string> {
+  const compositedOverlayIds = new Set<string>();
+
+  if (regionEffects.length === 0 && !overlays?.some(o => o.isEffectZone)) return compositedOverlayIds;
 
   const regionGroups = new Map<string, Effect[]>();
   const overlayGroups = new Map<string, Effect[]>();
@@ -124,6 +133,14 @@ export function applyRegionEffects(
     }
   }
 
+  const processConfig = {
+    time: tick,
+    timelineFrames: context.timelineFrames,
+    faceBounds: context.faceBounds,
+    handBounds: context.handBounds,
+    poseBounds: context.poseBounds,
+  };
+
   for (const [overlayId, overlayEffectList] of overlayGroups) {
     const overlay = overlays?.find((o) => o.id === overlayId);
     if (!overlay) continue;
@@ -141,24 +158,40 @@ export function applyRegionEffects(
     const rh = endY - startY;
     if (rw <= 0 || rh <= 0) continue;
 
-    const originalData = bufferCtx.getImageData(startX, startY, rw, rh);
-    const effectedData = new ImageData(new Uint8ClampedArray(originalData.data), rw, rh);
-    applyEffects(effectedData.data, overlayEffectList, {
-      width: rw, height: rh, time: tick,
-      timelineFrames: context.timelineFrames,
-      faceBounds: context.faceBounds,
-      handBounds: context.handBounds,
-      poseBounds: context.poseBounds,
-    });
-
     const { canvas: tempCanvas, ctx: tempCtx } = getOrCreateRegionEffectsCanvas();
     tempCanvas.width = rw;
     tempCanvas.height = rh;
-    tempCtx.putImageData(effectedData, 0, 0);
 
-    tempCtx.globalCompositeOperation = "destination-in";
-    drawOverlay(tempCtx, overlay, context, sourceWidth, sourceHeight, 0, 0, rw, rh, true);
+    if (overlay.isEffectZone) {
+      // Effect zone: apply effects to the video pixels behind the overlay,
+      // then mask to the overlay's shape so the effected video shows through.
+      const originalData = bufferCtx.getImageData(startX, startY, rw, rh);
+      const effectedData = new ImageData(new Uint8ClampedArray(originalData.data), rw, rh);
+      applyEffects(effectedData.data, overlayEffectList, { width: rw, height: rh, ...processConfig });
 
-    bufferCtx.drawImage(tempCanvas, startX, startY);
+      tempCtx.putImageData(effectedData, 0, 0);
+      tempCtx.globalCompositeOperation = "destination-in";
+      drawOverlay(tempCtx, overlay, context, sourceWidth, sourceHeight, 0, 0, rw, rh, true);
+      tempCtx.globalCompositeOperation = "source-over";
+
+      bufferCtx.drawImage(tempCanvas, startX, startY);
+      // Effect zones are never drawn as plain overlays; no need to add to compositedOverlayIds.
+    } else {
+      // Non-effect-zone overlay: apply effects to the overlay's own content,
+      // then composite the result into the buffer.
+      drawOverlay(tempCtx, overlay, context, sourceWidth, sourceHeight, 0, 0, rw, rh, true);
+
+      if (overlayEffectList.length > 0) {
+        const overlayData = tempCtx.getImageData(0, 0, rw, rh);
+        applyEffects(overlayData.data, overlayEffectList, { width: rw, height: rh, ...processConfig });
+        tempCtx.putImageData(overlayData, 0, 0);
+      }
+
+      bufferCtx.drawImage(tempCanvas, startX, startY);
+      // Tell the caller not to re-draw this overlay without effects on top.
+      compositedOverlayIds.add(overlayId);
+    }
   }
+
+  return compositedOverlayIds;
 }

@@ -284,36 +284,45 @@ function Preview({
     };
     setIsDraggingOverlay(true);
 
+    // RAF-throttle overlay updates so Zustand/React only processes one update per frame.
+    let rafId: number | null = null;
+    let lastNorm = normalized;
+
     const onMove = (me: MouseEvent) => {
-      const ds = dragStateRef.current;
-      if (!ds) return;
       const norm = mouseToNormalized(me.clientX, me.clientY);
-      if (!norm) return;
+      if (norm) lastNorm = norm;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const ds = dragStateRef.current;
+        if (!ds) return;
 
-      const dx = norm.x - ds.startX;
-      const dy = norm.y - ds.startY;
-      let { x, y, width: w, height: h } = ds.initialOverlay;
+        const dx = lastNorm.x - ds.startX;
+        const dy = lastNorm.y - ds.startY;
+        let { x, y, width: w, height: h } = ds.initialOverlay;
 
-      if (ds.type === "move") {
-        x = Math.max(0, Math.min(1 - w, x + dx));
-        y = Math.max(0, Math.min(1 - h, y + dy));
-      } else if (ds.type === "resize" && ds.handle) {
-        if (ds.handle.includes("e")) w = Math.max(0.02, Math.min(1 - x, w + dx));
-        if (ds.handle.includes("s")) h = Math.max(0.02, Math.min(1 - y, h + dy));
-        if (ds.handle.includes("w")) {
-          const nw = w - dx;
-          if (nw >= 0.02 && x + dx >= 0) { w = nw; x += dx; }
+        if (ds.type === "move") {
+          x = Math.max(0, Math.min(1 - w, x + dx));
+          y = Math.max(0, Math.min(1 - h, y + dy));
+        } else if (ds.type === "resize" && ds.handle) {
+          if (ds.handle.includes("e")) w = Math.max(0.02, Math.min(1 - x, w + dx));
+          if (ds.handle.includes("s")) h = Math.max(0.02, Math.min(1 - y, h + dy));
+          if (ds.handle.includes("w")) {
+            const nw = w - dx;
+            if (nw >= 0.02 && x + dx >= 0) { w = nw; x += dx; }
+          }
+          if (ds.handle.includes("n")) {
+            const nh = h - dy;
+            if (nh >= 0.02 && y + dy >= 0) { h = nh; y += dy; }
+          }
         }
-        if (ds.handle.includes("n")) {
-          const nh = h - dy;
-          if (nh >= 0.02 && y + dy >= 0) { h = nh; y += dy; }
-        }
-      }
 
-      onOverlayUpdate?.(ds.id, { x, y, width: w, height: h });
+        onOverlayUpdate?.(ds.id, { x, y, width: w, height: h });
+      });
     };
 
     const onUp = () => {
+      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
       dragStateRef.current = null;
       setIsDraggingOverlay(false);
       window.removeEventListener("mousemove", onMove);
