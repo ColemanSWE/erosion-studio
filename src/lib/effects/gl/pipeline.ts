@@ -19,6 +19,38 @@ export interface GLRegion {
   effects: Effect[];
 }
 
+/** Overlay to composite into the GL pipeline before the final blit. */
+export interface OverlayDescriptor {
+  source: TexImageSource;
+  /** Position in source-frame pixels, y=0 at top. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  opacity: number;
+}
+
+// Body only — no preamble. buildFragmentSrc adds #version, u_source, v_texCoord, etc.
+const OVERLAY_COMPOSITE_FRAGMENT = `
+uniform sampler2D u_overlayTex;
+uniform vec4 u_rect;
+uniform float u_opacity;
+
+void main() {
+  vec4 bg = texture(u_source, v_texCoord);
+  vec2 rMin = u_rect.xy;
+  vec2 rMax = rMin + u_rect.zw;
+  if (v_texCoord.x < rMin.x || v_texCoord.x > rMax.x ||
+      v_texCoord.y < rMin.y || v_texCoord.y > rMax.y) {
+    fragColor = bg;
+    return;
+  }
+  vec2 localUV = (v_texCoord - rMin) / u_rect.zw;
+  vec4 overlay = texture(u_overlayTex, localUV);
+  float alpha = overlay.a * u_opacity;
+  fragColor = vec4(mix(bg.rgb, overlay.rgb, alpha), bg.a);
+}`;
+
 interface FBOPair {
   fbo: WebGLFramebuffer;
   tex: WebGLTexture;
@@ -66,6 +98,12 @@ export class GLPipeline {
   // True once a CPU effect has uploaded pixels this frame. Determines whether the
   // FBO data needs a Y-flip before CPU processing and which flipY the final blit uses.
   private cpuFlushed = false;
+  // Persistent texture holding the previous rendered frame for temporal effects.
+  private prevFrameFBO: FBOPair | null = null;
+  // Reusable texture pool for GPU overlay compositing (one slot per concurrent overlay).
+  private overlayTexPool: WebGLTexture[] = [];
+  // Tracks which pool slots have had at least one valid frame uploaded.
+  private overlayTexInitialized: boolean[] = [];
 
   constructor(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
     this.gl = gl;
@@ -118,6 +156,10 @@ export class GLPipeline {
     freeFBO(this.gl, this.fbo[0]);
     freeFBO(this.gl, this.fbo[1]);
     this.fbo = [makeFBO(this.gl, w, h), makeFBO(this.gl, w, h)];
+    if (this.prevFrameFBO) {
+      freeFBO(this.gl, this.prevFrameFBO);
+      this.prevFrameFBO = null;
+    }
   }
 
   private uploadSource(source: CanvasImageSource): void {
@@ -278,6 +320,18 @@ export class GLPipeline {
     }
   }
 
+  private capturePrevFrame(): void {
+    const gl = this.gl;
+    if (!this.prevFrameFBO) {
+      this.prevFrameFBO = makeFBO(gl, this.width, this.height);
+    }
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fbo[this.current].fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.prevFrameFBO.fbo);
+    gl.blitFramebuffer(0, 0, this.width, this.height, 0, 0, this.width, this.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  }
+
   private runEffectList(
     effects: Effect[],
     config: ProcessConfig,
@@ -314,6 +368,17 @@ export class GLPipeline {
         flushCPU();
         const mappedParams = glsl.uniformMapper ? glsl.uniformMapper(params) : params;
         const prog = this.getProgram(effect.type, glsl.fragment);
+
+        // Bind the persistent previous-frame texture to unit 1 for temporal effects.
+        if (glsl.needsPrevFrame) {
+          this.gl.activeTexture(this.gl.TEXTURE1);
+          this.gl.bindTexture(this.gl.TEXTURE_2D, this.prevFrameFBO ? this.prevFrameFBO.tex : null);
+          this.gl.activeTexture(this.gl.TEXTURE0);
+          this.gl.useProgram(prog);
+          const prevLoc = getUniformLocation(this.gl, prog, "u_prevFrame");
+          if (prevLoc) this.gl.uniform1i(prevLoc, 1);
+        }
+
         const passCount = glsl.multiPass ? glsl.multiPass(resolution, mappedParams) : 1;
         const uniforms: Record<string, import("./shaders").UniformType> = { ...(glsl.uniforms ?? {}) };
         if (passCount > 1) uniforms["pass"] = "int";
@@ -337,6 +402,12 @@ export class GLPipeline {
           this.setFBOFilter(this.gl.LINEAR);
           this.gl.flush();
         }
+
+        if (glsl.needsPrevFrame) {
+          this.gl.activeTexture(this.gl.TEXTURE1);
+          this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+          this.gl.activeTexture(this.gl.TEXTURE0);
+        }
       } else {
         if (!cpuBuf) {
           cpuBuf = regionRect ? this.readRegionPixels(regionRect) : this.readCurrentPixels();
@@ -356,6 +427,123 @@ export class GLPipeline {
     flushCPU();
   }
 
+  private ensureOverlayTex(index: number): WebGLTexture {
+    const gl = this.gl;
+    while (this.overlayTexPool.length <= index) {
+      const tex = gl.createTexture();
+      if (!tex) throw new Error("WebGL: failed to create overlay texture");
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      this.overlayTexPool.push(tex);
+      this.overlayTexInitialized.push(false);
+    }
+    return this.overlayTexPool[index];
+  }
+
+  private runOverlayPass(
+    overlayTex: WebGLTexture,
+    rect: [number, number, number, number],
+    opacity: number,
+  ): void {
+    const gl = this.gl;
+    const prog = this.getProgram("__overlay_composite", OVERLAY_COMPOSITE_FRAGMENT);
+    const next = 1 - this.current;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[next].fbo);
+    gl.viewport(0, 0, this.width, this.height);
+    gl.useProgram(prog);
+    gl.bindVertexArray(this.vao);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.fbo[this.current].tex);
+    const srcLoc = getUniformLocation(gl, prog, "u_source");
+    if (srcLoc) gl.uniform1i(srcLoc, 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, overlayTex);
+    const ovrLoc = getUniformLocation(gl, prog, "u_overlayTex");
+    if (ovrLoc) gl.uniform1i(ovrLoc, 1);
+
+    const rectLoc = getUniformLocation(gl, prog, "u_rect");
+    if (rectLoc) gl.uniform4f(rectLoc, rect[0], rect[1], rect[2], rect[3]);
+    const opacityLoc = getUniformLocation(gl, prog, "u_opacity");
+    if (opacityLoc) gl.uniform1f(opacityLoc, opacity);
+
+    const flipLoc = getUniformLocation(gl, prog, "u_flipY");
+    if (flipLoc) gl.uniform1f(flipLoc, -1.0);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.bindVertexArray(null);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.current = next;
+  }
+
+  compositeOverlays(descriptors: OverlayDescriptor[]): void {
+    if (descriptors.length === 0) return;
+    const gl = this.gl;
+    for (let i = 0; i < descriptors.length; i++) {
+      const { source, x, y, w, h, opacity } = descriptors[i];
+      if (w <= 0 || h <= 0) continue;
+      const notReady = source instanceof HTMLVideoElement && source.readyState < 2;
+      const tex = this.ensureOverlayTex(i);
+      if (!notReady) {
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        this.overlayTexInitialized[i] = true;
+      } else if (!this.overlayTexInitialized[i]) {
+        // No frame ever uploaded for this slot — nothing to show yet.
+        continue;
+      }
+      // If notReady but initialized, fall through and reuse the last good frame.
+      const rx = x / this.width;
+      const ry = y / this.height;
+      const rw = w / this.width;
+      const rh = h / this.height;
+      this.runOverlayPass(tex, [rx, ry, rw, rh], opacity);
+    }
+  }
+
+  /**
+   * Upload `background` as the GL source, composite `descriptors` on top, and
+   * draw the result to `displayCtx`.  Used by the hybrid render path to GPU-
+   * composite remaining (non-effect-zone) overlays after the CPU masking pass.
+   */
+  compositeOverlaysOnto(
+    background: CanvasImageSource,
+    bgWidth: number,
+    bgHeight: number,
+    descriptors: OverlayDescriptor[],
+    displayCtx: CanvasRenderingContext2D,
+    drawX: number,
+    drawY: number,
+    drawWidth: number,
+    drawHeight: number,
+    canvasWidth: number,
+    canvasHeight: number,
+  ): void {
+    if (bgWidth <= 0 || bgHeight <= 0) return;
+    this.ensureSize(bgWidth, bgHeight);
+    this.current = 0;
+    this.cpuFlushed = false;
+    this.uploadSource(background);
+    if (descriptors.length > 0) {
+      this.compositeOverlays(descriptors);
+    }
+    // The background was uploaded from a 2D canvas (CPU-side, display orientation).
+    // texImage2D stores row 0 of the canvas at v=0, so blitToDefaultFB(1.0) is correct.
+    this.blitToDefaultFB(1.0);
+    displayCtx.fillStyle = "#000";
+    displayCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+    displayCtx.drawImage(this.canvas, drawX, drawY, drawWidth, drawHeight);
+  }
+
   renderEffects(
     source: CanvasImageSource,
     sourceWidth: number,
@@ -370,6 +558,7 @@ export class GLPipeline {
     canvasWidth: number,
     canvasHeight: number,
     glRegions?: GLRegion[],
+    overlayDescriptors?: OverlayDescriptor[],
   ): void {
     if (sourceWidth <= 0 || sourceHeight <= 0) return;
     this.ensureSize(sourceWidth, sourceHeight);
@@ -390,6 +579,15 @@ export class GLPipeline {
       }
     }
 
+    // Composite GPU overlays into the FBO before the prev-frame snapshot and final blit.
+    if (overlayDescriptors && overlayDescriptors.length > 0) {
+      this.compositeOverlays(overlayDescriptors);
+    }
+
+    // Snapshot the final rendered output for temporal effects (e.g. motion-smear) to
+    // sample as u_prevFrame in the next call to renderEffects.
+    this.capturePrevFrame();
+
     // After GPU-only effects (u_flipY=-1.0, orientation preserved from texImage2D),
     // blit(1.0) swaps to the display-correct orientation.
     // After a CPU upload, the FBO is already in display-correct orientation,
@@ -405,6 +603,10 @@ export class GLPipeline {
     const gl = this.gl;
     freeFBO(gl, this.fbo[0]);
     freeFBO(gl, this.fbo[1]);
+    if (this.prevFrameFBO) freeFBO(gl, this.prevFrameFBO);
+    for (const tex of this.overlayTexPool) gl.deleteTexture(tex);
+    this.overlayTexPool = [];
+    this.overlayTexInitialized = [];
     gl.deleteVertexArray(this.vao);
     for (const prog of this.programCache.values()) {
       clearUniformCache(prog);

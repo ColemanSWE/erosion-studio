@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
-import { renderWithEffects } from "../lib/effects/effects-renderer";
+import { renderWithEffects, computeDrawRect } from "../lib/effects/effects-renderer";
+import { drawOverlay } from "../lib/effects/overlay-compositor";
 import type { Effect, Region, Overlay } from "../lib/effects/types";
 import { detectFaces, requiresFaceDetection, type FaceBounds } from "../lib/effects/face-detector";
 import type { SourceTransform } from "../lib/project";
@@ -90,6 +91,8 @@ export function useVideoPlayer({
   const wantedImageIdsRef = useRef<Set<string>>(new Set());
 
   const animationFrameRef = useRef<number>();
+  const rvfcHandleRef = useRef<number | undefined>(undefined);
+  const rvfcVideoRef = useRef<HTMLVideoElement | null>(null);
   const gifTickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef(0);
   const faceBoundsRef = useRef<FaceBounds[]>([]);
@@ -132,6 +135,11 @@ export function useVideoPlayer({
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
+      }
+      if (rvfcHandleRef.current !== undefined) {
+        (rvfcVideoRef.current as any)?.cancelVideoFrameCallback?.(rvfcHandleRef.current);
+        rvfcHandleRef.current = undefined;
+        rvfcVideoRef.current = null;
       }
       if (gifTickIntervalRef.current) {
         clearInterval(gifTickIntervalRef.current);
@@ -181,7 +189,16 @@ export function useVideoPlayer({
 
     if (isPlayingRef.current && !hasNewVideoFrame && effectsUnchanged) {
       tickRef.current++;
-      animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
+      if ("requestVideoFrameCallback" in primaryVideo) {
+        rvfcHandleRef.current = (primaryVideo as any).requestVideoFrameCallback(() => {
+          rvfcHandleRef.current = undefined;
+          rvfcVideoRef.current = null;
+          renderRef.current?.();
+        });
+        rvfcVideoRef.current = primaryVideo;
+      } else {
+        animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
+      }
       return;
     }
 
@@ -190,13 +207,36 @@ export function useVideoPlayer({
     lastRegionsRef.current = regionsRef.current;
     lastOverlaysRef.current = overlaysRef.current;
 
+    // Only extract secondary video frames when an active effect actually reads them.
+    // Most effects don't use timelineFrames; skipping this saves 2x createImageBitmap
+    // + getImageData per frame for every multi-clip timeline that has no such effect.
+    const needsTimelineFrames =
+      currentActiveVideos.length > 1 &&
+      effectsRef.current.some((e) => {
+        if (!e.active) return false;
+        if (e.type === "datamosh") return true;
+        if (e.type === "motion-smear" && (e.params as Record<string, unknown>)?.mode === "bloom") return true;
+        return false;
+      });
+
     const secondaryFrames: ImageData[] = [];
-    for (let i = 1; i < currentActiveVideos.length; i++) {
-      const secDef = currentActiveVideos[i];
-      const secVideo = videosMapRef.current.get(secDef.id);
-      if (secVideo && secVideo.readyState >= 2) {
-        bufferCtxRef.current.drawImage(secVideo, 0, 0, videoW, videoH);
+    if (needsTimelineFrames) {
+      const bitmaps = await Promise.all(
+        currentActiveVideos.slice(1).map(async (secDef) => {
+          const secVideo = videosMapRef.current.get(secDef.id);
+          if (!secVideo || secVideo.readyState < 2) return null;
+          try {
+            return await createImageBitmap(secVideo, { resizeWidth: videoW, resizeHeight: videoH, resizeQuality: "pixelated" });
+          } catch {
+            return null;
+          }
+        }),
+      );
+      for (const bitmap of bitmaps) {
+        if (!bitmap) continue;
+        bufferCtxRef.current.drawImage(bitmap, 0, 0, videoW, videoH);
         secondaryFrames.push(bufferCtxRef.current.getImageData(0, 0, videoW, videoH));
+        bitmap.close();
       }
     }
 
@@ -219,6 +259,20 @@ export function useVideoPlayer({
 
       // P2: resolve effects using accurate video time (not throttled store time).
       const liveTime = primaryVideoDef.clipStartTime + primaryVideo.currentTime;
+
+      // Periodically correct overlay video drift — overlays play independently after play()
+      // so their internal clock can diverge from the primary video's decoded time.
+      if (tickRef.current % 15 === 0) {
+        for (const vDef of overlayVideosRef.current) {
+          const ov = videosMapRef.current.get(vDef.id);
+          if (!ov || ov.readyState < 2) continue;
+          const expected = Math.max(0, liveTime - vDef.clipStartTime);
+          if (Math.abs(ov.currentTime - expected) > 0.15) {
+            ov.currentTime = expected;
+          }
+        }
+      }
+
       const liveEffects = resolveEffectsRef.current
         ? resolveEffectsRef.current(liveTime)
         : effectsRef.current.filter(e => e.active);
@@ -248,6 +302,24 @@ export function useVideoPlayer({
         regionsRef.current,
         overlaysRef.current,
       );
+    } else {
+      // Draw raw video without effects so the canvas stays in sync with the video clock.
+      const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
+        videoW, videoH, canvas.width, canvas.height, sourceTransformRef.current,
+      );
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(primaryVideo, drawX, drawY, drawWidth, drawHeight);
+      // Draw overlays cheaply (no effects) so they remain visible during load-shedding.
+      const overlayCtx = {
+        getOverlaySource: (id: string) =>
+          videosMapRef.current.get(id) || overlayImagesMapRef.current.get(id) || null,
+        sourceTransform: sourceTransformRef.current,
+      } as unknown as import("../lib/effects/render-types").RenderContext;
+      for (const overlay of overlaysRef.current) {
+        if (overlay.isEffectZone) continue;
+        drawOverlay(ctx, overlay, overlayCtx, videoW, videoH, drawX, drawY, drawWidth, drawHeight);
+      }
     }
 
     const elapsed = performance.now() - frameStart;
@@ -260,7 +332,16 @@ export function useVideoPlayer({
     tickRef.current++;
 
     if (isPlayingRef.current && !primaryVideo.paused) {
-      animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
+      if ("requestVideoFrameCallback" in primaryVideo) {
+        rvfcHandleRef.current = (primaryVideo as any).requestVideoFrameCallback(() => {
+          rvfcHandleRef.current = undefined;
+          rvfcVideoRef.current = null;
+          renderRef.current?.();
+        });
+        rvfcVideoRef.current = primaryVideo;
+      } else {
+        animationFrameRef.current = requestAnimationFrame(() => renderRef.current?.());
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvas]);
@@ -268,6 +349,41 @@ export function useVideoPlayer({
   useEffect(() => {
     renderRef.current = render;
   }, [render]);
+
+  const seekAndRender = useCallback(async (time: number): Promise<void> => {
+    const allVideos = [...activeVideosRef.current, ...overlayVideosRef.current];
+
+    await Promise.all(
+      allVideos.map((vDef) => {
+        const video = videosMapRef.current.get(vDef.id);
+        if (!video) return Promise.resolve();
+        const localTime = Math.max(0, time - vDef.clipStartTime);
+        if (Math.abs(video.currentTime - localTime) < 0.001) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          const onSeeked = () => {
+            video.removeEventListener("seeked", onSeeked);
+            resolve();
+          };
+          video.addEventListener("seeked", onSeeked);
+          video.currentTime = localTime;
+        });
+      }),
+    );
+
+    lastVideoTimeRef.current = -1;
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = undefined;
+    }
+    if (rvfcHandleRef.current !== undefined) {
+      (rvfcVideoRef.current as any)?.cancelVideoFrameCallback?.(rvfcHandleRef.current);
+      rvfcHandleRef.current = undefined;
+      rvfcVideoRef.current = null;
+    }
+
+    await renderRef.current?.();
+  }, []);
 
   // ── GIF frame advancement — runs on a dedicated interval, not in the RAF loop ──
   useEffect(() => {
@@ -354,14 +470,34 @@ export function useVideoPlayer({
     const allVideos = [...activeVideos, ...overlayVideos];
     const currentIds = new Set(allVideos.map((v) => v.id));
 
+    // Build a src→newId map for the incoming entries so the cleanup loop can
+    // re-key an element (same file, new clip ID) instead of destroying it.
+    const incomingSrcToId = new Map<string, string>();
+    for (const vDef of allVideos) {
+      incomingSrcToId.set(resolveVideoSrc(vDef.path), vDef.id);
+    }
+
     for (const [id, video] of map.entries()) {
       if (!currentIds.has(id)) {
-        video.onerror = null;
-        video.onloadedmetadata = null;
-        video.oncanplay = null;
-        video.pause();
-        video.src = "";
-        map.delete(id);
+        const newId = incomingSrcToId.get(video.src);
+        if (newId && !map.has(newId)) {
+          // Same file is still needed under a different clip ID — re-key it and
+          // seek to the correct local time for the new clip.
+          map.set(newId, video);
+          map.delete(id);
+          const newDef = allVideos.find((v) => v.id === newId);
+          if (newDef) {
+            const localTime = Math.max(0, currentTimeRef.current - newDef.clipStartTime);
+            video.currentTime = localTime;
+          }
+        } else {
+          video.onerror = null;
+          video.onloadedmetadata = null;
+          video.oncanplay = null;
+          video.pause();
+          video.src = "";
+          map.delete(id);
+        }
       }
     }
 
@@ -438,7 +574,15 @@ export function useVideoPlayer({
       for (const video of videosMapRef.current.values()) {
         video.pause();
       }
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+      }
+      if (rvfcHandleRef.current !== undefined) {
+        (rvfcVideoRef.current as any)?.cancelVideoFrameCallback?.(rvfcHandleRef.current);
+        rvfcHandleRef.current = undefined;
+        rvfcVideoRef.current = null;
+      }
     }
   }, [isPlaying, render]);
 
@@ -477,5 +621,5 @@ export function useVideoPlayer({
     }
   }, [effects, regions, overlays, render, canvas, isPlaying]);
 
-  return {};
+  return { seekAndRender };
 }

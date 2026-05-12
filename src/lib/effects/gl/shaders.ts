@@ -6,6 +6,8 @@ export interface GLSLEffect {
   uniformMapper?: (params: Record<string, unknown>) => Record<string, unknown>;
   multiPass?: (resolution: [number, number], params: Record<string, unknown>) => number;
   skipGL?: (params: Record<string, unknown>) => boolean;
+  /** When true, GLPipeline binds a persistent previous-frame texture to u_prevFrame (sampler2D, unit 1). */
+  needsPrevFrame?: boolean;
 }
 
 // layout(location) qualifiers are required so the VAO binding by index (0,1) works

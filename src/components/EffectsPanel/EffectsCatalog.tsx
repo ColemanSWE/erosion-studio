@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, ChevronDown, ChevronRight, Search } from "lucide-react";
 import type { EffectType } from "../../lib/effects/types";
+import type { Overlay, Region } from "../../lib/effects/types";
 import { isStyleEffect, getAllEffects } from "../../lib/effects/effect-registry";
 import { formatEffectName } from "./effectsPanelUtils";
 import styles from "./EffectsPanel.module.scss";
@@ -8,10 +9,12 @@ import styles from "./EffectsPanel.module.scss";
 interface EffectsCatalogProps {
   activeRegionId: string | null;
   activeOverlayId: string | null;
+  regions: Region[];
+  overlays: Overlay[];
   onAddEffect: (type: EffectType, regionId?: string, overlayId?: string) => void;
 }
 
-export function EffectsCatalog({ activeRegionId, activeOverlayId, onAddEffect }: EffectsCatalogProps) {
+export function EffectsCatalog({ activeRegionId, activeOverlayId, regions, overlays, onAddEffect }: EffectsCatalogProps) {
   const allDefs = getAllEffects();
   const EFFECT_CATEGORIES = allDefs.reduce(
     (acc, def) => {
@@ -31,8 +34,25 @@ export function EffectsCatalog({ activeRegionId, activeOverlayId, onAddEffect }:
     onAddEffect(type, activeRegionId || undefined, activeOverlayId || undefined);
   };
 
+  const targetLabel = (() => {
+    if (activeOverlayId) {
+      const overlay = overlays.find((o) => o.id === activeOverlayId);
+      return overlay?.name ?? "Overlay";
+    }
+    if (activeRegionId) {
+      const region = regions.find((r) => r.id === activeRegionId);
+      return region?.name ?? "Region";
+    }
+    return "Global";
+  })();
+
   return (
     <>
+      <div className={styles.applyingTo}>
+        <span className={styles.applyingToLabel}>Applying to</span>
+        <span className={styles.applyingToTarget}>{targetLabel}</span>
+      </div>
+
       <div className={styles.searchContainer}>
         <Search size={14} className={styles.searchIcon} />
         <input

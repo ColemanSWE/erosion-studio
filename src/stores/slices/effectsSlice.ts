@@ -5,8 +5,6 @@ import { getEffectDefinition } from "../../lib/effects/effect-registry";
 import type { ProjectState } from "../projectState";
 import { withHistory } from "../projectUtils";
 
-let effectIdCounter = 0;
-
 function getDefaultParams(type: EffectType): Record<string, unknown> {
   const def = getEffectDefinition(type);
   return def ? { ...def.defaultParams } : {};
@@ -47,7 +45,7 @@ export const createEffectsSlice: StateCreator<ProjectState, [], [], EffectsSlice
 
   addEffect: (type, regionId, overlayId) => {
     const newEffect: Effect = {
-      id: `effect-${effectIdCounter++}`,
+      id: crypto.randomUUID(),
       type,
       active: true,
       params: getDefaultParams(type),

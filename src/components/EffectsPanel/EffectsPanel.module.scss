@@ -24,6 +24,33 @@
   }
 }
 
+.applyingTo {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-xs;
+  padding: variables.$spacing-xs variables.$spacing-sm;
+  border-bottom: 1px solid variables.$border-secondary;
+  background-color: variables.$bg-base;
+  flex-shrink: 0;
+}
+
+.applyingToLabel {
+  font-size: 10px;
+  font-family: variables.$font-mono;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: variables.$text-tertiary;
+}
+
+.applyingToTarget {
+  font-size: 10px;
+  font-family: variables.$font-mono;
+  font-weight: 600;
+  color: variables.$accent-primary;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .searchContainer {
   display: flex;
   align-items: center;

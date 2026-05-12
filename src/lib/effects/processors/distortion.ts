@@ -449,8 +449,43 @@ registerEffect({
   type: "melt",
   label: "Melt",
   category: "distortion",
-    defaultParams: { intensity: 50, direction: "down" },
+  defaultParams: { intensity: 50, direction: "down" },
   paramsConfig: [],
+  glsl: {
+    needsPrevFrame: true,
+    uniforms: { intensity: "float", dirMode: "int" },
+    uniformMapper: (params) => ({
+      intensity: params.intensity,
+      dirMode: (params.direction as string) === "up" ? 1 : 0,
+    }),
+    fragment: `
+uniform float u_intensity;
+uniform int u_dirMode;
+uniform sampler2D u_prevFrame;
+
+void main() {
+  if (u_intensity == 0.0) {
+    fragColor = texture(u_source, v_texCoord);
+    return;
+  }
+
+  float meltSpeed = u_intensity / 20.0;
+  float colFrac = v_texCoord.x;
+  float colNoise = sin(colFrac * u_resolution.x * 0.1 + u_time) * 0.5 + 0.5;
+  float randN = pseudoRandom(colFrac * 137.5 + floor(u_time * 60.0) * 0.001);
+  float meltAmt = (meltSpeed * (1.0 + colNoise * 2.0) + randN * 3.0) / u_resolution.y;
+
+  vec2 meltUV = u_dirMode == 0
+    ? v_texCoord - vec2(0.0, meltAmt)
+    : v_texCoord + vec2(0.0, meltAmt);
+
+  vec3 cur  = texture(u_source,   v_texCoord).rgb;
+  vec3 melt = texture(u_prevFrame, clamp(meltUV, vec2(0.0), vec2(1.0))).rgb;
+
+  float blend = 0.7 + pseudoRandom(v_texCoord.x * 234.5 + v_texCoord.y * 78.9 + u_time * 0.01) * 0.3;
+  fragColor = vec4(mix(cur, melt, blend), 1.0);
+}`,
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const intensity = (params.intensity as number) ?? 50;
     const direction = (params.direction as string) ?? "down";

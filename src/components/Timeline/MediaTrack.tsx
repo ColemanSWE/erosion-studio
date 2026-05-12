@@ -24,6 +24,7 @@ interface MediaTrackProps {
   onUpdateClip: (id: string, updates: Partial<TimelineClip>) => void;
   onRemoveClip: (id: string) => void;
   onSnapLine: (time: number | null) => void;
+  onClearOverlaySelection: () => void;
 }
 
 interface DragState {
@@ -55,6 +56,7 @@ export function MediaTrack({
   onUpdateClip,
   onRemoveClip,
   onSnapLine,
+  onClearOverlaySelection,
 }: MediaTrackProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [newMediaGhostX, setNewMediaGhostX] = useState<number | null>(null);
@@ -144,6 +146,7 @@ export function MediaTrack({
       }
 
       setSelectedClipId(activeDragId);
+      onClearOverlaySelection();
       dragMoveRef.current = {
         clipId: activeDragId,
         startX: e.clientX,
@@ -300,8 +303,9 @@ export function MediaTrack({
     e.preventDefault();
     e.stopPropagation();
     setSelectedClipId(clipId);
+    onClearOverlaySelection();
     setContextMenu({ clipId, x: e.clientX, y: e.clientY });
-  }, []);
+  }, [onClearOverlaySelection]);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -405,7 +409,7 @@ export function MediaTrack({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      onMouseDown={() => setSelectedClipId(null)}
+      onMouseDown={() => { setSelectedClipId(null); onClearOverlaySelection(); }}
     >
       {Array.from({ length: numTracks }, (_, idx) => (
         <div

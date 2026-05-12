@@ -130,7 +130,6 @@ registerEffect({
 
 // ─── 2. Neon Wireframe ─────────────────────────────────────────────────────────
 // Edge detection → black background → thick neon-glowing edges. Tron/cyberpunk.
-
 registerEffect({
   type: "neon-wireframe",
   label: "Neon Wireframe",
@@ -153,6 +152,115 @@ registerEffect({
     { key: "dualTone", label: "Dual Tone", type: "checkbox" },
     { key: "lineBoost", label: "Line Boost", type: "slider", min: 1, max: 5, step: 0.25 },
   ],
+  glsl: {
+    multiPass: () => 3,
+    uniforms: {
+      threshold: "float", glowRadius: "float", glowIntensity: "float",
+      color: "vec3", secondaryColor: "vec3", dualTone: "int", lineBoost: "float",
+    },
+    uniformMapper: (params) => {
+      const parseHex = (hex: string): [number, number, number] => {
+        const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex as string);
+        return r ? [parseInt(r[1], 16) / 255, parseInt(r[2], 16) / 255, parseInt(r[3], 16) / 255] : [0, 1, 1];
+      };
+      return {
+        threshold: params.threshold,
+        glowRadius: params.glowRadius,
+        glowIntensity: params.glowIntensity,
+        color: parseHex(params.color as string),
+        secondaryColor: parseHex(params.secondaryColor as string),
+        dualTone: params.dualTone ? 1 : 0,
+        lineBoost: params.lineBoost,
+      };
+    },
+    fragment: `
+uniform float u_threshold;
+uniform float u_glowRadius;
+uniform float u_glowIntensity;
+uniform vec3 u_color;
+uniform vec3 u_secondaryColor;
+uniform int u_dualTone;
+uniform float u_lineBoost;
+uniform int u_pass;
+
+float sobelMag(vec2 uv, vec2 tx) {
+  vec3 luma = vec3(0.299, 0.587, 0.114);
+  float tl = dot(texture(u_source, uv + vec2(-tx.x,-tx.y)).rgb, luma);
+  float tm = dot(texture(u_source, uv + vec2( 0.0, -tx.y)).rgb, luma);
+  float tr = dot(texture(u_source, uv + vec2( tx.x,-tx.y)).rgb, luma);
+  float ml = dot(texture(u_source, uv + vec2(-tx.x,  0.0)).rgb, luma);
+  float mr = dot(texture(u_source, uv + vec2( tx.x,  0.0)).rgb, luma);
+  float bl = dot(texture(u_source, uv + vec2(-tx.x,  tx.y)).rgb, luma);
+  float bm = dot(texture(u_source, uv + vec2( 0.0,   tx.y)).rgb, luma);
+  float br = dot(texture(u_source, uv + vec2( tx.x,  tx.y)).rgb, luma);
+  float gx = -tl - 2.0*ml - bl + tr + 2.0*mr + br;
+  float gy = -tl - 2.0*tm - tr + bl + 2.0*bm + br;
+  return length(vec2(gx, gy));
+}
+
+float sobelAngle(vec2 uv, vec2 tx) {
+  vec3 luma = vec3(0.299, 0.587, 0.114);
+  float tl = dot(texture(u_source, uv + vec2(-tx.x,-tx.y)).rgb, luma);
+  float tm = dot(texture(u_source, uv + vec2( 0.0, -tx.y)).rgb, luma);
+  float tr = dot(texture(u_source, uv + vec2( tx.x,-tx.y)).rgb, luma);
+  float ml = dot(texture(u_source, uv + vec2(-tx.x,  0.0)).rgb, luma);
+  float mr = dot(texture(u_source, uv + vec2( tx.x,  0.0)).rgb, luma);
+  float bl = dot(texture(u_source, uv + vec2(-tx.x,  tx.y)).rgb, luma);
+  float bm = dot(texture(u_source, uv + vec2( 0.0,   tx.y)).rgb, luma);
+  float br = dot(texture(u_source, uv + vec2( tx.x,  tx.y)).rgb, luma);
+  float gx = -tl - 2.0*ml - bl + tr + 2.0*mr + br;
+  float gy = -tl - 2.0*tm - tr + bl + 2.0*bm + br;
+  return atan(gy, gx);
+}
+
+void main() {
+  vec2 tx = 1.0 / u_resolution;
+  float thresh = u_threshold / 255.0;
+
+  if (u_pass == 0) {
+    float mag = sobelMag(v_texCoord, tx);
+    float edge = mag > thresh ? clamp(mag * u_lineBoost, 0.0, 1.0) : 0.0;
+    fragColor = vec4(texture(u_source, v_texCoord).rgb, edge);
+    return;
+  }
+
+  if (u_pass == 1) {
+    float blurA = 0.0, totalW = 0.0;
+    float step = u_glowRadius / 7.0 / u_resolution.x;
+    for (int k = -7; k <= 7; k++) {
+      float w = exp(-float(k * k) / 8.0);
+      blurA += texture(u_source, clamp(v_texCoord + vec2(float(k) * step, 0.0), vec2(0.0), vec2(1.0))).a * w;
+      totalW += w;
+    }
+    fragColor = vec4(texture(u_source, v_texCoord).rgb, blurA / totalW);
+    return;
+  }
+
+  float blurA = 0.0, totalW = 0.0;
+  float step = u_glowRadius / 7.0 / u_resolution.y;
+  for (int k = -7; k <= 7; k++) {
+    float w = exp(-float(k * k) / 8.0);
+    blurA += texture(u_source, clamp(v_texCoord + vec2(0.0, float(k) * step), vec2(0.0), vec2(1.0))).a * w;
+    totalW += w;
+  }
+  float glow = blurA / totalW;
+
+  float mag = sobelMag(v_texCoord, tx);
+  float sharpEdge = mag > thresh ? clamp(mag * u_lineBoost, 0.0, 1.0) : 0.0;
+
+  vec3 edgeColor;
+  if (u_dualTone == 1) {
+    float angle = sobelAngle(v_texCoord, tx);
+    float t = (sin(angle) + 1.0) * 0.5;
+    edgeColor = mix(u_color, u_secondaryColor, t);
+  } else {
+    edgeColor = u_color;
+  }
+
+  float combined = min(sharpEdge + glow * u_glowIntensity, 1.0);
+  fragColor = vec4(edgeColor * combined, 1.0);
+}`,
+  },
   processor: (data, { width, height }, params) => {
     const threshold = (params.threshold as number) ?? 40;
     const glowRadius = (params.glowRadius as number) ?? 8;
@@ -417,6 +525,74 @@ registerEffect({
     { key: "colorB", label: "Color B", type: "color" },
     { key: "seedFromImage", label: "Seed From Image", type: "checkbox" },
   ],
+  glsl: {
+    needsPrevFrame: true,
+    uniforms: {
+      feed: "float", kill: "float", diffuseB: "float", stepsPerFrame: "float",
+      colorA: "vec3", colorB: "vec3", seedFromImage: "int",
+    },
+    uniformMapper: (params) => {
+      const parseHex = (hex: string): [number, number, number] => {
+        const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex as string);
+        return r ? [parseInt(r[1], 16) / 255, parseInt(r[2], 16) / 255, parseInt(r[3], 16) / 255] : [0, 0, 0];
+      };
+      return {
+        feed: params.feed,
+        kill: params.kill,
+        diffuseB: params.diffuseB,
+        stepsPerFrame: params.stepsPerFrame,
+        colorA: parseHex(params.colorA as string),
+        colorB: parseHex(params.colorB as string),
+        seedFromImage: (params.seedFromImage as boolean) ? 1 : 0,
+      };
+    },
+    fragment: `
+uniform float u_feed;
+uniform float u_kill;
+uniform float u_diffuseB;
+uniform float u_stepsPerFrame;
+uniform vec3  u_colorA;
+uniform vec3  u_colorB;
+uniform int   u_seedFromImage;
+uniform sampler2D u_prevFrame;
+
+void main() {
+  vec2 tx = 1.0 / u_resolution;
+
+  // Read B chemical from previous frame's red channel
+  // (prevFrame encodes B as luminance when colorA=black, colorB=green/any)
+  // For robustness, derive B from prevFrame luminance
+  float B = dot(texture(u_prevFrame, v_texCoord).rgb, vec3(0.299, 0.587, 0.114));
+  float A = 1.0 - B;
+
+  // Discrete Laplacian of B
+  float lapB =
+    dot(texture(u_prevFrame, v_texCoord + vec2(-tx.x,  0.0)).rgb, vec3(1.0/3.0)) +
+    dot(texture(u_prevFrame, v_texCoord + vec2( tx.x,  0.0)).rgb, vec3(1.0/3.0)) +
+    dot(texture(u_prevFrame, v_texCoord + vec2(0.0,  -tx.y)).rgb, vec3(1.0/3.0)) +
+    dot(texture(u_prevFrame, v_texCoord + vec2(0.0,   tx.y)).rgb, vec3(1.0/3.0)) -
+    4.0 * B;
+
+  float AB2 = A * B * B;
+  float newB = B;
+  float dt = 0.08;
+  for (float s = 0.0; s < 20.0; s++) {
+    if (s >= u_stepsPerFrame) break;
+    float dB = u_diffuseB * lapB + AB2 - (u_feed + u_kill) * newB;
+    newB = clamp(newB + dB * dt, 0.0, 1.0);
+  }
+
+  // Seed B from dark image areas on first frames or continuously (slow)
+  if (u_seedFromImage == 1) {
+    float srcLuma = dot(texture(u_source, v_texCoord).rgb, vec3(0.299, 0.587, 0.114));
+    if (srcLuma < 0.4) {
+      newB = max(newB, (0.4 - srcLuma) * 0.5);
+    }
+  }
+
+  fragColor = vec4(mix(u_colorA, u_colorB, newB), 1.0);
+}`,
+  },
   processor: (data, { width, height }, params) => {
     const feed = (params.feed as number) ?? 0.055;
     const kill = (params.kill as number) ?? 0.062;

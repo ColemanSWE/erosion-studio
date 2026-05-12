@@ -34,6 +34,14 @@ import "../lib/effects/processors";
 
 const REGION_COLORS = ["#ff3366", "#33ccff", "#ffcc00", "#66ff66", "#cc66ff", "#ff9933"];
 
+function useStableArray<T extends { id: string }>(arr: T[]): T[] {
+  const ref = useRef(arr);
+  const prevIds = ref.current.map((x) => x.id).join(",");
+  const nextIds = arr.map((x) => x.id).join(",");
+  if (prevIds !== nextIds) ref.current = arr;
+  return ref.current;
+}
+
 function App() {
   const {
     projectName,
@@ -166,10 +174,14 @@ function App() {
     [effects, effectParamTracks],
   );
 
-  const { videoSources, imageSources, activeOverlays, overlayVideos, overlayImages, isCamera, isVideo } = useMemo(
+  const { videoSources: rawVideoSources, imageSources, activeOverlays, overlayVideos: rawOverlayVideos, overlayImages: rawOverlayImages, isCamera, isVideo } = useMemo(
     () => resolveRenderSources(clips, media, overlays, currentTime, selectedMediaId),
     [clips, media, overlays, currentTime, selectedMediaId],
   );
+
+  const videoSources = useStableArray(rawVideoSources);
+  const overlayVideos = useStableArray(rawOverlayVideos);
+  const overlayImages = useStableArray(rawOverlayImages);
 
   // ─── Rendering hooks ─────────────────────────────────────────────────────
   const { exportImage } = usePhotoEditor({
@@ -192,7 +204,7 @@ function App() {
     [duration, setDuration],
   );
 
-  useVideoPlayer({
+  const { seekAndRender } = useVideoPlayer({
     canvas,
     resolveEffects: resolveEffectsForTime,
     effects: resolvedEffects,
@@ -295,12 +307,7 @@ function App() {
         pause();
       } else {
         pause();
-        const seek = (time: number): Promise<void> =>
-          new Promise((resolve) => {
-            setCurrentTime(time);
-            requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-          });
-        result = await exportOffline(canvas, exportDuration, settings, seek);
+        result = await exportOffline(canvas, exportDuration, settings, seekAndRender);
       }
 
       setShowExportDialog(false);

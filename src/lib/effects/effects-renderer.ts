@@ -1,6 +1,6 @@
 import { Effect, Region, Overlay } from "./types";
 import { applyEffects, isStyleEffect } from "./effect-registry";
-import { GLPipeline, type GLRegion } from "./gl/pipeline";
+import { GLPipeline, type GLRegion, type OverlayDescriptor } from "./gl/pipeline";
 import { processEffectsInWorker } from "./worker-pool";
 import { PALETTES, PaletteKey } from "./palettes";
 import { emojiMap } from "./emoji-map";
@@ -36,6 +36,39 @@ export async function initializeEmojiPalette(paletteKey: PaletteKey): Promise<vo
     return;
   }
   await emojiMap.generatePalette(palette.emojis);
+}
+
+function buildOverlayDescriptors(
+  overlays: Overlay[],
+  context: RenderContext,
+  sourceWidth: number,
+  sourceHeight: number,
+  excludeIds?: Set<string>,
+): { descriptors: OverlayDescriptor[]; textOverlays: Overlay[] } {
+  const descriptors: OverlayDescriptor[] = [];
+  const textOverlays: Overlay[] = [];
+  for (const overlay of overlays) {
+    if (overlay.isEffectZone) continue;
+    if (excludeIds?.has(overlay.id)) continue;
+    if (overlay.type === "text") {
+      textOverlays.push(overlay);
+      continue;
+    }
+    if ((overlay.type === "image" || overlay.type === "video") && overlay.mediaId && context.getOverlaySource) {
+      const source = context.getOverlaySource(overlay.id, overlay.type);
+      if (source) {
+        descriptors.push({
+          source: source as TexImageSource,
+          x: overlay.x * sourceWidth,
+          y: overlay.y * sourceHeight,
+          w: overlay.width * sourceWidth,
+          h: overlay.height * sourceHeight,
+          opacity: overlay.opacity ?? 1,
+        });
+      }
+    }
+  }
+  return { descriptors, textOverlays };
 }
 
 function buildGLRegions(
@@ -115,17 +148,34 @@ export async function renderWithEffects(
         regionEffects, regions, sourceWidth, sourceHeight,
         drawX, drawY, canvasWidth, canvasHeight, scale, context.isFlipped,
       );
+      const { descriptors: overlayDescriptors, textOverlays } = buildOverlayDescriptors(
+        overlays, context, sourceWidth, sourceHeight,
+      );
       context.glPipeline.renderEffects(
         source, sourceWidth, sourceHeight, globalEffects, processConfig,
         ctx, drawX, drawY, drawWidth, drawHeight, canvasWidth, canvasHeight,
         glRegions.length > 0 ? glRegions : undefined,
+        overlayDescriptors.length > 0 ? overlayDescriptors : undefined,
       );
-      for (const overlay of overlays) {
-        if (!overlay.isEffectZone) {
-          drawOverlay(ctx, overlay, context, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
-        }
+      for (const overlay of textOverlays) {
+        drawOverlay(ctx, overlay, context, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
       }
       return;
+    }
+
+    // GL overlay-only path: no effects active, but GPU overlays to composite.
+    if (context.glPipeline && globalEffects.length === 0 && regionEffects.length === 0 && !hasOverlayMasks) {
+      const { descriptors, textOverlays } = buildOverlayDescriptors(overlays, context, sourceWidth, sourceHeight);
+      if (descriptors.length > 0) {
+        context.glPipeline.compositeOverlaysOnto(
+          source, sourceWidth, sourceHeight, descriptors,
+          ctx, drawX, drawY, drawWidth, drawHeight, canvasWidth, canvasHeight,
+        );
+        for (const overlay of textOverlays) {
+          drawOverlay(ctx, overlay, context, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
+        }
+        return;
+      }
     }
 
     // GL hybrid path: global + region effects on GPU → buffer; overlay masking on CPU.
@@ -152,14 +202,16 @@ export async function renderWithEffects(
         1.0, context, tick, true,
       );
 
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-      ctx.drawImage(buffer, drawX, drawY, drawWidth, drawHeight);
+      const { descriptors: remainingDescriptors, textOverlays: remainingTextOverlays } =
+        buildOverlayDescriptors(overlays, context, sourceWidth, sourceHeight, compositedOverlayIds);
 
-      for (const overlay of overlays) {
-        if (!overlay.isEffectZone && !compositedOverlayIds.has(overlay.id)) {
-          drawOverlay(ctx, overlay, context, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
-        }
+      context.glPipeline.compositeOverlaysOnto(
+        buffer, sourceWidth, sourceHeight,
+        remainingDescriptors,
+        ctx, drawX, drawY, drawWidth, drawHeight, canvasWidth, canvasHeight,
+      );
+      for (const overlay of remainingTextOverlays) {
+        drawOverlay(ctx, overlay, context, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
       }
       return;
     }

@@ -38,6 +38,77 @@ registerEffect({
     { key: "fontSize", label: "Font Size", type: "slider", min: 6, max: 24, step: 1 },
     { key: "bgDarken", label: "BG Darken", type: "slider", min: 0, max: 1, step: 0.05 },
   ],
+  glsl: {
+    uniforms: { threshold: "float", density: "float", color: "vec3", opacity: "float", bgDarken: "float" },
+    uniformMapper: (params) => {
+      const parseHex = (hex: string): [number, number, number] => {
+        const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex as string);
+        return r ? [parseInt(r[1], 16) / 255, parseInt(r[2], 16) / 255, parseInt(r[3], 16) / 255] : [0, 1, 0.53];
+      };
+      return {
+        threshold: (params.threshold as number) / 255,
+        density: params.density,
+        color: parseHex(params.color as string),
+        opacity: params.opacity,
+        bgDarken: params.bgDarken,
+      };
+    },
+    fragment: `
+uniform float u_threshold;
+uniform float u_density;
+uniform vec3  u_color;
+uniform float u_opacity;
+uniform float u_bgDarken;
+
+void main() {
+  // Cell this pixel belongs to
+  vec2 cellPx = floor(v_texCoord * u_resolution / u_density);
+  vec2 cellCenter = (cellPx + 0.5) * u_density / u_resolution;
+
+  // Average luminance for this cell (sample a 2x2 grid within the cell)
+  float cellBri = 0.0;
+  for (int dy = 0; dy <= 1; dy++) {
+    for (int dx = 0; dx <= 1; dx++) {
+      vec2 sUV = clamp(cellCenter + vec2(float(dx) - 0.5, float(dy) - 0.5) * u_density * 0.4 / u_resolution, vec2(0.0), vec2(1.0));
+      cellBri += dot(texture(u_source, sUV).rgb, vec3(0.299, 0.587, 0.114));
+    }
+  }
+  cellBri *= 0.25;
+
+  // Position within cell [0,1]
+  vec2 cellUV = fract(v_texCoord * u_resolution / u_density);
+
+  // Character density: dark areas → dense fill, bright → sparse
+  float charDensity = 1.0 - cellBri;
+
+  // 4x4 dot grid within each character cell (simulates character fill density)
+  float dotCol = floor(cellUV.x * 4.0);
+  float dotRow = floor(cellUV.y * 4.0);
+  float dotHash = pseudoRandom(cellPx * 13.7 + vec2(dotCol * 4.0 + dotRow) * 0.1);
+  bool dotOn = dotHash < charDensity && cellBri < (1.0 - u_threshold);
+
+  // Edge mode: highlight edges via Sobel
+  vec2 tx = 1.0 / u_resolution;
+  vec3 lumaW = vec3(0.299, 0.587, 0.114);
+  float tl = dot(texture(u_source, cellCenter + vec2(-tx.x,-tx.y)).rgb, lumaW);
+  float tm = dot(texture(u_source, cellCenter + vec2( 0.0, -tx.y)).rgb, lumaW);
+  float tr = dot(texture(u_source, cellCenter + vec2( tx.x,-tx.y)).rgb, lumaW);
+  float ml = dot(texture(u_source, cellCenter + vec2(-tx.x, 0.0 )).rgb, lumaW);
+  float mr = dot(texture(u_source, cellCenter + vec2( tx.x, 0.0 )).rgb, lumaW);
+  float bl = dot(texture(u_source, cellCenter + vec2(-tx.x, tx.y)).rgb, lumaW);
+  float bm = dot(texture(u_source, cellCenter + vec2( 0.0,  tx.y)).rgb, lumaW);
+  float br = dot(texture(u_source, cellCenter + vec2( tx.x, tx.y)).rgb, lumaW);
+  float gx = -tl - 2.0*ml - bl + tr + 2.0*mr + br;
+  float gy = -tl - 2.0*tm - tr + bl + 2.0*bm + br;
+  float edgeMag = length(vec2(gx, gy));
+  dotOn = dotOn || edgeMag > u_threshold * 0.5;
+
+  vec3 bg  = texture(u_source, v_texCoord).rgb * (1.0 - u_bgDarken);
+  vec3 fg  = mix(bg, u_color, u_opacity);
+
+  fragColor = vec4(dotOn ? fg : bg, 1.0);
+}`,
+  },
   processor: (data, { width, height }, params) => {
     const threshold = (params.threshold as number) ?? 80;
     const density = (params.density as number) ?? 8;
@@ -155,7 +226,6 @@ registerEffect({
 
 // ─── 2. Voronoi Mosaic ─────────────────────────────────────────────────────────
 // Stained-glass / low-poly look using Voronoi tessellation
-
 registerEffect({
   type: "voronoi-mosaic",
   label: "Voronoi Mosaic",
@@ -174,6 +244,77 @@ registerEffect({
     { key: "randomness", label: "Randomness", type: "slider", min: 0, max: 1, step: 0.05 },
     { key: "colorBlend", label: "Color Blend", type: "slider", min: 0, max: 1, step: 0.05 },
   ],
+  glsl: {
+    uniforms: { cellCount: "float", strokeWidth: "float", strokeColor: "vec3", randomness: "float", colorBlend: "float" },
+    uniformMapper: (params) => {
+      const parseHex = (hex: string): [number, number, number] => {
+        const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex as string);
+        return r ? [parseInt(r[1], 16) / 255, parseInt(r[2], 16) / 255, parseInt(r[3], 16) / 255] : [0, 0, 0];
+      };
+      return {
+        cellCount: params.cellCount,
+        strokeWidth: params.strokeWidth,
+        strokeColor: parseHex(params.strokeColor as string),
+        randomness: params.randomness,
+        colorBlend: params.colorBlend,
+      };
+    },
+    fragment: `
+uniform float u_cellCount;
+uniform float u_strokeWidth;
+uniform vec3  u_strokeColor;
+uniform float u_randomness;
+uniform float u_colorBlend;
+
+vec2 cellSeedUV(vec2 cell, vec2 cellSize) {
+  float h1 = pseudoRandom(dot(cell, vec2(127.1, 311.7)));
+  float h2 = pseudoRandom(dot(cell, vec2(269.5, 183.3)));
+  vec2 jitter = (vec2(h1, h2) - 0.5) * u_randomness;
+  return clamp((cell + 0.5 + jitter) * cellSize, vec2(0.0), vec2(1.0));
+}
+
+void main() {
+  float aspect = u_resolution.x / u_resolution.y;
+  float gridCols = ceil(sqrt(u_cellCount * aspect));
+  float gridRows = ceil(u_cellCount / gridCols);
+  vec2 cellSize = 1.0 / vec2(gridCols, gridRows);
+
+  vec2 gridPos  = v_texCoord / cellSize;
+  vec2 gridCell = floor(gridPos);
+
+  float bestDist  = 1e9;
+  float secondDist = 1e9;
+  vec2  bestSeedUV = vec2(0.0);
+
+  for (int dy = -1; dy <= 1; dy++) {
+    for (int dx = -1; dx <= 1; dx++) {
+      vec2 nb = gridCell + vec2(float(dx), float(dy));
+      vec2 seedUV = cellSeedUV(nb, cellSize);
+      float d = distance(v_texCoord, seedUV);
+      if (d < bestDist) {
+        secondDist = bestDist;
+        bestDist   = d;
+        bestSeedUV = seedUV;
+      } else if (d < secondDist) {
+        secondDist = d;
+      }
+    }
+  }
+
+  vec3 seedColor = texture(u_source, bestSeedUV).rgb;
+  vec3 srcColor  = texture(u_source, v_texCoord).rgb;
+  vec3 cellColor = mix(srcColor, seedColor, u_colorBlend);
+
+  float stroke = 0.0;
+  if (u_strokeWidth > 0.0) {
+    float minCellDim = min(cellSize.x * u_resolution.x, cellSize.y * u_resolution.y);
+    float strokeThresh = u_strokeWidth / minCellDim * (secondDist - bestDist);
+    stroke = 1.0 - smoothstep(0.0, u_strokeWidth / u_resolution.x, secondDist - bestDist);
+  }
+
+  fragColor = vec4(mix(cellColor, u_strokeColor, stroke), 1.0);
+}`,
+  },
   processor: (data, { width, height }, params) => {
     const cellCount = (params.cellCount as number) ?? 200;
     const strokeWidth = (params.strokeWidth as number) ?? 1.5;
@@ -315,7 +456,6 @@ registerEffect({
 
 // ─── 3. Contour Lines ──────────────────────────────────────────────────────────
 // Topographic / iso-luminance contour lines
-
 registerEffect({
   type: "contour-lines",
   label: "Contour Lines",
@@ -336,6 +476,80 @@ registerEffect({
     { key: "opacity", label: "Opacity", type: "slider", min: 0, max: 1, step: 0.05 },
     { key: "smooth", label: "Smooth", type: "slider", min: 0, max: 8, step: 1 },
   ],
+  glsl: {
+    uniforms: {
+      levels: "int", lineWidth: "float", lineColor: "vec3",
+      fillBands: "int", opacity: "float", totalPasses: "int",
+    },
+    uniformMapper: (params) => {
+      const smooth = Math.round((params.smooth as number) ?? 2);
+      const parseHex = (hex: string): [number, number, number] => {
+        const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex as string);
+        return r ? [parseInt(r[1], 16) / 255, parseInt(r[2], 16) / 255, parseInt(r[3], 16) / 255] : [1, 1, 1];
+      };
+      return {
+        levels: Math.round((params.levels as number) ?? 10),
+        lineWidth: params.lineWidth,
+        lineColor: parseHex(params.lineColor as string),
+        fillBands: params.fillBands ? 1 : 0,
+        opacity: params.opacity,
+        totalPasses: smooth + 1,
+      };
+    },
+    multiPass: (_, params) => Math.round((params.smooth as number) ?? 2) + 1,
+    fragment: `
+uniform int u_levels;
+uniform float u_lineWidth;
+uniform vec3 u_lineColor;
+uniform int u_fillBands;
+uniform float u_opacity;
+uniform int u_totalPasses;
+uniform int u_pass;
+
+void main() {
+  vec2 tx = 1.0 / u_resolution;
+
+  if (u_pass < u_totalPasses - 1) {
+    fragColor = vec4(
+      texture(u_source, v_texCoord + vec2(-tx.x,-tx.y)).rgb * 1.0 +
+      texture(u_source, v_texCoord + vec2( 0.0, -tx.y)).rgb * 2.0 +
+      texture(u_source, v_texCoord + vec2( tx.x,-tx.y)).rgb * 1.0 +
+      texture(u_source, v_texCoord + vec2(-tx.x,  0.0)).rgb * 2.0 +
+      texture(u_source, v_texCoord              ).rgb * 4.0 +
+      texture(u_source, v_texCoord + vec2( tx.x,  0.0)).rgb * 2.0 +
+      texture(u_source, v_texCoord + vec2(-tx.x,  tx.y)).rgb * 1.0 +
+      texture(u_source, v_texCoord + vec2( 0.0,   tx.y)).rgb * 2.0 +
+      texture(u_source, v_texCoord + vec2( tx.x,  tx.y)).rgb * 1.0
+    , 1.0) / 16.0;
+    return;
+  }
+
+  vec3 luma = vec3(0.299, 0.587, 0.114);
+  float lumaVal = dot(texture(u_source, v_texCoord).rgb, luma);
+  float levels  = float(u_levels);
+  float myBand  = floor(lumaVal * levels);
+
+  vec3 col = texture(u_source, v_texCoord).rgb;
+  if (u_fillBands == 1) {
+    float quantLuma = (myBand + 0.5) / levels;
+    if (lumaVal > 0.001) col *= quantLuma / lumaVal;
+  }
+
+  int lw = min(2, int(ceil(u_lineWidth)));
+  bool isEdge = false;
+  for (int dy = -2; dy <= 2; dy++) {
+    for (int dx = -2; dx <= 2; dx++) {
+      if (!isEdge && abs(dx) <= lw && abs(dy) <= lw && !(dx == 0 && dy == 0)) {
+        float nb = dot(texture(u_source, v_texCoord + vec2(float(dx) * tx.x, float(dy) * tx.y)).rgb, luma);
+        if (floor(nb * levels) != myBand) isEdge = true;
+      }
+    }
+  }
+
+  if (isEdge) col = mix(col, u_lineColor, u_opacity);
+  fragColor = vec4(col, 1.0);
+}`,
+  },
   processor: (data, { width, height }, params) => {
     const levels = (params.levels as number) ?? 10;
     const lineWidth = (params.lineWidth as number) ?? 1.5;
@@ -684,6 +898,42 @@ registerEffect({
     { key: "dither", label: "Dither", type: "checkbox" },
     { key: "ditherStrength", label: "Dither Strength", type: "slider", min: 0.1, max: 1.0, step: 0.05 },
   ],
+  glsl: {
+    uniforms: { levels: "float", dither: "int", ditherStrength: "float" },
+    uniformMapper: (params) => ({
+      levels: params.colors,
+      dither: (params.dither as boolean) ? 1 : 0,
+      ditherStrength: params.ditherStrength,
+    }),
+    fragment: `
+uniform float u_levels;
+uniform int   u_dither;
+uniform float u_ditherStrength;
+
+// 4x4 Bayer matrix (values 0-15, normalized to 0-1)
+float bayer4x4(ivec2 pos) {
+  int bayer[16];
+  bayer[0]  = 0;  bayer[1]  = 8;  bayer[2]  = 2;  bayer[3]  = 10;
+  bayer[4]  = 12; bayer[5]  = 4;  bayer[6]  = 14; bayer[7]  = 6;
+  bayer[8]  = 3;  bayer[9]  = 11; bayer[10] = 1;  bayer[11] = 9;
+  bayer[12] = 15; bayer[13] = 7;  bayer[14] = 13; bayer[15] = 5;
+  int idx = (pos.y % 4) * 4 + (pos.x % 4);
+  return (float(bayer[idx]) + 0.5) / 16.0 - 0.5;
+}
+
+void main() {
+  vec3 col = texture(u_source, v_texCoord).rgb;
+
+  if (u_dither == 1) {
+    ivec2 px = ivec2(floor(v_texCoord * u_resolution));
+    float noise = bayer4x4(px) * u_ditherStrength / u_levels;
+    col = clamp(col + vec3(noise), 0.0, 1.0);
+  }
+
+  col = floor(col * u_levels) / u_levels;
+  fragColor = vec4(col, 1.0);
+}`,
+  },
   processor: (data, { width, height }, params) => {
     const numColors = (params.colors as number) ?? 8;
     const dither = (params.dither as boolean) ?? true;
@@ -931,7 +1181,6 @@ registerEffect({
 // ─── Chrome ────────────────────────────────────────────────────────────────────
 // Liquid metal / chrome surface simulation using Sobel normals mapped to
 // a metallic environment gradient
-
 registerEffect({
   type: "chrome",
   label: "Chrome",
@@ -943,6 +1192,83 @@ registerEffect({
     { key: "contrast", label: "Contrast", type: "slider", min: 0.5, max: 4, step: 0.1 },
     { key: "smoothing", label: "Smoothing", type: "slider", min: 0, max: 5, step: 0.5 },
   ],
+  glsl: {
+    uniforms: { reflectivity: "float", contrast: "float", tintMode: "int", totalPasses: "int" },
+    uniformMapper: (params) => {
+      const smoothing = Math.round((params.smoothing as number) ?? 2);
+      return {
+        reflectivity: params.reflectivity,
+        contrast: params.contrast,
+        tintMode: params.tint === "gold" ? 1 : params.tint === "rainbow" ? 2 : params.tint === "copper" ? 3 : 0,
+        totalPasses: smoothing + 1,
+      };
+    },
+    multiPass: (_, params) => Math.round((params.smoothing as number) ?? 2) + 1,
+    fragment: `
+uniform float u_reflectivity;
+uniform float u_contrast;
+uniform int u_tintMode;
+uniform int u_totalPasses;
+uniform int u_pass;
+
+vec3 chromeTint(float rawT) {
+  float t = clamp(rawT * u_contrast - (u_contrast - 1.0) * 0.5, 0.0, 1.0);
+  if (u_tintMode == 1) {
+    if (t < 0.25) return mix(vec3(50,30,0)/255.0,   vec3(160,110,20)/255.0,  t * 4.0);
+    if (t < 0.5)  return mix(vec3(160,110,20)/255.0, vec3(255,220,80)/255.0,  (t-0.25)*4.0);
+    if (t < 0.75) return mix(vec3(255,220,80)/255.0, vec3(255,255,180)/255.0, (t-0.5)*4.0);
+    return mix(vec3(255,255,180)/255.0, vec3(255,240,120)/255.0, (t-0.75)*4.0);
+  }
+  if (u_tintMode == 2) return hslToRgb(t * 360.0, 0.9, 0.55 + t * 0.1);
+  if (u_tintMode == 3) {
+    if (t < 0.25) return mix(vec3(40,15,5)/255.0,    vec3(150,70,30)/255.0,   t * 4.0);
+    if (t < 0.5)  return mix(vec3(150,70,30)/255.0,  vec3(220,140,80)/255.0,  (t-0.25)*4.0);
+    if (t < 0.75) return mix(vec3(220,140,80)/255.0, vec3(255,200,150)/255.0, (t-0.5)*4.0);
+    return mix(vec3(255,200,150)/255.0, vec3(240,180,130)/255.0, (t-0.75)*4.0);
+  }
+  float hi = t > 0.85 ? (t - 0.85) / 0.15 : 0.0;
+  return vec3(t + hi * 0.157, t + hi * 0.157, clamp(t + 0.039 + hi * 0.157, 0.0, 1.0));
+}
+
+void main() {
+  vec2 tx = 1.0 / u_resolution;
+
+  if (u_pass < u_totalPasses - 1) {
+    fragColor = vec4(
+      texture(u_source, v_texCoord + vec2(-tx.x,-tx.y)).rgb * 1.0 +
+      texture(u_source, v_texCoord + vec2(0.0,  -tx.y)).rgb * 2.0 +
+      texture(u_source, v_texCoord + vec2( tx.x,-tx.y)).rgb * 1.0 +
+      texture(u_source, v_texCoord + vec2(-tx.x, 0.0 )).rgb * 2.0 +
+      texture(u_source, v_texCoord              ).rgb * 4.0 +
+      texture(u_source, v_texCoord + vec2( tx.x, 0.0 )).rgb * 2.0 +
+      texture(u_source, v_texCoord + vec2(-tx.x, tx.y)).rgb * 1.0 +
+      texture(u_source, v_texCoord + vec2(0.0,   tx.y)).rgb * 2.0 +
+      texture(u_source, v_texCoord + vec2( tx.x, tx.y)).rgb * 1.0
+    , 1.0) / 16.0;
+    return;
+  }
+
+  vec3 luma = vec3(0.299, 0.587, 0.114);
+  float tl = dot(texture(u_source, v_texCoord + vec2(-tx.x,-tx.y)).rgb, luma);
+  float tm = dot(texture(u_source, v_texCoord + vec2(0.0,  -tx.y)).rgb, luma);
+  float tr = dot(texture(u_source, v_texCoord + vec2( tx.x,-tx.y)).rgb, luma);
+  float ml = dot(texture(u_source, v_texCoord + vec2(-tx.x, 0.0 )).rgb, luma);
+  float mr = dot(texture(u_source, v_texCoord + vec2( tx.x, 0.0 )).rgb, luma);
+  float bl = dot(texture(u_source, v_texCoord + vec2(-tx.x, tx.y)).rgb, luma);
+  float bm = dot(texture(u_source, v_texCoord + vec2(0.0,   tx.y)).rgb, luma);
+  float br = dot(texture(u_source, v_texCoord + vec2( tx.x, tx.y)).rgb, luma);
+
+  float gx = -tl - 2.0*ml - bl + tr + 2.0*mr + br;
+  float gy = -tl - 2.0*tm - tr + bl + 2.0*bm + br;
+  float mag = length(vec2(gx, gy));
+  float envU = gx / (mag + 0.001);
+  float envV = gy / (mag + 0.001);
+  float rawT = (envU * 0.5 + envV * 0.5 + 1.0) * 0.5;
+
+  vec3 src = texture(u_source, v_texCoord).rgb;
+  fragColor = vec4(mix(src, chromeTint(rawT), u_reflectivity), 1.0);
+}`,
+  },
   processor: (data, { width, height }, params) => {
     const reflectivity = (params.reflectivity as number) ?? 0.85;
     const tint = (params.tint as string) ?? "silver";

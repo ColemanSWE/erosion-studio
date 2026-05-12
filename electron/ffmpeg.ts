@@ -2,7 +2,7 @@ import { ipcMain, app } from "electron";
 import fs from "fs";
 import path from "path";
 import { promisify } from "util";
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import { createRequire } from "module";
 
 const _require = createRequire(import.meta.url);
@@ -27,6 +27,14 @@ function getFFmpegPath(): string {
   }
   return ffmpegPath;
 }
+
+interface StreamSession {
+  process: ChildProcess;
+  exitPromise: Promise<{ success: boolean; error?: string }>;
+  stderrBuffer: string;
+}
+
+const streamSessions = new Map<string, StreamSession>();
 
 export function setupFFmpegHandlers() {
   // ── Extract video frames as PNG files ─────────────────────────────────────
@@ -210,6 +218,84 @@ export function setupFFmpegHandlers() {
     } catch (error) {
       return { success: false, error: String(error) };
     }
+  });
+
+  // ── Rawvideo streaming export (MP4 / WebM — avoids per-frame PNG encode) ──
+  ipcMain.handle(
+    "ffmpeg:startStreamExport",
+    async (
+      _,
+      sessionId: string,
+      opts: { width: number; height: number; fps: number; format: "mp4" | "webm"; outputPath: string },
+    ) => {
+      try {
+        const ffmpegPath = getFFmpegPath();
+        const { width, height, fps, format, outputPath } = opts;
+
+        const args: string[] = [
+          "-y",
+          "-f", "rawvideo",
+          "-pix_fmt", "rgba",
+          "-s", `${width}x${height}`,
+          "-r", String(fps),
+          "-i", "pipe:0",
+        ];
+
+        if (format === "mp4") {
+          args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-preset", "fast");
+        } else {
+          args.push("-c:v", "libvpx-vp9", "-crf", "20", "-b:v", "0", "-pix_fmt", "yuv420p");
+        }
+
+        args.push(outputPath);
+
+        const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "pipe", "pipe"] });
+        let stderrBuffer = "";
+        proc.stderr?.on("data", (d: Buffer) => { stderrBuffer += d.toString(); });
+
+        const exitPromise = new Promise<{ success: boolean; error?: string }>((resolve) => {
+          proc.on("close", (code) => {
+            streamSessions.delete(sessionId);
+            if (code === 0) resolve({ success: true });
+            else resolve({ success: false, error: `FFmpeg exited with code ${code}: ${stderrBuffer.slice(-500)}` });
+          });
+          proc.on("error", (err) => {
+            streamSessions.delete(sessionId);
+            resolve({ success: false, error: String(err) });
+          });
+        });
+
+        streamSessions.set(sessionId, { process: proc, exitPromise, stderrBuffer });
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: String(error) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "ffmpeg:writeFrame",
+    async (_, sessionId: string, data: Uint8Array) => {
+      const session = streamSessions.get(sessionId);
+      if (!session || !session.process.stdin) return { success: false, error: "Session not found" };
+
+      return new Promise<{ success: boolean; error?: string }>((resolve) => {
+        const buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+        const canContinue = session.process.stdin!.write(buf);
+        if (canContinue) {
+          resolve({ success: true });
+        } else {
+          session.process.stdin!.once("drain", () => resolve({ success: true }));
+        }
+      });
+    },
+  );
+
+  ipcMain.handle("ffmpeg:endStreamExport", async (_, sessionId: string) => {
+    const session = streamSessions.get(sessionId);
+    if (!session) return { success: false, error: "Session not found" };
+    session.process.stdin?.end();
+    return session.exitPromise;
   });
 
   // ── File I/O helpers ──────────────────────────────────────────────────────

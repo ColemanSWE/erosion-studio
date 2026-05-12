@@ -48,6 +48,8 @@ function EffectsPanel({
         <EffectsCatalog
           activeRegionId={activeRegionId}
           activeOverlayId={activeOverlayId}
+          regions={regions}
+          overlays={overlays}
           onAddEffect={onAddEffect}
         />
         <ActiveEffectsStack

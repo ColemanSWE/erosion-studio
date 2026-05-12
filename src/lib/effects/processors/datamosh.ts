@@ -335,6 +335,78 @@ registerEffect({
     { key: "freeze", label: "Freeze I-frame", type: "checkbox" },
     { key: "quality", label: "Quality", type: "select", options: ["fast", "balanced", "high"] },
   ],
+  glsl: {
+    // "transition" and "bloom" modes depend on timelineFrames (secondary video source) — fall back to CPU
+    skipGL: (params) => params.mode === "transition" || params.mode === "bloom",
+    needsPrevFrame: true,
+    uniforms: { intensity: "float", momentum: "float", decay: "float", bleed: "float", channelShift: "float" },
+    uniformMapper: (params) => ({
+      intensity: params.intensity,
+      momentum: (params.momentum as number) / 100,
+      decay: (params.decay as number) / 100 * 0.05,
+      bleed: (params.bleed as number) / 100,
+      channelShift: (params.channelShift as number),
+    }),
+    fragment: `
+uniform float u_intensity;
+uniform float u_momentum;
+uniform float u_decay;
+uniform float u_bleed;
+uniform float u_channelShift;
+uniform sampler2D u_prevFrame;
+
+void main() {
+  if (u_intensity == 0.0) {
+    fragColor = texture(u_source, v_texCoord);
+    return;
+  }
+
+  float mvScale = u_intensity / 50.0;
+  vec2 texel = 1.0 / u_resolution;
+  vec3 luma = vec3(0.299, 0.587, 0.114);
+
+  vec3 cur  = texture(u_source,   v_texCoord).rgb;
+  vec3 prev = texture(u_prevFrame, v_texCoord).rgb;
+
+  float It = dot(cur - prev, luma);
+  float gx = dot(
+    texture(u_source, v_texCoord + vec2(texel.x * 2.0, 0.0)).rgb -
+    texture(u_source, v_texCoord - vec2(texel.x * 2.0, 0.0)).rgb,
+    luma);
+  float gy = dot(
+    texture(u_source, v_texCoord + vec2(0.0, texel.y * 2.0)).rgb -
+    texture(u_source, v_texCoord - vec2(0.0, texel.y * 2.0)).rgb,
+    luma);
+
+  float denom = gx * gx + gy * gy + 0.002;
+  vec2 flow = clamp(
+    (-It / denom) * vec2(gx, gy) * (4.0 * texel.x) * mvScale * 2.0,
+    vec2(-0.06) * mvScale,
+    vec2( 0.06) * mvScale
+  );
+
+  vec2 moshUV = clamp(v_texCoord + flow, vec2(0.0), vec2(1.0));
+  vec3 mosh = texture(u_prevFrame, moshUV).rgb;
+
+  // Channel shift (RGB aberration)
+  if (u_channelShift > 0.0) {
+    float cs = u_channelShift / u_resolution.x;
+    mosh.r = texture(u_prevFrame, clamp(moshUV + vec2(cs, 0.0), vec2(0.0), vec2(1.0))).r;
+    mosh.b = texture(u_prevFrame, clamp(moshUV - vec2(cs, 0.0), vec2(0.0), vec2(1.0))).b;
+  }
+
+  float motionMag = clamp(abs(It) * 5.0 * mvScale, 0.0, 1.0);
+  float moshBlend = motionMag * u_momentum;
+
+  // I-frame decay: gradually blend mosh buffer toward current frame
+  vec3 decayed = mix(mosh, cur, u_decay);
+
+  // Source bleed
+  vec3 result = mix(decayed, cur, u_bleed * 0.02);
+
+  fragColor = vec4(mix(cur, result, moshBlend), 1.0);
+}`,
+  },
   processor: (data, { width, height, timelineFrames }, params) => {
     const mode         = (params.mode as string) ?? "smear";
     const intensity    = (params.intensity as number) ?? 60;

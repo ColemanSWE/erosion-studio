@@ -454,6 +454,7 @@ export function Timeline({
                 onUpdateClip={onUpdateClip}
                 onRemoveClip={onRemoveClip}
                 onSnapLine={setSnapLine}
+                onClearOverlaySelection={() => onSelectOverlay(null)}
               />
             </div>
 

@@ -15,6 +15,14 @@ function canvasToBytes(canvas: HTMLCanvasElement, mimeType: string, quality?: nu
   });
 }
 
+/** Get raw RGBA pixel data from a canvas. */
+function canvasToRawRGBA(canvas: HTMLCanvasElement): Uint8Array {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Failed to get 2D context for frame capture");
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  return new Uint8Array(imageData.data.buffer);
+}
+
 export interface ExportHook {
   /** Start an offline (frame-by-frame) export via FFmpeg. */
   exportOffline: (
@@ -82,53 +90,59 @@ export function useExport(): ExportHook {
         setIsExporting(true);
         setExportProgress(0);
 
-        // 1. Create temp directory for frames
-        const tmpResult = await window.electron.ffmpeg.createTempDir();
-        if (!tmpResult.success || !tmpResult.path) {
-          throw new Error(tmpResult.error || "Failed to create temp dir");
-        }
-        const framesDir = tmpResult.path;
-
         const fps = settings.fps || 30;
         const totalFrames = Math.max(1, Math.round(duration * fps));
 
-        // 2. Render each frame
-        for (let i = 0; i < totalFrames; i++) {
-          const time = (i / totalFrames) * duration;
+        if (ext === "gif") {
+          // GIF needs two FFmpeg passes (palettegen + paletteuse), so use PNG temp files.
+          const tmpResult = await window.electron.ffmpeg.createTempDir();
+          if (!tmpResult.success || !tmpResult.path) {
+            throw new Error(tmpResult.error || "Failed to create temp dir");
+          }
+          const framesDir = tmpResult.path;
 
-          // Seek the timeline to this exact time and wait for the canvas to render
-          await seek(time);
-
-          // Extract the frame from the canvas
-          const bytes = await canvasToBytes(canvas, "image/png");
-
-          // Write frame to temp dir
-          const frameName = `frame_${String(i).padStart(6, "0")}.png`;
-          const framePath = `${framesDir}/${frameName}`;
-          const writeResult = await window.electron.file.writeBinary(framePath, bytes);
-          if (!writeResult.success) {
-            throw new Error(writeResult.error || "Failed to write frame");
+          for (let i = 0; i < totalFrames; i++) {
+            const time = (i / totalFrames) * duration;
+            await seek(time);
+            const bytes = await canvasToBytes(canvas, "image/png");
+            const framePath = `${framesDir}/frame_${String(i).padStart(6, "0")}.png`;
+            const writeResult = await window.electron.file.writeBinary(framePath, bytes);
+            if (!writeResult.success) throw new Error(writeResult.error || "Failed to write frame");
+            setExportProgress(Math.round(((i + 1) / totalFrames) * 75));
           }
 
-          setExportProgress(Math.round(((i + 1) / totalFrames) * 80));
-        }
+          setExportProgress(85);
+          const encodeResult = await window.electron.ffmpeg.encodeVideo(framesDir, filePath, fps, "gif");
+          if (!encodeResult.success) throw new Error(encodeResult.error || "FFmpeg encoding failed");
 
-        // 3. Encode frames into final video via FFmpeg
-        setExportProgress(85);
-        const ffmpegFormat = ext as "mp4" | "webm" | "gif";
-        const encodeResult = await window.electron.ffmpeg.encodeVideo(
-          framesDir,
-          filePath,
-          fps,
-          ffmpegFormat,
-        );
-        if (!encodeResult.success) {
-          throw new Error(encodeResult.error || "FFmpeg encoding failed");
-        }
+          setExportProgress(95);
+          await window.electron.ffmpeg.cleanupTempDir(framesDir);
+        } else {
+          // MP4 / WebM: stream raw RGBA frames directly to FFmpeg stdin — no PNG encode, no temp files.
+          const sessionId = `export-${Date.now()}`;
+          const format = ext as "mp4" | "webm";
+          const startResult = await window.electron.ffmpeg.startStreamExport(sessionId, {
+            width: canvas.width,
+            height: canvas.height,
+            fps,
+            format,
+            outputPath: filePath,
+          });
+          if (!startResult.success) throw new Error(startResult.error || "Failed to start FFmpeg stream");
 
-        // 4. Clean up temp dir
-        setExportProgress(95);
-        await window.electron.ffmpeg.cleanupTempDir(framesDir);
+          for (let i = 0; i < totalFrames; i++) {
+            const time = (i / totalFrames) * duration;
+            await seek(time);
+            const frameData = canvasToRawRGBA(canvas);
+            const writeResult = await window.electron.ffmpeg.writeFrame(sessionId, frameData);
+            if (!writeResult.success) throw new Error(writeResult.error || "Failed to write frame");
+            setExportProgress(Math.round(((i + 1) / totalFrames) * 90));
+          }
+
+          setExportProgress(95);
+          const endResult = await window.electron.ffmpeg.endStreamExport(sessionId);
+          if (!endResult.success) throw new Error(endResult.error || "FFmpeg encoding failed");
+        }
 
         setExportProgress(100);
         setIsExporting(false);

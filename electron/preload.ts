@@ -26,6 +26,14 @@ contextBridge.exposeInMainWorld("electron", {
     createTempDir: () => ipcRenderer.invoke("ffmpeg:createTempDir"),
     cleanupTempDir: (dirPath: string) =>
       ipcRenderer.invoke("ffmpeg:cleanupTempDir", dirPath),
+    startStreamExport: (
+      sessionId: string,
+      opts: { width: number; height: number; fps: number; format: "mp4" | "webm"; outputPath: string }
+    ) => ipcRenderer.invoke("ffmpeg:startStreamExport", sessionId, opts),
+    writeFrame: (sessionId: string, data: Uint8Array) =>
+      ipcRenderer.invoke("ffmpeg:writeFrame", sessionId, data),
+    endStreamExport: (sessionId: string) =>
+      ipcRenderer.invoke("ffmpeg:endStreamExport", sessionId),
   },
   file: {
     readText: (filePath: string) =>
@@ -89,6 +97,15 @@ export interface ElectronAPI {
       success: boolean;
       error?: string;
     }>;
+    startStreamExport: (
+      sessionId: string,
+      opts: { width: number; height: number; fps: number; format: "mp4" | "webm"; outputPath: string }
+    ) => Promise<{ success: boolean; error?: string }>;
+    writeFrame: (
+      sessionId: string,
+      data: Uint8Array,
+    ) => Promise<{ success: boolean; error?: string }>;
+    endStreamExport: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
   };
   file: {
     readText: (filePath: string) => Promise<{

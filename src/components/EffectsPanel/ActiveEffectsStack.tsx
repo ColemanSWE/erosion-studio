@@ -140,97 +140,93 @@ export function ActiveEffectsStack({
         <OverlayProperties overlay={activeOverlay} onUpdateOverlay={onUpdateOverlay} />
       )}
 
-      {effects.length === 0 ? (
-        <div className={styles.empty}>
-          <p>No effects applied</p>
-          <p className={styles.hint}>Add effects from categories above</p>
-        </div>
-      ) : (
-        <div className={styles.effectStack}>
-          <div
-            className={`${styles.regionGroup} ${activeRegionId === null && activeOverlayId === null ? styles.active : ""}`}
-            onClick={() => onSelectRegion(null)}
-          >
-            <div className={styles.regionHeader}>
-              <span>Global</span>
-              <span className={styles.count}>{globalEffects.length}</span>
-            </div>
-            {globalEffects.map((effect, index) => renderEffectCard(effect, index))}
+      <div className={styles.effectStack}>
+        <div
+          className={`${styles.regionGroup} ${activeRegionId === null && activeOverlayId === null ? styles.active : ""}`}
+          onClick={() => onSelectRegion(null)}
+        >
+          <div className={styles.regionHeader}>
+            <span>Global</span>
+            <span className={styles.count}>{globalEffects.length}</span>
           </div>
+          {globalEffects.map((effect, index) => renderEffectCard(effect, index))}
+          {globalEffects.length === 0 && activeRegionId === null && activeOverlayId === null && (
+            <p className={styles.zoneHint}>Add effects from above — they will apply to the whole frame.</p>
+          )}
+        </div>
 
-          {regions.map((region) => {
-            const regionEffects = regionEffectsMap.get(region.id) || [];
+        {regions.map((region) => {
+          const regionEffects = regionEffectsMap.get(region.id) || [];
+          return (
+            <div
+              key={region.id}
+              className={`${styles.regionGroup} ${activeRegionId === region.id ? styles.active : ""}`}
+              onClick={() => onSelectRegion(region.id)}
+            >
+              <div className={styles.regionHeader}>
+                <div className={styles.regionHeaderLeft}>
+                  <div className={styles.colorDot} style={{ backgroundColor: region.color }} />
+                  <span>{region.name}</span>
+                </div>
+                <div className={styles.regionHeaderRight}>
+                  <span className={styles.count}>{regionEffects.length}</span>
+                  <button
+                    className={styles.deleteRegionButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveRegion(region.id);
+                    }}
+                    title="Delete region"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+              {regionEffects.map((effect, index) => renderEffectCard(effect, index))}
+            </div>
+          );
+        })}
+
+        {overlays
+          .filter((o) => {
+            const hasEffects = (overlayEffectsMap.get(o.id)?.length ?? 0) > 0;
+            return o.isEffectZone || activeOverlayId === o.id || hasEffects;
+          })
+          .map((overlay) => {
+            const overlayEffects = overlayEffectsMap.get(overlay.id) || [];
+            if (overlayEffects.length === 0 && activeOverlayId !== overlay.id) return null;
+            const isActive = activeOverlayId === overlay.id;
+            const label = overlay.isEffectZone ? `[Zone] ${overlay.name}` : overlay.name;
             return (
               <div
-                key={region.id}
-                className={`${styles.regionGroup} ${activeRegionId === region.id ? styles.active : ""}`}
-                onClick={() => onSelectRegion(region.id)}
+                key={overlay.id}
+                className={`${styles.regionGroup} ${isActive ? styles.active : ""}`}
+                onClick={() => onSelectOverlay(isActive ? null : overlay.id)}
               >
                 <div className={styles.regionHeader}>
                   <div className={styles.regionHeaderLeft}>
-                    <div className={styles.colorDot} style={{ backgroundColor: region.color }} />
-                    <span>{region.name}</span>
+                    <div
+                      className={styles.colorDot}
+                      style={{ backgroundColor: overlay.color || "#ccc" }}
+                    />
+                    <span>{label}</span>
                   </div>
                   <div className={styles.regionHeaderRight}>
-                    <span className={styles.count}>{regionEffects.length}</span>
-                    <button
-                      className={styles.deleteRegionButton}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveRegion(region.id);
-                      }}
-                      title="Delete region"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    <span className={styles.count}>{overlayEffects.length}</span>
                   </div>
                 </div>
-                {regionEffects.map((effect, index) => renderEffectCard(effect, index))}
+                {overlayEffects.length === 0 && isActive && (
+                  <p className={styles.zoneHint}>
+                    {overlay.isEffectZone
+                      ? "Add effects from the panel above — they will be applied to the video showing through this overlay."
+                      : "Add effects from the panel above — they will be masked to this overlay's bounds."}
+                  </p>
+                )}
+                {overlayEffects.map((effect, index) => renderEffectCard(effect, index))}
               </div>
             );
           })}
-
-          {overlays
-            .filter((o) => {
-              const hasEffects = (overlayEffectsMap.get(o.id)?.length ?? 0) > 0;
-              return o.isEffectZone || activeOverlayId === o.id || hasEffects;
-            })
-            .map((overlay) => {
-              const overlayEffects = overlayEffectsMap.get(overlay.id) || [];
-              if (overlayEffects.length === 0 && activeOverlayId !== overlay.id) return null;
-              const isActive = activeOverlayId === overlay.id;
-              const label = overlay.isEffectZone ? `[Zone] ${overlay.name}` : overlay.name;
-              return (
-                <div
-                  key={overlay.id}
-                  className={`${styles.regionGroup} ${isActive ? styles.active : ""}`}
-                  onClick={() => onSelectOverlay(isActive ? null : overlay.id)}
-                >
-                  <div className={styles.regionHeader}>
-                    <div className={styles.regionHeaderLeft}>
-                      <div
-                        className={styles.colorDot}
-                        style={{ backgroundColor: overlay.color || "#ccc" }}
-                      />
-                      <span>{label}</span>
-                    </div>
-                    <div className={styles.regionHeaderRight}>
-                      <span className={styles.count}>{overlayEffects.length}</span>
-                    </div>
-                  </div>
-                  {overlayEffects.length === 0 && isActive && (
-                    <p className={styles.zoneHint}>
-                      {overlay.isEffectZone
-                        ? "Add effects from the panel above — they will be applied to the video showing through this overlay."
-                        : "Add effects from the panel above — they will be masked to this overlay's bounds."}
-                    </p>
-                  )}
-                  {overlayEffects.map((effect, index) => renderEffectCard(effect, index))}
-                </div>
-              );
-            })}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

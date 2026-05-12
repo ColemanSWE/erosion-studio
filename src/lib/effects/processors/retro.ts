@@ -585,6 +585,191 @@ registerEffect({
     { key: "applyScanlines",      label: "Apply Scanlines",            type: "checkbox",                                  group: "Scanlines" },
     { key: "scanlineBrightness",  label: "Scanline Brightness",        type: "slider",  min: 0.5,  max: 1.0,  step: 0.01, group: "Scanlines" },
   ],
+  glsl: {
+    uniforms: {
+      applyJpegNoise: "int", jpegQuality: "float", toneLow: "float", toneHigh: "float",
+      applyRinging: "int", sharpenIntensity: "float", sharpenWidth: "float",
+      applyColorCast: "int", redTint: "float", greenTint: "float", blueTint: "float",
+      chromaBlurRadius: "float", chromaShiftX: "float",
+      lumaNoise: "float", chromaNoise: "float",
+      jitterFrequency: "float", jitterAmplitude: "float",
+      headSwitchHeight: "float", bottomDistortion: "float", bottomStaticDensity: "float",
+      applyScanlines: "int", scanlineBrightness: "float",
+    },
+    uniformMapper: (params) => ({
+      applyJpegNoise:      (params.applyJpegNoise as boolean) ? 1 : 0,
+      jpegQuality:         params.jpegQuality,
+      toneLow:             (params.toneLow as number) / 255,
+      toneHigh:            (params.toneHigh as number) / 255,
+      applyRinging:        (params.applyRinging as boolean) ? 1 : 0,
+      sharpenIntensity:    (params.sharpenIntensity as number) / 10,
+      sharpenWidth:        params.sharpenWidth,
+      applyColorCast:      (params.applyColorCast as boolean) ? 1 : 0,
+      redTint:             params.redTint,
+      greenTint:           params.greenTint,
+      blueTint:            params.blueTint,
+      chromaBlurRadius:    Math.max(0, Math.floor(1 / Math.max(0.01, (params.chromaQBandwidth as number) ?? 0.03)) - 1),
+      chromaShiftX:        (params.chromaShiftX as number) ?? 3,
+      lumaNoise:           params.lumaNoise,
+      chromaNoise:         params.chromaNoise,
+      jitterFrequency:     params.jitterFrequency,
+      jitterAmplitude:     params.jitterAmplitude,
+      headSwitchHeight:    (params.headSwitchHeight as number) / 100,
+      bottomDistortion:    (params.bottomDistortion as number) / 100,
+      bottomStaticDensity: params.bottomStaticDensity,
+      applyScanlines:      (params.applyScanlines as boolean) ? 1 : 0,
+      scanlineBrightness:  params.scanlineBrightness,
+    }),
+    fragment: `
+uniform int   u_applyJpegNoise;
+uniform float u_jpegQuality;
+uniform float u_toneLow;
+uniform float u_toneHigh;
+uniform int   u_applyRinging;
+uniform float u_sharpenIntensity;
+uniform float u_sharpenWidth;
+uniform int   u_applyColorCast;
+uniform float u_redTint;
+uniform float u_greenTint;
+uniform float u_blueTint;
+uniform float u_chromaBlurRadius;
+uniform float u_chromaShiftX;
+uniform float u_lumaNoise;
+uniform float u_chromaNoise;
+uniform float u_jitterFrequency;
+uniform float u_jitterAmplitude;
+uniform float u_headSwitchHeight;
+uniform float u_bottomDistortion;
+uniform float u_bottomStaticDensity;
+uniform int   u_applyScanlines;
+uniform float u_scanlineBrightness;
+
+void main() {
+  float frameSeed = floor(u_time * 7.0);
+  vec2 uv = v_texCoord;
+
+  // ── Horizontal jitter (per-row random shift) ─────────────────────────────────
+  float rowSeed = floor(uv.y * u_resolution.y);
+  float jitterRand = pseudoRandom(frameSeed * 0.01 + rowSeed * 0.001);
+  if (jitterRand < u_jitterFrequency) {
+    float shift = (pseudoRandom(frameSeed * 0.013 + rowSeed * 0.002) - 0.5) * u_jitterAmplitude / u_resolution.x;
+    uv.x = clamp(uv.x + shift, 0.0, 1.0);
+  }
+
+  // ── Bottom distortion (head-switch wobble near bottom) ───────────────────────
+  float distY = 1.0 - uv.y;
+  if (distY < u_bottomDistortion) {
+    float t = distY / max(u_bottomDistortion, 0.001);
+    float distortion = (1.0 - t) * sin(frameSeed * 3.7 + uv.y * 40.0) * 0.05;
+    uv.x = clamp(uv.x + distortion, 0.0, 1.0);
+  }
+
+  // ── Head switch bar ──────────────────────────────────────────────────────────
+  if (distY < u_headSwitchHeight) {
+    float t = distY / max(u_headSwitchHeight, 0.001);
+    uv.x = clamp(uv.x + (1.0 - t) * sin(frameSeed * 5.1 + uv.y * 80.0) * 0.02, 0.0, 1.0);
+  }
+
+  vec3 col = texture(u_source, uv).rgb;
+
+  // ── JPEG block noise ─────────────────────────────────────────────────────────
+  if (u_applyJpegNoise == 1) {
+    float blockPx = 8.0;
+    vec2 blockCenter = (floor(uv * u_resolution / blockPx) + 0.5) * blockPx / u_resolution;
+    vec3 blockCol = texture(u_source, blockCenter).rgb;
+    float q = u_jpegQuality / 100.0;
+    float chromaStep = 256.0 / pow(2.0, max(1.0, 4.0 - u_jpegQuality / 25.0));
+    vec3 qColor = round(blockCol * 255.0 / chromaStep) * chromaStep / 255.0;
+    col = mix(col, qColor, 1.0 - q);
+  }
+
+  // ── Tone mapping ─────────────────────────────────────────────────────────────
+  float range = max(u_toneHigh - u_toneLow, 0.001);
+  col = clamp((col - u_toneLow) / range, 0.0, 1.0);
+
+  // ── Unsharp mask / ringing ───────────────────────────────────────────────────
+  if (u_applyRinging == 1 && u_sharpenIntensity > 0.0) {
+    float blurR = 0.0, blurG = 0.0, blurB = 0.0;
+    float sw = u_sharpenWidth;
+    float px = 1.0 / u_resolution.x;
+    for (int k = -5; k <= 5; k++) {
+      if (abs(float(k)) <= sw) {
+        vec3 s = texture(u_source, clamp(uv + vec2(float(k) * px, 0.0), vec2(0.0), vec2(1.0))).rgb;
+        blurR += s.r; blurG += s.g; blurB += s.b;
+      }
+    }
+    float kernelSize = sw * 2.0 + 1.0;
+    vec3 blurred = vec3(blurR, blurG, blurB) / kernelSize;
+    col += (col - blurred) * u_sharpenIntensity;
+  }
+
+  // ── Color cast ───────────────────────────────────────────────────────────────
+  if (u_applyColorCast == 1) {
+    col = vec3(col.r * u_redTint, col.g * u_greenTint, col.b * u_blueTint);
+  }
+
+  // ── YIQ chroma bleed + chroma shift ─────────────────────────────────────────
+  float Y =  0.299 * col.r + 0.587 * col.g + 0.114 * col.b;
+  float I =  0.596 * col.r - 0.274 * col.g - 0.322 * col.b;
+  float Q =  0.211 * col.r - 0.523 * col.g + 0.311 * col.b;
+
+  // Chroma shift: sample I,Q from offset position
+  float shiftX = u_chromaShiftX / u_resolution.x;
+  vec3 shifted = texture(u_source, clamp(uv + vec2(shiftX, 0.0), vec2(0.0), vec2(1.0))).rgb;
+  float Is = 0.596 * shifted.r - 0.274 * shifted.g - 0.322 * shifted.b;
+  float Qs = 0.211 * shifted.r - 0.523 * shifted.g + 0.311 * shifted.b;
+
+  // Chroma bleed (horizontal box blur on I,Q channels)
+  if (u_chromaBlurRadius > 0.0) {
+    float blurI = 0.0, blurQ = 0.0, cnt = 0.0;
+    float step = 1.0 / u_resolution.x;
+    for (int k = -8; k <= 8; k++) {
+      if (abs(float(k)) <= u_chromaBlurRadius) {
+        vec3 s = texture(u_source, clamp(uv + vec2(float(k) * step, 0.0), vec2(0.0), vec2(1.0))).rgb;
+        blurI += 0.596 * s.r - 0.274 * s.g - 0.322 * s.b;
+        blurQ += 0.211 * s.r - 0.523 * s.g + 0.311 * s.b;
+        cnt += 1.0;
+      }
+    }
+    Is = blurI / cnt;
+    Qs = blurQ / cnt;
+  }
+
+  col = clamp(vec3(
+    Y + 0.956 * Is + 0.621 * Qs,
+    Y - 0.272 * Is - 0.647 * Qs,
+    Y - 1.106 * Is + 1.703 * Qs
+  ), 0.0, 1.0);
+
+  // ── Luma + chroma noise ──────────────────────────────────────────────────────
+  if (u_lumaNoise > 0.0) {
+    float n = pseudoRandom(dot(uv, vec2(127.1, 311.7)) + frameSeed * 0.01) * 2.0 - 1.0;
+    col += n * u_lumaNoise;
+  }
+  if (u_chromaNoise > 0.0) {
+    float ni = pseudoRandom(dot(uv, vec2(269.5, 183.3)) + frameSeed * 0.013) * 2.0 - 1.0;
+    float nq = pseudoRandom(dot(uv, vec2(113.7, 409.1)) + frameSeed * 0.017) * 2.0 - 1.0;
+    col.r += ni * u_chromaNoise;
+    col.b += nq * u_chromaNoise;
+  }
+
+  // ── Bottom static ────────────────────────────────────────────────────────────
+  if (u_bottomStaticDensity > 0.0 && distY < u_bottomDistortion * 1.5) {
+    float staticN = pseudoRandom(dot(uv, vec2(17.3, 93.7)) + frameSeed * 0.031);
+    if (staticN < u_bottomStaticDensity) {
+      col = vec3(pseudoRandom(dot(uv, vec2(41.9, 127.3)) + frameSeed * 0.041));
+    }
+  }
+
+  // ── Scanlines ────────────────────────────────────────────────────────────────
+  if (u_applyScanlines == 1) {
+    float scanRow = floor(v_texCoord.y * u_resolution.y);
+    if (mod(scanRow, 2.0) >= 1.0) col *= u_scanlineBrightness;
+  }
+
+  fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`,
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const applyJpegNoise      = (params.applyJpegNoise      as boolean) ?? true;
     const jpegQuality         = (params.jpegQuality         as number)  ?? 65;
@@ -1025,7 +1210,6 @@ void main() {
 // ─── CCTV ──────────────────────────────────────────────────────────────────────
 // Surveillance camera composite: fisheye distortion, resolution reduction,
 // green/gray tint, interlace artifacts, noise, and timestamp overlay
-
 registerEffect({
   type: "cctv",
   label: "CCTV",
@@ -1039,6 +1223,54 @@ registerEffect({
     { key: "showTimestamp", label: "Show Timestamp", type: "checkbox" },
     { key: "cameraId", label: "Camera ID", type: "select", options: ["CAM-01", "CAM-02", "CAM-03", "CAM-04", "EXT-01", "INT-02"] },
   ],
+  glsl: {
+    uniforms: { distortion: "float", noise: "float", tintMode: "int", resMode: "int" },
+    uniformMapper: (params) => ({
+      distortion: params.distortion,
+      noise: params.noise,
+      tintMode: params.tint === "green" ? 0 : params.tint === "gray" ? 1 : 2,
+      resMode: params.resolution === "low" ? 0 : 1,
+    }),
+    fragment: `
+uniform float u_distortion;
+uniform float u_noise;
+uniform int u_tintMode;
+uniform int u_resMode;
+
+void main() {
+  vec2 uv = v_texCoord;
+
+  if (u_distortion > 0.0) {
+    vec2 c = uv * 2.0 - 1.0;
+    float r2 = dot(c, c);
+    c *= 1.0 + u_distortion * r2;
+    uv = c * 0.5 + 0.5;
+  }
+
+  float invScale = u_resMode == 0 ? 4.0 : 2.0;
+  vec2 blockSize = invScale / u_resolution;
+  uv = floor(uv / blockSize) * blockSize;
+
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+    fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    return;
+  }
+
+  vec3 col = texture(u_source, uv).rgb;
+
+  float luma = dot(col, vec3(0.299, 0.587, 0.114));
+  if (u_tintMode == 0) col = vec3(luma * 0.4, luma * 1.0, luma * 0.4);
+  else if (u_tintMode == 1) col = vec3(luma);
+
+  float n = pseudoRandom(dot(v_texCoord, vec2(127.1, 311.7)) + floor(u_time * 30.0) * 0.01);
+  col += (n * 2.0 - 1.0) * u_noise;
+
+  float scanRow = floor(v_texCoord.y * u_resolution.y);
+  if (mod(scanRow, 2.0) >= 1.0) col *= 0.75;
+
+  fragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`,
+  },
   processor: (data, { width, height, time = 0 }, params) => {
     const resolution = (params.resolution as string) ?? "low";
     const tint = (params.tint as string) ?? "green";
