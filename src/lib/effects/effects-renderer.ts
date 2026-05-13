@@ -1,5 +1,5 @@
 import { Effect, Region, Overlay } from "./types";
-import { applyEffects, isStyleEffect, getEffectDefinition } from "./effect-registry";
+import { applyEffects, isStyleEffect } from "./effect-registry";
 import { GLPipeline, type GLRegion, type OverlayDescriptor } from "./gl/pipeline";
 import { processEffectsInWorker } from "./worker-pool";
 import { PALETTES, PaletteKey } from "./palettes";
@@ -18,19 +18,6 @@ const RENDER_MODE_STYLE_EFFECTS = new Set([
   "3d-sphere", "3d-shatter", "3d-ribbon", "3d-crystal",
 ]);
 
-// Returns true when every effect in the list either has no GLSL shader or always
-// skips the GPU path. Effects like pixel-sort that set skipGL: () => true belong
-// here. When every effect is CPU-only we bypass the WebGL pipeline entirely and
-// use the Canvas-2D path — this avoids the expensive gl.readPixels stall that
-// the GL pipeline incurs even when no GPU shaders actually run.
-function allEffectsSkipGL(effects: Effect[]): boolean {
-  return effects.every((e) => {
-    const def = getEffectDefinition(e.type);
-    if (!def?.glsl) return true;
-    const params = { ...def.defaultParams, ...e.params };
-    return !!def.glsl.skipGL?.(params);
-  });
-}
 
 export function getActiveStyleEffect(effects: Effect[]): Effect | null {
   for (let i = effects.length - 1; i >= 0; i--) {
@@ -176,29 +163,15 @@ export async function renderWithEffects(
     const globalEffects = effects.filter((e) => e.active && !e.regionId && !e.overlayId);
     const regionEffects = effects.filter((e) => e.active && (e.regionId || e.overlayId));
     // Effect zones are handled on the GPU via GLRegion scissor passes.
-    // Per-overlay effects (effects targeting non-effect-zone overlays) are handled
-    // by the GL pipeline via runEffectsOnOverlaySource when GL is available.
-    // The CPU hybrid path is only needed when GL is unavailable.
-    const hasOverlayMasks = !context.glPipeline && regionEffects.some((e) => {
+    // Per-overlay effects (effects targeting non-effect-zone overlays) still use
+    // the CPU hybrid path — routing them through readPixels would cause a GPU
+    // pipeline stall on every frame, which is worse than the 2D canvas path.
+    const hasOverlayMasks = regionEffects.some((e) => {
       if (!e.overlayId) return false;
       const overlay = overlays.find((o) => o.id === e.overlayId);
       return !overlay?.isEffectZone;
     });
     const hasRegionEffects = regionEffects.some(e => e.regionId);
-
-    // Build a map of effects to apply to each overlay's own content (GPU path only).
-    const overlayEffectsMap = context.glPipeline ? (() => {
-      const map = new Map<string, Effect[]>();
-      for (const e of regionEffects) {
-        if (!e.overlayId) continue;
-        const overlay = overlays.find((o) => o.id === e.overlayId);
-        if (overlay && !overlay.isEffectZone) {
-          if (!map.has(e.overlayId)) map.set(e.overlayId, []);
-          map.get(e.overlayId)!.push(e);
-        }
-      }
-      return map.size > 0 ? map : undefined;
-    })() : undefined;
 
     const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
       sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
@@ -211,10 +184,7 @@ export async function renderWithEffects(
       faceBounds: context.faceBounds, handBounds: context.handBounds, poseBounds: context.poseBounds,
     };
 
-    // GL fast path: at least one effect needs the GPU. When all global effects
-    // are CPU-only (skipGL) and there are no region/overlay GPU effects, bypass
-    // the GL pipeline to avoid the expensive gl.readPixels stall — the Canvas-2D
-    // path (below) reads pixels without forcing a GPU pipeline flush.
+    // GL fast path: effects on GPU, blit directly to ctx.
     if (context.glPipeline && !hasOverlayMasks) {
       const glRegions = buildGLRegions(
         regionEffects, regions, sourceWidth, sourceHeight,
@@ -225,14 +195,9 @@ export async function renderWithEffects(
       );
       const allGLRegions = [...glRegions, ...effectZoneRegions];
 
-      const hasPerOverlayEffects = (overlayEffectsMap?.size ?? 0) > 0;
-      const needsGPU =
-        allGLRegions.length > 0 ||
-        hasPerOverlayEffects ||
-        (globalEffects.length > 0 && !allEffectsSkipGL(globalEffects));
-      if (needsGPU) {
+      if (globalEffects.length > 0 || allGLRegions.length > 0) {
         const { descriptors: overlayDescriptors, textOverlays } = buildOverlayDescriptors(
-          overlays, context, sourceWidth, sourceHeight, undefined, overlayEffectsMap,
+          overlays, context, sourceWidth, sourceHeight,
         );
         context.glPipeline.renderEffects(
           source, sourceWidth, sourceHeight, globalEffects, processConfig,
@@ -247,8 +212,8 @@ export async function renderWithEffects(
       }
     }
 
-    // GL overlay-only path: no effects of any kind active, but GPU overlays to composite.
-    if (context.glPipeline && globalEffects.length === 0 && !hasOverlayMasks && (overlayEffectsMap?.size ?? 0) === 0) {
+    // GL overlay-only path: no effects active, but GPU overlays to composite.
+    if (context.glPipeline && globalEffects.length === 0 && regionEffects.length === 0 && !hasOverlayMasks) {
       const { descriptors, textOverlays } = buildOverlayDescriptors(overlays, context, sourceWidth, sourceHeight);
       if (descriptors.length > 0) {
         context.glPipeline.compositeOverlaysOnto(
@@ -309,12 +274,7 @@ export async function renderWithEffects(
 
     if (globalEffects.length > 0) {
       const imageData = bufferCtx.getImageData(0, 0, sourceWidth, sourceHeight);
-      // CPU-only effects (skipGL) run synchronously — worker startup latency and
-      // IPC round-trips outweigh the off-thread benefit for fast pixel processors
-      // like pixel-sort, and the startup spike drives the EMA above the throttle
-      // threshold causing spurious strobing. Use the worker only for GPU-assisted
-      // effects that need secondary timeline frames (e.g. datamosh, bloom).
-      const useWorker = !!(context.timelineFrames?.length) && !allEffectsSkipGL(globalEffects);
+      const useWorker = !context.timelineFrames?.length;
       try {
         if (useWorker) {
           const buf = new Uint8ClampedArray(imageData.data);
