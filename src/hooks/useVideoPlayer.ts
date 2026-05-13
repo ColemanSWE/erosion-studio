@@ -303,23 +303,10 @@ export function useVideoPlayer({
         overlaysRef.current,
       );
     } else {
-      // Draw raw video without effects so the canvas stays in sync with the video clock.
-      const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
-        videoW, videoH, canvas.width, canvas.height, sourceTransformRef.current,
-      );
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(primaryVideo, drawX, drawY, drawWidth, drawHeight);
-      // Draw overlays cheaply (no effects) so they remain visible during load-shedding.
-      const overlayCtx = {
-        getOverlaySource: (id: string) =>
-          videosMapRef.current.get(id) || overlayImagesMapRef.current.get(id) || null,
-        sourceTransform: sourceTransformRef.current,
-      } as unknown as import("../lib/effects/render-types").RenderContext;
-      for (const overlay of overlaysRef.current) {
-        if (overlay.isEffectZone) continue;
-        drawOverlay(ctx, overlay, overlayCtx, videoW, videoH, drawX, drawY, drawWidth, drawHeight);
-      }
+      // Effects are being load-shed. Hold the last processed frame on the canvas
+      // rather than drawing raw video — drawing unprocessed frames while effects
+      // are active causes jarring strobing between the processed and unprocessed
+      // states. The canvas will catch up as soon as the EMA settles down.
     }
 
     const elapsed = performance.now() - frameStart;

@@ -28,6 +28,9 @@ export function EffectsCatalog({ activeRegionId, activeOverlayId, regions, overl
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
+  const activeOverlay = overlays.find((o) => o.id === activeOverlayId);
+  const isEffectZoneSelected = activeOverlay?.isEffectZone ?? false;
+  const isOverlayEffectsDisabled = activeOverlayId !== null && !isEffectZoneSelected;
   const isStyleEffectDisabled = activeRegionId !== null || activeOverlayId !== null;
 
   const handleAddEffect = (type: EffectType) => {
@@ -92,14 +95,20 @@ export function EffectsCatalog({ activeRegionId, activeOverlayId, regions, overl
               {(expandedCategories[category] || searchQuery) && (
                 <div className={styles.effectList}>
                   {filteredEffects.map((type) => {
-                    const disabled = isStyleEffectDisabled && isStyleEffect(type as EffectType);
+                    const isStyle = isStyleEffect(type as EffectType);
+                    const disabled = isOverlayEffectsDisabled || (isStyleEffectDisabled && isStyle);
+                    const title = isOverlayEffectsDisabled
+                      ? "Enable Effect Zone on this overlay to apply effects to the video behind it"
+                      : isStyle && isStyleEffectDisabled
+                        ? "Style effects can only be applied globally"
+                        : undefined;
                     return (
                       <button
                         key={type}
                         className={styles.effectButton}
                         onClick={() => handleAddEffect(type as EffectType)}
                         disabled={disabled}
-                        title={disabled ? "Style effects can only be applied globally" : undefined}
+                        title={title}
                       >
                         <Plus size={14} />
                         <span>{formatEffectName(type)}</span>

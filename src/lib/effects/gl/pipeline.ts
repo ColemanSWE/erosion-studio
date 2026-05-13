@@ -28,6 +28,8 @@ export interface OverlayDescriptor {
   w: number;
   h: number;
   opacity: number;
+  /** Optional effects to apply to the overlay's own content before compositing. */
+  effects?: Effect[];
 }
 
 // Body only — no preamble. buildFragmentSrc adds #version, u_source, v_texCoord, etc.
@@ -104,6 +106,12 @@ export class GLPipeline {
   private overlayTexPool: WebGLTexture[] = [];
   // Tracks which pool slots have had at least one valid frame uploaded.
   private overlayTexInitialized: boolean[] = [];
+  // Dedicated FBO pair for processing per-overlay effects in isolation.
+  private overlayEffectFBOs: [FBOPair, FBOPair] | null = null;
+  private overlayEffectFBOSize: [number, number] = [0, 0];
+  // Reusable canvas + context for scaling overlay sources to their rendered dimensions.
+  private scalingCanvas: HTMLCanvasElement | null = null;
+  private scalingCtx: CanvasRenderingContext2D | null = null;
 
   constructor(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
     this.gl = gl;
@@ -427,6 +435,83 @@ export class GLPipeline {
     flushCPU();
   }
 
+  private ensureOverlayEffectFBOs(w: number, h: number): [FBOPair, FBOPair] {
+    const [ow, oh] = this.overlayEffectFBOSize;
+    if (!this.overlayEffectFBOs || ow !== w || oh !== h) {
+      if (this.overlayEffectFBOs) {
+        freeFBO(this.gl, this.overlayEffectFBOs[0]);
+        freeFBO(this.gl, this.overlayEffectFBOs[1]);
+      }
+      this.overlayEffectFBOs = [makeFBO(this.gl, w, h), makeFBO(this.gl, w, h)];
+      this.overlayEffectFBOSize = [w, h];
+    }
+    return this.overlayEffectFBOs;
+  }
+
+  private getScalingCtx(w: number, h: number): CanvasRenderingContext2D {
+    if (!this.scalingCanvas) {
+      this.scalingCanvas = document.createElement("canvas");
+      this.scalingCtx = this.scalingCanvas.getContext("2d");
+    }
+    this.scalingCanvas.width = w;
+    this.scalingCanvas.height = h;
+    return this.scalingCtx!;
+  }
+
+  /**
+   * Upload `source` scaled to `w × h`, run `effects` against it in isolated
+   * FBOs, and return the result texture. The main pipeline FBO state is saved
+   * and restored, so this can be called mid-frame without corrupting the main
+   * effect chain.
+   */
+  private runEffectsOnOverlaySource(
+    source: TexImageSource,
+    w: number,
+    h: number,
+    effects: Effect[],
+    config: ProcessConfig,
+  ): WebGLTexture {
+    const gl = this.gl;
+    const overlayW = Math.max(1, Math.round(w));
+    const overlayH = Math.max(1, Math.round(h));
+    const fbos = this.ensureOverlayEffectFBOs(overlayW, overlayH);
+
+    // Scale the overlay source to its rendered dimensions via a 2D canvas so
+    // that the GL texture dimensions are exactly overlayW × overlayH.
+    const scaleCtx = this.getScalingCtx(overlayW, overlayH);
+    scaleCtx.clearRect(0, 0, overlayW, overlayH);
+    scaleCtx.drawImage(source as CanvasImageSource, 0, 0, overlayW, overlayH);
+
+    gl.bindTexture(gl.TEXTURE_2D, fbos[0].tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, this.scalingCanvas!);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+
+    // Swap main pipeline state for the duration of the overlay effect pass.
+    const savedFBO = this.fbo;
+    const savedCurrent = this.current;
+    const savedWidth = this.width;
+    const savedHeight = this.height;
+    const savedCPUFlushed = this.cpuFlushed;
+
+    this.fbo = fbos;
+    this.current = 0;
+    this.width = overlayW;
+    this.height = overlayH;
+    this.cpuFlushed = false;
+
+    this.runEffectList(effects, config, [overlayW, overlayH], config.time ?? 0);
+
+    const resultIdx = this.current;
+
+    this.fbo = savedFBO;
+    this.current = savedCurrent;
+    this.width = savedWidth;
+    this.height = savedHeight;
+    this.cpuFlushed = savedCPUFlushed;
+
+    return fbos[resultIdx].tex;
+  }
+
   private ensureOverlayTex(index: number): WebGLTexture {
     const gl = this.gl;
     while (this.overlayTexPool.length <= index) {
@@ -484,24 +569,35 @@ export class GLPipeline {
     this.current = next;
   }
 
-  compositeOverlays(descriptors: OverlayDescriptor[]): void {
+  compositeOverlays(descriptors: OverlayDescriptor[], config?: ProcessConfig): void {
     if (descriptors.length === 0) return;
     const gl = this.gl;
     for (let i = 0; i < descriptors.length; i++) {
-      const { source, x, y, w, h, opacity } = descriptors[i];
+      const { source, x, y, w, h, opacity, effects } = descriptors[i];
       if (w <= 0 || h <= 0) continue;
       const notReady = source instanceof HTMLVideoElement && source.readyState < 2;
-      const tex = this.ensureOverlayTex(i);
-      if (!notReady) {
-        gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
-        gl.bindTexture(gl.TEXTURE_2D, null);
-        this.overlayTexInitialized[i] = true;
-      } else if (!this.overlayTexInitialized[i]) {
-        // No frame ever uploaded for this slot — nothing to show yet.
-        continue;
+
+      const hasEffects = !notReady && effects && effects.length > 0 && config;
+
+      let tex: WebGLTexture;
+      if (hasEffects) {
+        // Run effects against the overlay's own pixels in isolated FBOs, then
+        // composite the effected result into the main frame.
+        tex = this.runEffectsOnOverlaySource(source, w, h, effects!, config!);
+      } else {
+        tex = this.ensureOverlayTex(i);
+        if (!notReady) {
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
+          gl.bindTexture(gl.TEXTURE_2D, null);
+          this.overlayTexInitialized[i] = true;
+        } else if (!this.overlayTexInitialized[i]) {
+          // No frame ever uploaded for this slot — nothing to show yet.
+          continue;
+        }
+        // If notReady but initialized, fall through and reuse the last good frame.
       }
-      // If notReady but initialized, fall through and reuse the last good frame.
+
       const rx = x / this.width;
       const ry = y / this.height;
       const rw = w / this.width;
@@ -581,7 +677,7 @@ export class GLPipeline {
 
     // Composite GPU overlays into the FBO before the prev-frame snapshot and final blit.
     if (overlayDescriptors && overlayDescriptors.length > 0) {
-      this.compositeOverlays(overlayDescriptors);
+      this.compositeOverlays(overlayDescriptors, config);
     }
 
     // Snapshot the final rendered output for temporal effects (e.g. motion-smear) to
@@ -604,9 +700,16 @@ export class GLPipeline {
     freeFBO(gl, this.fbo[0]);
     freeFBO(gl, this.fbo[1]);
     if (this.prevFrameFBO) freeFBO(gl, this.prevFrameFBO);
+    if (this.overlayEffectFBOs) {
+      freeFBO(gl, this.overlayEffectFBOs[0]);
+      freeFBO(gl, this.overlayEffectFBOs[1]);
+      this.overlayEffectFBOs = null;
+    }
     for (const tex of this.overlayTexPool) gl.deleteTexture(tex);
     this.overlayTexPool = [];
     this.overlayTexInitialized = [];
+    this.scalingCanvas = null;
+    this.scalingCtx = null;
     gl.deleteVertexArray(this.vao);
     for (const prog of this.programCache.values()) {
       clearUniformCache(prog);

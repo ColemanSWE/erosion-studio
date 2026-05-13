@@ -1,5 +1,5 @@
 import { Effect, Region, Overlay } from "./types";
-import { applyEffects, isStyleEffect } from "./effect-registry";
+import { applyEffects, isStyleEffect, getEffectDefinition } from "./effect-registry";
 import { GLPipeline, type GLRegion, type OverlayDescriptor } from "./gl/pipeline";
 import { processEffectsInWorker } from "./worker-pool";
 import { PALETTES, PaletteKey } from "./palettes";
@@ -17,6 +17,20 @@ const RENDER_MODE_STYLE_EFFECTS = new Set([
   "pixelate", "emoji", "ascii", "matrix", "halftone", "3d-mesh",
   "3d-sphere", "3d-shatter", "3d-ribbon", "3d-crystal",
 ]);
+
+// Returns true when every effect in the list either has no GLSL shader or always
+// skips the GPU path. Effects like pixel-sort that set skipGL: () => true belong
+// here. When every effect is CPU-only we bypass the WebGL pipeline entirely and
+// use the Canvas-2D path — this avoids the expensive gl.readPixels stall that
+// the GL pipeline incurs even when no GPU shaders actually run.
+function allEffectsSkipGL(effects: Effect[]): boolean {
+  return effects.every((e) => {
+    const def = getEffectDefinition(e.type);
+    if (!def?.glsl) return true;
+    const params = { ...def.defaultParams, ...e.params };
+    return !!def.glsl.skipGL?.(params);
+  });
+}
 
 export function getActiveStyleEffect(effects: Effect[]): Effect | null {
   for (let i = effects.length - 1; i >= 0; i--) {
@@ -44,6 +58,7 @@ function buildOverlayDescriptors(
   sourceWidth: number,
   sourceHeight: number,
   excludeIds?: Set<string>,
+  overlayEffectsMap?: Map<string, Effect[]>,
 ): { descriptors: OverlayDescriptor[]; textOverlays: Overlay[] } {
   const descriptors: OverlayDescriptor[] = [];
   const textOverlays: Overlay[] = [];
@@ -64,6 +79,7 @@ function buildOverlayDescriptors(
           w: overlay.width * sourceWidth,
           h: overlay.height * sourceHeight,
           opacity: overlay.opacity ?? 1,
+          effects: overlayEffectsMap?.get(overlay.id),
         });
       }
     }
@@ -115,6 +131,37 @@ function buildGLRegions(
   return result;
 }
 
+function buildEffectZoneGLRegions(
+  overlays: Overlay[],
+  regionEffects: Effect[],
+  sourceWidth: number,
+  sourceHeight: number,
+  isFlipped?: boolean,
+): GLRegion[] {
+  const result: GLRegion[] = [];
+  for (const overlay of overlays) {
+    if (!overlay.isEffectZone) continue;
+    const zoneEffects = regionEffects.filter((e) => e.overlayId === overlay.id);
+    if (zoneEffects.length === 0) continue;
+
+    let startX = Math.max(0, Math.floor(overlay.x * sourceWidth));
+    const startY = Math.max(0, Math.floor(overlay.y * sourceHeight));
+    let endX = Math.min(sourceWidth, Math.floor((overlay.x + overlay.width) * sourceWidth));
+    const endY = Math.min(sourceHeight, Math.floor((overlay.y + overlay.height) * sourceHeight));
+
+    if (isFlipped) {
+      [startX, endX] = [sourceWidth - endX, sourceWidth - startX];
+    }
+
+    const rw = endX - startX;
+    const rh = endY - startY;
+    if (rw <= 0 || rh <= 0) continue;
+
+    result.push({ rect: [startX, startY, rw, rh], effects: zoneEffects });
+  }
+  return result;
+}
+
 export async function renderWithEffects(
   context: RenderContext,
   effects: Effect[],
@@ -128,8 +175,30 @@ export async function renderWithEffects(
   if (!activeStyle) {
     const globalEffects = effects.filter((e) => e.active && !e.regionId && !e.overlayId);
     const regionEffects = effects.filter((e) => e.active && (e.regionId || e.overlayId));
-    const hasOverlayMasks = regionEffects.some(e => e.overlayId) || overlays.some(o => o.isEffectZone);
+    // Effect zones are handled on the GPU via GLRegion scissor passes.
+    // Per-overlay effects (effects targeting non-effect-zone overlays) are handled
+    // by the GL pipeline via runEffectsOnOverlaySource when GL is available.
+    // The CPU hybrid path is only needed when GL is unavailable.
+    const hasOverlayMasks = !context.glPipeline && regionEffects.some((e) => {
+      if (!e.overlayId) return false;
+      const overlay = overlays.find((o) => o.id === e.overlayId);
+      return !overlay?.isEffectZone;
+    });
     const hasRegionEffects = regionEffects.some(e => e.regionId);
+
+    // Build a map of effects to apply to each overlay's own content (GPU path only).
+    const overlayEffectsMap = context.glPipeline ? (() => {
+      const map = new Map<string, Effect[]>();
+      for (const e of regionEffects) {
+        if (!e.overlayId) continue;
+        const overlay = overlays.find((o) => o.id === e.overlayId);
+        if (overlay && !overlay.isEffectZone) {
+          if (!map.has(e.overlayId)) map.set(e.overlayId, []);
+          map.get(e.overlayId)!.push(e);
+        }
+      }
+      return map.size > 0 ? map : undefined;
+    })() : undefined;
 
     const { drawX, drawY, drawWidth, drawHeight } = computeDrawRect(
       sourceWidth, sourceHeight, canvasWidth, canvasHeight, context.sourceTransform,
@@ -142,29 +211,44 @@ export async function renderWithEffects(
       faceBounds: context.faceBounds, handBounds: context.handBounds, poseBounds: context.poseBounds,
     };
 
-    // GL fast path: all effects on GPU, blit directly to ctx.
-    if (context.glPipeline && (globalEffects.length > 0 || regionEffects.length > 0) && !hasOverlayMasks) {
+    // GL fast path: at least one effect needs the GPU. When all global effects
+    // are CPU-only (skipGL) and there are no region/overlay GPU effects, bypass
+    // the GL pipeline to avoid the expensive gl.readPixels stall — the Canvas-2D
+    // path (below) reads pixels without forcing a GPU pipeline flush.
+    if (context.glPipeline && !hasOverlayMasks) {
       const glRegions = buildGLRegions(
         regionEffects, regions, sourceWidth, sourceHeight,
         drawX, drawY, canvasWidth, canvasHeight, scale, context.isFlipped,
       );
-      const { descriptors: overlayDescriptors, textOverlays } = buildOverlayDescriptors(
-        overlays, context, sourceWidth, sourceHeight,
+      const effectZoneRegions = buildEffectZoneGLRegions(
+        overlays, regionEffects, sourceWidth, sourceHeight, context.isFlipped,
       );
-      context.glPipeline.renderEffects(
-        source, sourceWidth, sourceHeight, globalEffects, processConfig,
-        ctx, drawX, drawY, drawWidth, drawHeight, canvasWidth, canvasHeight,
-        glRegions.length > 0 ? glRegions : undefined,
-        overlayDescriptors.length > 0 ? overlayDescriptors : undefined,
-      );
-      for (const overlay of textOverlays) {
-        drawOverlay(ctx, overlay, context, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
+      const allGLRegions = [...glRegions, ...effectZoneRegions];
+
+      const hasPerOverlayEffects = (overlayEffectsMap?.size ?? 0) > 0;
+      const needsGPU =
+        allGLRegions.length > 0 ||
+        hasPerOverlayEffects ||
+        (globalEffects.length > 0 && !allEffectsSkipGL(globalEffects));
+      if (needsGPU) {
+        const { descriptors: overlayDescriptors, textOverlays } = buildOverlayDescriptors(
+          overlays, context, sourceWidth, sourceHeight, undefined, overlayEffectsMap,
+        );
+        context.glPipeline.renderEffects(
+          source, sourceWidth, sourceHeight, globalEffects, processConfig,
+          ctx, drawX, drawY, drawWidth, drawHeight, canvasWidth, canvasHeight,
+          allGLRegions.length > 0 ? allGLRegions : undefined,
+          overlayDescriptors.length > 0 ? overlayDescriptors : undefined,
+        );
+        for (const overlay of textOverlays) {
+          drawOverlay(ctx, overlay, context, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
+        }
+        return;
       }
-      return;
     }
 
-    // GL overlay-only path: no effects active, but GPU overlays to composite.
-    if (context.glPipeline && globalEffects.length === 0 && regionEffects.length === 0 && !hasOverlayMasks) {
+    // GL overlay-only path: no effects of any kind active, but GPU overlays to composite.
+    if (context.glPipeline && globalEffects.length === 0 && !hasOverlayMasks && (overlayEffectsMap?.size ?? 0) === 0) {
       const { descriptors, textOverlays } = buildOverlayDescriptors(overlays, context, sourceWidth, sourceHeight);
       if (descriptors.length > 0) {
         context.glPipeline.compositeOverlaysOnto(
@@ -225,7 +309,12 @@ export async function renderWithEffects(
 
     if (globalEffects.length > 0) {
       const imageData = bufferCtx.getImageData(0, 0, sourceWidth, sourceHeight);
-      const useWorker = !context.timelineFrames?.length;
+      // CPU-only effects (skipGL) run synchronously — worker startup latency and
+      // IPC round-trips outweigh the off-thread benefit for fast pixel processors
+      // like pixel-sort, and the startup spike drives the EMA above the throttle
+      // threshold causing spurious strobing. Use the worker only for GPU-assisted
+      // effects that need secondary timeline frames (e.g. datamosh, bloom).
+      const useWorker = !!(context.timelineFrames?.length) && !allEffectsSkipGL(globalEffects);
       try {
         if (useWorker) {
           const buf = new Uint8ClampedArray(imageData.data);

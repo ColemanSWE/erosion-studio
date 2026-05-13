@@ -108,8 +108,7 @@ export function OverlayProperties({ overlay, onUpdateOverlay }: OverlayPropertie
         </div>
         {overlay.isEffectZone && (
           <p className={styles.zoneHint}>
-            This overlay is now filled with the video behind it. Select the zone in the stack below
-            and add effects to transform what shows through.
+            Effects applied to this zone run on the GPU and affect the video region behind it.
           </p>
         )}
       </div>
