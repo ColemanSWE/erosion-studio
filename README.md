@@ -2,7 +2,7 @@
 
 A desktop photo and video editor for glitch art: datamosh, pixel sorting, codec damage, VHS, CRT, trails, face-tracked censoring and 100+ other effects, stacked live on photos, video timelines, or your webcam.
 
-<!-- TODO: add a screenshot / short GIF of the editor here (docs/media/screenshot.png) -->
+![Erosion Studio with Pixel Sort, RGB Split and Scanlines stacked on a still image](docs/media/screenshot.png)
 
 ## Features
 

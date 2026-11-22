@@ -22,7 +22,7 @@ Good first issues are marked ★.
 - ★ **Preview resize handles** have no labels or keyboard support.
 - **Settings panel** for defaults (export format, frame rate, projects folder).
 - **Confirm dialogs** use `window.confirm`; replace with an in-app dialog.
-- Screenshots and a demo GIF for the README.
+- ★ A short demo GIF for the README (there's a screenshot; motion sells the video effects better).
 
 ## Platform and release
 
