@@ -8,6 +8,19 @@ import path from "path";
 import { fileURLToPath } from "url";
 import type { Plugin } from "vite";
 
+/** Bundle the preload to CommonJS (see the comment on the preload entry). */
+async function buildPreload(): Promise<void> {
+  fs.mkdirSync("dist-electron", { recursive: true });
+  await esbuild({
+    entryPoints: ["electron/preload.ts"],
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    external: ["electron"],
+    outfile: path.join("dist-electron", "preload.cjs"),
+  });
+}
+
 /**
  * MediaPipe's wasm runtime ships with the app instead of loading from a CDN.
  * Served at /mediapipe/ in dev and emitted to dist/mediapipe/ on build; the
@@ -95,39 +108,17 @@ export default defineConfig({
         // the preload entirely and use esbuild directly to produce preload.cjs.
         entry: "electron/preload.ts",
         async onstart(options) {
-          fs.mkdirSync("dist-electron", { recursive: true });
-          await esbuild({
-            entryPoints: ["electron/preload.ts"],
-            bundle: true,
-            platform: "node",
-            format: "cjs",
-            external: ["electron"],
-            outfile: path.join("dist-electron", "preload.cjs"),
-          });
+          await buildPreload();
           options.reload();
         },
         vite: {
           build: {
             outDir: "dist-electron",
-            plugins: [
-              // Production build: closeBundle runs after the main Vite build.
-              // Re-run esbuild here since onstart is only called in dev/watch mode.
-              {
-                name: "preload-esbuild-cjs",
-                async closeBundle() {
-                  fs.mkdirSync("dist-electron", { recursive: true });
-                  await esbuild({
-                    entryPoints: ["electron/preload.ts"],
-                    bundle: true,
-                    platform: "node",
-                    format: "cjs",
-                    external: ["electron"],
-                    outfile: path.join("dist-electron", "preload.cjs"),
-                  });
-                },
-              },
-            ],
           },
+          // Production build: onstart only runs in dev, so build the preload
+          // when this entry's build finishes. (This must be `vite.plugins`;
+          // `vite.build.plugins` isn't a Vite option and is silently ignored.)
+          plugins: [{ name: "preload-esbuild-cjs", closeBundle: buildPreload }],
         },
       },
     ]),
