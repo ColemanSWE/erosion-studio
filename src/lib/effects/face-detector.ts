@@ -54,14 +54,16 @@ async function initializeLandmarker(): Promise<void> {
   isInitializing = true;
   initPromise = (async () => {
     try {
-      const vision = await FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
-      );
+      // Wasm and model ship with the app (see mediapipeAssets in vite.config.ts
+      // and public/mediapipe/), so face effects work offline and no remote
+      // code runs in the renderer.
+      // (No trailing slash: the resolver appends "/vision_wasm_internal.js".)
+      const base = new URL("mediapipe", document.baseURI).href;
+      const vision = await FilesetResolver.forVisionTasks(base);
 
       landmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          modelAssetPath: `${base}/face_landmarker.task`,
           delegate: "GPU",
         },
         runningMode: "IMAGE",

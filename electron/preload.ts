@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 contextBridge.exposeInMainWorld("electron", {
   onMenuAction: (cb: (action: string) => void) => {
@@ -11,9 +11,9 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("dialog:saveFile", options),
   selectDirectory: () =>
     ipcRenderer.invoke("dialog:selectDirectory"),
+  // File.path was removed in Electron 32; this is the supported replacement.
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   ffmpeg: {
-    extractFrames: (videoPath: string, outputDir: string, fps?: number) =>
-      ipcRenderer.invoke("ffmpeg:extractFrames", videoPath, outputDir, fps),
     encodeVideo: (
       framesDir: string,
       outputPath: string,
@@ -40,14 +40,10 @@ contextBridge.exposeInMainWorld("electron", {
       ipcRenderer.invoke("file:readText", filePath),
     writeText: (filePath: string, data: string) =>
       ipcRenderer.invoke("file:writeText", filePath, data),
-    readBinary: (filePath: string) =>
-      ipcRenderer.invoke("file:readBinary", filePath),
     writeBinary: (filePath: string, data: Uint8Array | number[]) =>
       ipcRenderer.invoke("file:writeBinary", filePath, data),
     exists: (filePath: string) =>
       ipcRenderer.invoke("file:exists", filePath),
-    listDirectory: (dirPath: string, extension: string) =>
-      ipcRenderer.invoke("file:listDirectory", dirPath, extension),
   },
 });
 
@@ -60,16 +56,9 @@ export interface ElectronAPI {
     options: Electron.SaveDialogOptions
   ) => Promise<Electron.SaveDialogReturnValue>;
   selectDirectory: () => Promise<Electron.OpenDialogReturnValue>;
+  /** Absolute path of a dropped file, or "" if it isn't a local file. */
+  getPathForFile: (file: File) => string;
   ffmpeg: {
-    extractFrames: (
-      videoPath: string,
-      outputDir: string,
-      fps?: number
-    ) => Promise<{
-      success: boolean;
-      outputDir?: string;
-      error?: string;
-    }>;
     encodeVideo: (
       framesDir: string,
       outputPath: string,
@@ -120,11 +109,6 @@ export interface ElectronAPI {
       success: boolean;
       error?: string;
     }>;
-    readBinary: (filePath: string) => Promise<{
-      success: boolean;
-      data?: number[];
-      error?: string;
-    }>;
     writeBinary: (
       filePath: string,
       data: Uint8Array | number[]
@@ -136,11 +120,6 @@ export interface ElectronAPI {
     exists: (filePath: string) => Promise<{
       success: boolean;
       exists: boolean;
-    }>;
-    listDirectory: (dirPath: string, extension: string) => Promise<{
-      success: boolean;
-      files?: string[];
-      error?: string;
     }>;
   };
 }

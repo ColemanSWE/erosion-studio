@@ -5,10 +5,80 @@ import renderer from "vite-plugin-electron-renderer";
 import { build as esbuild } from "esbuild";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
+import type { Plugin } from "vite";
+
+/**
+ * MediaPipe's wasm runtime ships with the app instead of loading from a CDN.
+ * Served at /mediapipe/ in dev and emitted to dist/mediapipe/ on build; the
+ * face model lives in public/mediapipe/. Only the SIMD build is copied
+ * (Electron's Chromium always supports wasm SIMD).
+ */
+function mediapipeAssets(): Plugin {
+  const dir = fileURLToPath(new URL("node_modules/@mediapipe/tasks-vision/wasm", import.meta.url));
+  const files = ["vision_wasm_internal.js", "vision_wasm_internal.wasm"];
+  const type = (f: string) => (f.endsWith(".wasm") ? "application/wasm" : "text/javascript");
+  return {
+    name: "mediapipe-assets",
+    configureServer(server) {
+      server.middlewares.use("/mediapipe", (req, res, next) => {
+        const name = (req.url ?? "").replace(/^\//, "").split("?")[0];
+        if (!files.includes(name)) return next();
+        res.setHeader("Content-Type", type(name));
+        fs.createReadStream(path.join(dir, name)).pipe(res);
+      });
+    },
+    generateBundle() {
+      for (const f of files) {
+        this.emitFile({ type: "asset", fileName: `mediapipe/${f}`, source: fs.readFileSync(path.join(dir, f)) });
+      }
+    },
+  };
+}
+
+/**
+ * Content Security Policy for the renderer. Scripts and wasm only come from
+ * the app itself; local media arrives over media://; Google Fonts are the only
+ * remote resource (styles and font files, no scripts). Dev adds what Vite's
+ * HMR client and React Refresh preamble need.
+ */
+function contentSecurityPolicy(): Plugin {
+  let dev = false;
+  return {
+    name: "content-security-policy",
+    configResolved(config) {
+      dev = config.command === "serve";
+    },
+    transformIndexHtml() {
+      const directives = [
+        "default-src 'self'",
+        `script-src 'self' 'wasm-unsafe-eval'${dev ? " 'unsafe-inline'" : ""}`,
+        "worker-src 'self' blob:",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        "img-src 'self' data: blob: media:",
+        "media-src 'self' blob: media:",
+        `connect-src 'self' data: blob: media:${dev ? " ws: http://localhost:*" : ""}`,
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'none'",
+      ];
+      return [
+        {
+          tag: "meta",
+          attrs: { "http-equiv": "Content-Security-Policy", content: directives.join("; ") },
+          injectTo: "head-prepend",
+        },
+      ];
+    },
+  };
+}
 
 export default defineConfig({
   plugins: [
     react(),
+    mediapipeAssets(),
+    contentSecurityPolicy(),
     electron([
       {
         entry: "electron/main.ts",
@@ -65,6 +135,6 @@ export default defineConfig({
   ],
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "electron/**/*.test.ts"],
   },
 });

@@ -1,8 +1,9 @@
-import { protocol } from "electron";
+import { protocol, type CustomScheme } from "electron";
 import fs from "fs";
 import path from "path";
 import { Readable } from "stream";
 import { mediaUrlToPath, parseByteRange } from "../src/lib/media-url";
+import { MEDIA_MIME_TYPES } from "./path-policy";
 
 /**
  * `media://local/<absolute path>` serves files from disk to the renderer.
@@ -15,34 +16,20 @@ import { mediaUrlToPath, parseByteRange } from "../src/lib/media-url";
  */
 export const MEDIA_SCHEME = "media";
 
-const MIME: Record<string, string> = {
-  ".mp4": "video/mp4",
-  ".m4v": "video/mp4",
-  ".mov": "video/quicktime",
-  ".webm": "video/webm",
-  ".mkv": "video/x-matroska",
-  ".avi": "video/x-msvideo",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
+export const mediaScheme: CustomScheme = {
+  scheme: MEDIA_SCHEME,
+  privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true },
 };
-
-/** Must run before `app.whenReady()`. */
-export function registerMediaScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: MEDIA_SCHEME,
-      privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true },
-    },
-  ]);
-}
 
 export function handleMediaProtocol(isAllowedPath: (filePath: string) => boolean): void {
   protocol.handle(MEDIA_SCHEME, async (request) => {
     const cors = { "Access-Control-Allow-Origin": "*" };
-    const filePath = path.normalize(mediaUrlToPath(request.url));
+    let filePath: string;
+    try {
+      filePath = path.normalize(mediaUrlToPath(request.url));
+    } catch {
+      return new Response("Bad request", { status: 400, headers: cors });
+    }
     if (!path.isAbsolute(filePath) || !isAllowedPath(filePath)) {
       return new Response("Forbidden", { status: 403, headers: cors });
     }
@@ -58,7 +45,7 @@ export function handleMediaProtocol(isAllowedPath: (filePath: string) => boolean
     const headers: Record<string, string> = {
       ...cors,
       "Accept-Ranges": "bytes",
-      "Content-Type": MIME[path.extname(filePath).toLowerCase()] ?? "application/octet-stream",
+      "Content-Type": MEDIA_MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream",
     };
 
     const rangeHeader = request.headers.get("Range");

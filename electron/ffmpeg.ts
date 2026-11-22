@@ -1,17 +1,11 @@
 import { ipcMain, app } from "electron";
 import fs from "fs";
 import path from "path";
-import { promisify } from "util";
 import { spawn, type ChildProcess } from "child_process";
 import { createRequire } from "module";
+import { TEMP_DIR_PREFIX, type PathPolicy } from "./path-policy";
 
 const _require = createRequire(import.meta.url);
-
-const readFile = promisify(fs.readFile);
-const writeFile = promisify(fs.writeFile);
-const mkdir = promisify(fs.mkdir);
-const unlink = promisify(fs.unlink);
-const readdir = promisify(fs.readdir);
 
 /** Resolve the path to the bundled ffmpeg binary from ffmpeg-static. */
 function getFFmpegPath(): string {
@@ -44,42 +38,35 @@ const CRF: Record<"mp4" | "webm", Record<ExportQuality, number>> = {
   webm: { low: 40, medium: 31, high: 20 },
 };
 
-export function setupFFmpegHandlers() {
-  // ── Extract video frames as PNG files ─────────────────────────────────────
-  ipcMain.handle(
-    "ffmpeg:extractFrames",
-    async (_, videoPath: string, outputDir: string, fps = 30) => {
-      try {
-        const ffmpegPath = getFFmpegPath();
-        await mkdir(outputDir, { recursive: true });
+const DENIED = { success: false, error: "Access denied" } as const;
 
-        const args = [
-          "-y",
-          "-i", videoPath,
-          "-vf", `fps=${fps}`,
-          path.join(outputDir, "frame_%06d.png"),
-        ];
+const isInt = (n: unknown, min: number, max: number): n is number =>
+  typeof n === "number" && Number.isInteger(n) && n >= min && n <= max;
+const isFps = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 240;
 
-        await new Promise<void>((resolve, reject) => {
-          const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "pipe", "pipe"] });
-          let stderr = "";
-          proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-          proc.on("close", (code) => {
-            if (code === 0) resolve();
-            else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-500)}`));
-          });
-          proc.on("error", reject);
-        });
+/** Run ffmpeg to completion, rejecting with the tail of stderr on failure. */
+function runFFmpeg(args: string[]): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const proc = spawn(getFFmpegPath(), args, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-500)}`));
+    });
+    proc.on("error", reject);
+  });
+}
 
-        return { success: true, outputDir };
-      } catch (error) {
-        return { success: false, error: String(error) };
-      }
-    }
-  );
-
+/**
+ * FFmpeg and binary-file IPC. Every path the renderer sends is checked against
+ * `policy`: probes only read media files, encodes only read our own temp dirs
+ * and only write paths the user picked in a save dialog.
+ */
+export function setupFFmpegHandlers(policy: PathPolicy) {
   // ── Get real video info via ffprobe-style probing ─────────────────────────
   ipcMain.handle("ffmpeg:getVideoInfo", async (_, videoPath: string) => {
+    if (!policy.isMediaFile(videoPath)) return DENIED;
     try {
       const ffmpegPath = getFFmpegPath();
       // Use ffmpeg to probe video info  (ffprobe may not be bundled)
@@ -130,7 +117,7 @@ export function setupFFmpegHandlers() {
     }
   });
 
-  // ── Encode frames directory into a video file ─────────────────────────────
+  // ── Encode a temp dir of PNG frames into a video file ─────────────────────
   ipcMain.handle(
     "ffmpeg:encodeVideo",
     async (
@@ -140,9 +127,9 @@ export function setupFFmpegHandlers() {
       fps = 30,
       format: "mp4" | "webm" | "gif" = "mp4"
     ) => {
+      if (!policy.isTempDir(framesDir) || !isFps(fps) || !["mp4", "webm", "gif"].includes(format)) return DENIED;
+      if (!policy.takeWriteGrant(outputPath)) return DENIED;
       try {
-        const ffmpegPath = getFFmpegPath();
-
         const args: string[] = [
           "-y",                        // overwrite
           "-framerate", String(fps),   // input framerate
@@ -166,17 +153,13 @@ export function setupFFmpegHandlers() {
         } else if (format === "gif") {
           // Two-pass palettegen for high quality GIF
           const palettePath = path.join(framesDir, "_palette.png");
-          await new Promise<void>((resolve, reject) => {
-            const p1 = spawn(ffmpegPath, [
-              "-y",
-              "-framerate", String(fps),
-              "-i", path.join(framesDir, "frame_%06d.png"),
-              "-vf", "palettegen=max_colors=256:stats_mode=full",
-              palettePath
-            ]);
-            p1.on("close", (code) => code === 0 ? resolve() : reject(new Error(`palettegen exited ${code}`)));
-            p1.on("error", reject);
-          });
+          await runFFmpeg([
+            "-y",
+            "-framerate", String(fps),
+            "-i", path.join(framesDir, "frame_%06d.png"),
+            "-vf", "palettegen=max_colors=256:stats_mode=full",
+            palettePath,
+          ]);
           args.push(
             "-i", palettePath,
             "-lavfi", "paletteuse=dither=floyd_steinberg",
@@ -184,18 +167,7 @@ export function setupFFmpegHandlers() {
         }
 
         args.push(outputPath);
-
-        await new Promise<void>((resolve, reject) => {
-          const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "pipe", "pipe"] });
-          let stderr = "";
-          proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-          proc.on("close", (code) => {
-            if (code === 0) resolve();
-            else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-500)}`));
-          });
-          proc.on("error", reject);
-        });
-
+        await runFFmpeg(args);
         return { success: true, outputPath };
       } catch (error) {
         return { success: false, error: String(error) };
@@ -203,25 +175,23 @@ export function setupFFmpegHandlers() {
     }
   );
 
-  // ── Create temp directory for frames ──────────────────────────────────────
+  // ── Temp directory for frames ─────────────────────────────────────────────
   ipcMain.handle("ffmpeg:createTempDir", async () => {
     try {
-      const tmpDir = path.join(app.getPath("temp"), `erosion-export-${Date.now()}`);
-      await mkdir(tmpDir, { recursive: true });
+      const tmpDir = await fs.promises.mkdtemp(path.join(app.getPath("temp"), TEMP_DIR_PREFIX));
+      policy.addTempDir(tmpDir);
       return { success: true, path: tmpDir };
     } catch (error) {
       return { success: false, error: String(error) };
     }
   });
 
-  // ── Clean up temp directory ───────────────────────────────────────────────
+  // Only directories created by createTempDir can be removed.
   ipcMain.handle("ffmpeg:cleanupTempDir", async (_, dirPath: string) => {
+    if (!policy.isTempDir(dirPath)) return DENIED;
     try {
-      const files = await readdir(dirPath);
-      for (const f of files) {
-        await unlink(path.join(dirPath, f));
-      }
-      fs.rmdirSync(dirPath);
+      await fs.promises.rm(dirPath, { recursive: true, force: true });
+      policy.removeTempDir(dirPath);
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -236,10 +206,19 @@ export function setupFFmpegHandlers() {
       sessionId: string,
       opts: { width: number; height: number; fps: number; format: "mp4" | "webm"; outputPath: string; quality?: ExportQuality },
     ) => {
+      const { width, height, fps, format, outputPath } = opts ?? {};
+      const quality = opts?.quality ?? "high";
+      if (
+        typeof sessionId !== "string" || streamSessions.has(sessionId) ||
+        !isInt(width, 1, 16384) || !isInt(height, 1, 16384) || !isFps(fps) ||
+        !(format in CRF) || !(quality in CRF.mp4)
+      ) {
+        return { success: false, error: "Invalid export options" };
+      }
+      if (!policy.takeWriteGrant(outputPath)) return DENIED;
       try {
         const ffmpegPath = getFFmpegPath();
-        const { width, height, fps, format, outputPath } = opts;
-        const crf = String(CRF[format][opts.quality ?? "high"]);
+        const crf = String(CRF[format][quality]);
 
         const args: string[] = [
           "-y",
@@ -287,6 +266,7 @@ export function setupFFmpegHandlers() {
     async (_, sessionId: string, data: Uint8Array) => {
       const session = streamSessions.get(sessionId);
       if (!session || !session.process.stdin) return { success: false, error: "Session not found" };
+      if (!(data instanceof Uint8Array)) return { success: false, error: "Invalid frame data" };
 
       return new Promise<{ success: boolean; error?: string }>((resolve) => {
         const buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
@@ -307,23 +287,13 @@ export function setupFFmpegHandlers() {
     return session.exitPromise;
   });
 
-  // ── File I/O helpers ──────────────────────────────────────────────────────
-  ipcMain.handle("file:readBinary", async (_, filePath: string) => {
-    try {
-      const data = await readFile(filePath);
-      return { success: true, data: Array.from(data) };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  });
-
+  // ── Binary writes: exported stills (save-dialog path) and GIF temp frames ─
   ipcMain.handle(
     "file:writeBinary",
     async (_, filePath: string, data: Uint8Array | number[]) => {
+      if (!policy.isTempFrame(filePath) && !policy.takeWriteGrant(filePath)) return DENIED;
       try {
-        const dir = path.dirname(filePath);
-        await mkdir(dir, { recursive: true });
-        await writeFile(filePath, Buffer.from(data));
+        await fs.promises.writeFile(filePath, Buffer.from(data));
         return { success: true, filePath };
       } catch (error) {
         return { success: false, error: String(error) };

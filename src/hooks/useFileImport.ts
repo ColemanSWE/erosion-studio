@@ -2,6 +2,12 @@ import { useCallback } from "react";
 import type { MediaItem } from "../lib/project";
 import { toast } from "../stores/toastStore";
 
+/** Absolute POSIX ("/...") or Windows ("C:\..." / "C:/...") path. */
+const isAbsolutePath = (p: string) => /^(\/|[a-zA-Z]:[\\/])/.test(p);
+
+/** Last path segment, for either separator. */
+const baseName = (p: string) => p.split(/[\\/]/).pop() || "Unknown";
+
 interface UseFileImportOptions {
   addMedia: (item: MediaItem) => void;
   selectMedia: (id: string) => void;
@@ -35,7 +41,7 @@ export function useFileImport({
 
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0];
-      const fileName = filePath.split("/").pop() || "Unknown";
+      const fileName = baseName(filePath);
       const isVideoFile = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(fileName);
 
       let videoDuration: number | undefined;
@@ -79,11 +85,13 @@ export function useFileImport({
           continue;
         }
 
-        // Electron adds a `path` property to File objects for local files
-        const filePath = (file as File & { path?: string }).path || file.name;
+        // Local files have a real path; anything else (or a browser tab) falls
+        // back to a blob: URL, which works for preview but isn't saved.
+        const filePath = window.electron?.getPathForFile(file) ?? "";
+        const isLocal = isAbsolutePath(filePath);
 
         let videoDuration: number | undefined;
-        if (isVideoFile && window.electron?.ffmpeg && filePath.startsWith("/")) {
+        if (isVideoFile && window.electron?.ffmpeg && isLocal) {
           try {
             const info = await window.electron.ffmpeg.getVideoInfo(filePath);
             if (info.success && info.duration && isFinite(info.duration)) {
@@ -100,7 +108,7 @@ export function useFileImport({
           id: `media-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           type: isVideoFile ? "video" : "image",
           name: file.name,
-          path: filePath.startsWith("/") ? filePath : URL.createObjectURL(file),
+          path: isLocal ? filePath : URL.createObjectURL(file),
           duration: videoDuration,
         });
       }
