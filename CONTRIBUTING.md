@@ -4,6 +4,8 @@ Thanks for helping out! Bug reports, effects, performance work and UI polish are
 
 ## Setup
 
+Requires Node.js 22.12+.
+
 ```bash
 npm install
 npm run dev
@@ -22,8 +24,9 @@ npm run check:shaders   # if you touched any GLSL — needs a display, so it isn
 ## Project layout
 
 ```
-electron/                 Electron main process: windows, menus, file IPC,
-                          FFmpeg export, media:// protocol
+electron/                 Electron main process: windows, menus, file IPC
+                          (checked by path-policy.ts), FFmpeg export,
+                          app:// and media:// protocols
 src/
   components/             React UI
     ui/                   shared primitives (Button, Slider, Dialog, Toast, …)

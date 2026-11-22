@@ -74,8 +74,8 @@ fn sampleClamped(uv: vec2f) -> vec4f {
 }
 `;
 
-// Passthrough fragment for blits / copies.
-const WGSL_PASSTHROUGH_FRAGMENT = WGSL_FRAGMENT_PREAMBLE + /* wgsl */`
+// Passthrough fragment for blits / copies (unused until the WGSL effect path lands).
+const _WGSL_PASSTHROUGH_FRAGMENT = WGSL_FRAGMENT_PREAMBLE + /* wgsl */`
 @fragment
 fn main(@location(0) uv: vec2f) -> @location(0) vec4f {
   return textureSample(srcTexture, srcSampler, uv);
@@ -409,7 +409,6 @@ ${computeWGSL}`;
       if (!effect.active) continue;
       const def = getEffectDefinition(effect.type);
       if (!def) continue;
-      const params = { ...def.defaultParams, ...effect.params };
 
       // TODO: check def.wgsl (not yet added to EffectDefinition) and use
       // getComputePipeline / getRenderPipeline. For now fall back to CPU.

@@ -26,10 +26,10 @@ Good first issues are marked ★.
 
 ## Platform and release
 
-- **Content Security Policy** for the renderer (it currently relies on Electron defaults plus the `media://` allow-list).
 - **Code signing / notarization** for macOS and Windows builds; release workflow that publishes `electron-builder` artifacts.
-- Test on Windows and Linux (media paths, `media://` protocol, FFmpeg binary unpacking).
-- Upgrade Electron (29 is out of support).
+- Test packaged builds on Windows and Linux (media paths, `media://` and `app://` protocols, FFmpeg binary unpacking). CI runs the unit tests on all three platforms.
+- **Bundle Google Fonts** so the app makes no network requests at all (they are the only remote resource left).
+- **React Compiler lint rules.** `eslint-plugin-react-hooks` 7 ships rules like `set-state-in-effect` and `immutability`; they're off for now (13 findings) — fix those and switch to its `recommended` preset.
 
 ## Export
 

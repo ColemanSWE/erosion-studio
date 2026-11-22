@@ -41,3 +41,4 @@ Thumbs.db
 
 # Editor / agent scratch files
 .cursor/
+.claude/

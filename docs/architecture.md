@@ -68,11 +68,24 @@ Whether an effect animates on a still source is inferred by `isAnimatedEffectTyp
 
 Creates and destroys `<video>`, `<img>` and `GifDecoder` instances as sources come and go. A video whose clip id changes but whose file doesn't (e.g. after a split) is re-keyed instead of reloaded. GIFs are decoded with `ImageDecoder` and advanced on a 33 ms timer that triggers a redraw when a frame changes.
 
+## Renderer security
+
+The renderer is treated as untrusted. It runs sandboxed with context isolation, can't navigate away or open windows, and only gets camera/mic, clipboard-write and fullscreen permissions. In production it is loaded from `app://bundle/` (`electron/app-protocol.ts`), which serves `dist/` and gives the page a real origin; a Content Security Policy (injected by `contentSecurityPolicy()` in `vite.config.ts`) limits scripts and wasm to files shipped with the app. MediaPipe's wasm and face model are bundled (`public/mediapipe/` plus `mediapipeAssets()`), not loaded from a CDN. Google Fonts are the only remote resource.
+
+Every path that crosses IPC is checked by `PathPolicy` (`electron/path-policy.ts`):
+
+| Operation | Allowed |
+| --- | --- |
+| Read media (`media://`, probe) | absolute paths with a media extension |
+| Read / write projects | absolute `.eron` paths |
+| Write an export or still | a path the user picked in a save dialog, once |
+| GIF frames, temp cleanup | temp dirs the main process created |
+
 ## Local media — `media://`
 
-The renderer runs with Electron's default web security. Local files are loaded through a privileged `media://local/<path>` protocol (`electron/media-protocol.ts`) that:
+Local files are loaded through a privileged `media://local/<path>` protocol (`electron/media-protocol.ts`) that:
 
-- only serves paths that pass `isAllowedPath` (home, temp, external volumes);
+- only serves media files (`PathPolicy.isMediaFile`);
 - supports HTTP Range requests, which video seeking needs;
 - sends `Access-Control-Allow-Origin: *`, and the pool sets `crossOrigin="anonymous"`, so drawing frames doesn't taint the canvas (effects and export read pixels back).
 
@@ -101,7 +114,7 @@ Detailed write-ups: [investigations.md](investigations.md).
 
 ### Native export module
 
-Measured on an Apple Silicon Mac at 1080p (Electron 29, `ffmpeg-static` 6.0):
+Measured on an Apple Silicon Mac at 1080p (Electron 29 at the time, `ffmpeg-static` 6.0):
 
 | Stage | Per frame |
 | --- | --- |

@@ -16,7 +16,7 @@ A desktop photo and video editor for glitch art: datamosh, pixel sorting, codec 
 
 ## Getting started
 
-Requirements: Node.js 20+ and npm.
+Requirements: Node.js 22.12+ and npm.
 
 ```bash
 npm install
@@ -70,4 +70,9 @@ Contributions are welcome — new effects especially. See [CONTRIBUTING.md](CONT
 
 ## License
 
-[MIT](LICENSE)
+Erosion Studio is [MIT](LICENSE) licensed.
+
+### Third-party components
+
+- **FFmpeg** — export uses the binary from [`ffmpeg-static`](https://github.com/eugeneware/ffmpeg-static), which is licensed **GPL-3.0-or-later** (it includes libx264). It runs as a separate process and is not linked into Erosion Studio. Installers built with `npm run build` bundle that binary together with its `LICENSE` and `README` (which point to the corresponding source); if you distribute builds, you take on the GPL's obligations for it.
+- **MediaPipe** — face tracking uses [`@mediapipe/tasks-vision`](https://github.com/google-ai-edge/mediapipe) and Google's Face Landmarker model (`public/mediapipe/face_landmarker.task`), both Apache-2.0.
