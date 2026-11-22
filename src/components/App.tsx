@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   Panel,
   Group as PanelGroup,
@@ -17,30 +18,23 @@ import type { ExportSettings } from "./ExportDialog/ExportDialog";
 import { useProjectStore, selectCanUndo, selectCanRedo } from "../stores/projectStore";
 import { useUIStore } from "../stores/uiStore";
 import { useAppStore } from "../stores/appStore";
-import { usePhotoEditor } from "../hooks/usePhotoEditor";
-import { useVideoPlayer } from "../hooks/useVideoPlayer";
-import { useCameraPlayer } from "../hooks/useCameraPlayer";
+import { useRenderEngine } from "../hooks/useRenderEngine";
+import { useCameraStream } from "../hooks/useCameraStream";
+import { useClockSelector } from "../hooks/useClock";
 import { useCameraCapture } from "../hooks/useCameraCapture";
-import { useExport } from "../hooks/useExport";
+import { useExport, type ExportResult } from "../hooks/useExport";
 import { usePlayback } from "../hooks/usePlayback";
 import { useFileImport } from "../hooks/useFileImport";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useAppActions } from "../hooks/useAppActions";
-import { resolveRenderSources } from "../hooks/useRenderSources";
+import { resolveRenderSources } from "../lib/engine/sources";
+import { playbackClock } from "../lib/engine/clock";
 import type { Region } from "../lib/effects/types";
 import styles from "./App.module.scss";
-import { resolveEffectsAtTime } from "../lib/timeline";
+import { ErrorBoundary, Toaster, toast } from "./ui";
 import "../lib/effects/processors";
 
 const REGION_COLORS = ["#ff3366", "#33ccff", "#ffcc00", "#66ff66", "#cc66ff", "#ff9933"];
-
-function useStableArray<T extends { id: string }>(arr: T[]): T[] {
-  const ref = useRef(arr);
-  const prevIds = ref.current.map((x) => x.id).join(",");
-  const nextIds = arr.map((x) => x.id).join(",");
-  if (prevIds !== nextIds) ref.current = arr;
-  return ref.current;
-}
 
 function App() {
   const {
@@ -92,7 +86,58 @@ function App() {
     redo,
     sourceTransform,
     setSourceTransform,
-  } = useProjectStore();
+  } = useProjectStore(
+    useShallow((s) => ({
+      projectName: s.projectName,
+      isDirty: s.isDirty,
+      media: s.media,
+      selectedMediaId: s.selectedMediaId,
+      effects: s.effects,
+      regions: s.regions,
+      overlays: s.overlays,
+      resolution: s.resolution,
+      currentTime: s.currentTime,
+      duration: s.duration,
+      isPlaying: s.isPlaying,
+      clips: s.clips,
+      effectParamTracks: s.effectParamTracks,
+      addMedia: s.addMedia,
+      removeMedia: s.removeMedia,
+      selectMedia: s.selectMedia,
+      addEffect: s.addEffect,
+      updateEffect: s.updateEffect,
+      removeEffect: s.removeEffect,
+      reorderEffect: s.reorderEffect,
+      addRegion: s.addRegion,
+      removeRegion: s.removeRegion,
+      addOverlay: s.addOverlay,
+      removeOverlay: s.removeOverlay,
+      updateOverlay: s.updateOverlay,
+      setCurrentTime: s.setCurrentTime,
+      setResolution: s.setResolution,
+      play: s.play,
+      pause: s.pause,
+      stop: s.stop,
+      setDuration: s.setDuration,
+      addClip: s.addClip,
+      removeClip: s.removeClip,
+      updateClip: s.updateClip,
+      addEffectParamTrack: s.addEffectParamTrack,
+      removeEffectParamTrack: s.removeEffectParamTrack,
+      addKeyframe: s.addKeyframe,
+      updateKeyframe: s.updateKeyframe,
+      removeKeyframe: s.removeKeyframe,
+      saveProject: s.saveProject,
+      saveProjectAs: s.saveProjectAs,
+      loadProject: s.loadProject,
+      newProject: s.newProject,
+      setProjectName: s.setProjectName,
+      undo: s.undo,
+      redo: s.redo,
+      sourceTransform: s.sourceTransform,
+      setSourceTransform: s.setSourceTransform,
+    })),
+  );
 
   const canUndo = useProjectStore(selectCanUndo);
   const canRedo = useProjectStore(selectCanRedo);
@@ -116,9 +161,32 @@ function App() {
     setMediaBrowserSize,
     setEffectsPanelSize,
     setTimelineSize,
-  } = useUIStore();
+  } = useUIStore(
+    useShallow((s) => ({
+      showMediaBrowser: s.showMediaBrowser,
+      showEffectsPanel: s.showEffectsPanel,
+      showTimeline: s.showTimeline,
+      activeRegionId: s.activeRegionId,
+      activeOverlayId: s.activeOverlayId,
+      isDrawingRegion: s.isDrawingRegion,
+      mediaBrowserSize: s.mediaBrowserSize,
+      effectsPanelSize: s.effectsPanelSize,
+      timelineSize: s.timelineSize,
+      setShowMediaBrowser: s.setShowMediaBrowser,
+      setShowEffectsPanel: s.setShowEffectsPanel,
+      setShowTimeline: s.setShowTimeline,
+      setActiveRegionId: s.setActiveRegionId,
+      setActiveOverlayId: s.setActiveOverlayId,
+      setIsDrawingRegion: s.setIsDrawingRegion,
+      setMediaBrowserSize: s.setMediaBrowserSize,
+      setEffectsPanelSize: s.setEffectsPanelSize,
+      setTimelineSize: s.setTimelineSize,
+    })),
+  );
 
-  const { showWelcome, setShowWelcome } = useAppStore();
+  const { showWelcome, setShowWelcome } = useAppStore(
+    useShallow((s) => ({ showWelcome: s.showWelcome, setShowWelcome: s.setShowWelcome })),
+  );
 
   const mediaBrowserRef = useRef<PanelImperativeHandle | null>(null);
   const effectsPanelRef = useRef<PanelImperativeHandle | null>(null);
@@ -164,38 +232,27 @@ function App() {
   }, [duration, clips, overlays]);
 
   // ─── Playback heartbeat ───────────────────────────────────────────────────
-  const { liveTimeRef } = usePlayback({ isPlaying, currentTime, duration: effectiveDuration, setCurrentTime, pause });
+  usePlayback({ isPlaying, duration: effectiveDuration, setCurrentTime, pause });
 
-  // ─── Timeline rendering logic ─────────────────────────────────────────────
-  const resolvedEffects = resolveEffectsAtTime(effects, effectParamTracks, currentTime);
-
-  const resolveEffectsForTime = useCallback(
-    (time: number) => resolveEffectsAtTime(effects, effectParamTracks, time),
-    [effects, effectParamTracks],
+  // ─── Rendering ────────────────────────────────────────────────────────────
+  // The engine resolves which media is on screen from the timeline itself. The
+  // UI only needs to know the *kind* of source at the playhead, which changes
+  // at clip boundaries — not on every playback tick.
+  const sourceKindAt = useCallback(
+    (time: number) => {
+      const s = resolveRenderSources(clips, media, overlays, time, selectedMediaId);
+      return (s.isCamera ? 1 : 0) | (s.isVideo ? 2 : 0);
+    },
+    [clips, media, overlays, selectedMediaId],
   );
+  const sourceKind = useClockSelector(sourceKindAt);
+  const isCamera = (sourceKind & 1) !== 0;
+  const isVideo = (sourceKind & 2) !== 0;
 
-  const { videoSources: rawVideoSources, imageSources, activeOverlays, overlayVideos: rawOverlayVideos, overlayImages: rawOverlayImages, isCamera, isVideo } = useMemo(
-    () => resolveRenderSources(clips, media, overlays, currentTime, selectedMediaId),
-    [clips, media, overlays, currentTime, selectedMediaId],
+  const timelineModel = useMemo(
+    () => ({ clips, media, overlays, selectedMediaId }),
+    [clips, media, overlays, selectedMediaId],
   );
-
-  const videoSources = useStableArray(rawVideoSources);
-  const overlayVideos = useStableArray(rawOverlayVideos);
-  const overlayImages = useStableArray(rawOverlayImages);
-
-  // ─── Rendering hooks ─────────────────────────────────────────────────────
-  const { exportImage } = usePhotoEditor({
-    canvas,
-    effects: resolvedEffects,
-    activeImages: imageSources,
-    overlayImages,
-    regions,
-    overlays,
-    sourceTransform,
-  });
-
-  // Suppress unused warning — exportImage is used internally by usePhotoEditor
-  void exportImage;
 
   const handleVideoDurationChange = useCallback(
     (dur: number) => {
@@ -204,27 +261,19 @@ function App() {
     [duration, setDuration],
   );
 
-  const { seekAndRender } = useVideoPlayer({
-    canvas,
-    resolveEffects: resolveEffectsForTime,
-    effects: resolvedEffects,
-    activeVideos: videoSources,
-    overlayVideos,
-    overlayImages,
-    isPlaying,
-    currentTime,
-    regions,
-    overlays,
-    onDurationChange: handleVideoDurationChange,
-    sourceTransform,
-  });
+  const { stream, video: cameraVideo } = useCameraStream(isCamera);
 
-  const { stream } = useCameraPlayer({
+  const { renderAt } = useRenderEngine({
     canvas,
-    effects: resolvedEffects,
-    isActive: isCamera,
+    timeline: timelineModel,
+    effects,
+    paramTracks: effectParamTracks,
     regions,
     sourceTransform,
+    camera: isCamera ? cameraVideo : null,
+    isPlaying,
+    resolutionKey: `${resolution.width}x${resolution.height}`,
+    onDurationChange: handleVideoDurationChange,
   });
 
   // ─── Camera capture ───────────────────────────────────────────────────────
@@ -275,55 +324,52 @@ function App() {
     setDuration,
   });
 
+  const handleSelectMedia = useCallback(
+    (item: { id: string }) => selectMedia(item.id),
+    [selectMedia],
+  );
+
   // ─── Export ───────────────────────────────────────────────────────────────
-  const { exportOffline, exportRealtime, exportImage: exportImageFile, isExporting, exportProgress } = useExport();
+  const { exportOffline, exportImage: exportImageFile, isExporting, exportProgress } = useExport();
   const [showExportDialog, setShowExportDialog] = useState(false);
 
   const handleExport = useCallback(() => setShowExportDialog(true), []);
 
   const handleExportConfirm = async (settings: ExportSettings) => {
     if (!canvas) {
-      alert("No canvas available for export");
+      toast.error("Nothing to export", "The preview canvas isn't ready yet.");
       return;
     }
 
     try {
-      let result;
       const fmt = settings.format;
-
       const exportDuration =
         clips.length > 0
           ? Math.max(...clips.map((c) => c.endTime))
           : media.find((m) => m.id === selectedMediaId)?.duration ?? duration;
 
+      let result: ExportResult | null;
       if (fmt === "png" || fmt === "jpeg") {
         result = await exportImageFile(canvas, fmt === "jpeg" ? "jpeg" : "png");
-      } else if (fmt === "webm" && isVideo) {
-        pause();
-        setCurrentTime(0);
-        await new Promise((r) => setTimeout(r, 300));
-        play();
-        result = await exportRealtime(canvas, exportDuration, settings.fps);
-        pause();
       } else {
+        // MP4, WebM and GIF all render offline frame-by-frame: deterministic,
+        // no dropped frames under heavy effects, and the quality setting applies.
         pause();
-        result = await exportOffline(canvas, exportDuration, settings, seekAndRender);
+        result = await exportOffline(canvas, exportDuration, settings, renderAt);
+        // Export walked the timeline; put the preview back at the playhead.
+        await renderAt(playbackClock.time);
       }
 
       setShowExportDialog(false);
-
-      if (!result) return;
-      if (result.success) {
-        alert(`Exported to: ${result.filePath}`);
-      } else {
-        const errorMsg = "error" in result ? result.error : "Unknown error";
-        alert(`Export failed: ${errorMsg}`);
-      }
+      if (!result || result.canceled) return;
+      if (result.success) toast.success("Export complete", result.filePath);
+      else toast.error("Export failed", result.error ?? "Unknown error");
     } catch (error) {
-      alert(`Export failed: ${error}`);
       setShowExportDialog(false);
+      toast.error("Export failed", error instanceof Error ? error.message : String(error));
     }
   };
+
 
   // ─── Actions ──────────────────────────────────────────────────────────────
   const { handleUndo, handleRedo, handleSave, handleSaveAs, handleNewProject, handleShowWelcome, handleCloseWelcome } =
@@ -453,45 +499,49 @@ function App() {
                 if (visible !== showMediaBrowser) setShowMediaBrowser(visible);
               }}
             >
-              <MediaBrowser
-                media={media}
-                selectedId={selectedMediaId}
-                onImport={handleImport}
-                onAddCamera={handleAddCamera}
-                onSelect={(item) => selectMedia(item.id)}
-                onRemove={removeMedia}
-                onDropFiles={handleDropFiles}
-              />
+              <ErrorBoundary name="Media browser">
+                <MediaBrowser
+                  media={media}
+                  selectedId={selectedMediaId}
+                  onImport={handleImport}
+                  onAddCamera={handleAddCamera}
+                  onSelect={handleSelectMedia}
+                  onRemove={removeMedia}
+                  onDropFiles={handleDropFiles}
+                />
+              </ErrorBoundary>
             </Panel>
             <PanelResizeHandle />
             <Panel minSize="30">
-              <Preview
-                width={resolution.width}
-                height={resolution.height}
-                onCanvasReady={handleCanvasReady}
-                regions={regions}
-                overlays={overlays}
-                activeRegionId={activeRegionId}
-                activeOverlayId={activeOverlayId}
-                isDrawingRegion={isDrawingRegion}
-                onRegionDrawn={handleRegionDrawn}
-                onRegionSelect={setActiveRegionId}
-                onOverlaySelect={setActiveOverlayId}
-                onOverlayUpdate={(id, updates) => updateOverlay(id, updates)}
-                sourceTransform={sourceTransform}
-                onSourceTransformChange={setSourceTransform}
-                captureHud={
-                  isCamera ? (
-                    <CameraHud
-                      captureMode={captureMode}
-                      recSeconds={recSeconds}
-                      onSnap={snapPhoto}
-                      onStartRecording={startRecording}
-                      onStopRecording={stopRecording}
-                    />
-                  ) : undefined
-                }
-              />
+              <ErrorBoundary name="Preview">
+                <Preview
+                  width={resolution.width}
+                  height={resolution.height}
+                  onCanvasReady={handleCanvasReady}
+                  regions={regions}
+                  overlays={overlays}
+                  activeRegionId={activeRegionId}
+                  activeOverlayId={activeOverlayId}
+                  isDrawingRegion={isDrawingRegion}
+                  onRegionDrawn={handleRegionDrawn}
+                  onRegionSelect={setActiveRegionId}
+                  onOverlaySelect={setActiveOverlayId}
+                  onOverlayUpdate={updateOverlay}
+                  sourceTransform={sourceTransform}
+                  onSourceTransformChange={setSourceTransform}
+                  captureHud={
+                    isCamera ? (
+                      <CameraHud
+                        captureMode={captureMode}
+                        recSeconds={recSeconds}
+                        onSnap={snapPhoto}
+                        onStartRecording={startRecording}
+                        onStopRecording={stopRecording}
+                      />
+                    ) : undefined
+                  }
+                />
+              </ErrorBoundary>
             </Panel>
             <PanelResizeHandle />
             <Panel
@@ -505,23 +555,25 @@ function App() {
                 if (visible !== showEffectsPanel) setShowEffectsPanel(visible);
               }}
             >
-              <EffectsPanel
-                effects={effects}
-                regions={regions}
-                overlays={overlays}
-                activeRegionId={activeRegionId}
-                activeOverlayId={activeOverlayId}
-                onAddEffect={addEffect}
-                onUpdateEffect={updateEffect}
-                onRemoveEffect={removeEffect}
-                onReorderEffect={reorderEffect}
-                onRemoveRegion={handleRemoveRegion}
-                onSelectRegion={setActiveRegionId}
-                onSelectOverlay={setActiveOverlayId}
-                onStartDrawingRegion={handleStartDrawingRegion}
-                onUpdateOverlay={(id, updates) => updateOverlay(id, updates)}
-                onAddTextOverlay={handleAddTextOverlay}
-              />
+              <ErrorBoundary name="Effects panel">
+                <EffectsPanel
+                  effects={effects}
+                  regions={regions}
+                  overlays={overlays}
+                  activeRegionId={activeRegionId}
+                  activeOverlayId={activeOverlayId}
+                  onAddEffect={addEffect}
+                  onUpdateEffect={updateEffect}
+                  onRemoveEffect={removeEffect}
+                  onReorderEffect={reorderEffect}
+                  onRemoveRegion={handleRemoveRegion}
+                  onSelectRegion={setActiveRegionId}
+                  onSelectOverlay={setActiveOverlayId}
+                  onStartDrawingRegion={handleStartDrawingRegion}
+                  onUpdateOverlay={updateOverlay}
+                  onAddTextOverlay={handleAddTextOverlay}
+                />
+              </ErrorBoundary>
             </Panel>
           </PanelGroup>
         </Panel>
@@ -537,36 +589,37 @@ function App() {
             if (visible !== showTimeline) setShowTimeline(visible);
           }}
         >
-          <Timeline
-            media={media}
-            effects={effects}
-            clips={clips}
-            overlays={overlays}
-            selectedOverlayId={activeOverlayId}
-            effectParamTracks={effectParamTracks}
-            currentTime={currentTime}
-            duration={effectiveDuration}
-            isPlaying={isPlaying}
-            liveTimeRef={liveTimeRef}
-            onAddClip={addClip}
-            onRemoveClip={removeClip}
-            onUpdateClip={updateClip}
-            onAddOverlay={addOverlay}
-            onUpdateOverlay={(id, updates) => updateOverlay(id, updates)}
-            onRemoveOverlay={removeOverlay}
-            onSelectOverlay={setActiveOverlayId}
-            onUpdateEffect={updateEffect}
-            onRemoveEffect={removeEffect}
-            onAddEffectParamTrack={addEffectParamTrack}
-            onRemoveEffectParamTrack={removeEffectParamTrack}
-            onAddKeyframe={addKeyframe}
-            onUpdateKeyframe={updateKeyframe}
-            onRemoveKeyframe={removeKeyframe}
-            onSeek={setCurrentTime}
-            onPlay={play}
-            onPause={pause}
-            onStop={stop}
-          />
+          <ErrorBoundary name="Timeline">
+            <Timeline
+              media={media}
+              effects={effects}
+              clips={clips}
+              overlays={overlays}
+              selectedOverlayId={activeOverlayId}
+              effectParamTracks={effectParamTracks}
+              currentTime={currentTime}
+              duration={effectiveDuration}
+              isPlaying={isPlaying}
+              onAddClip={addClip}
+              onRemoveClip={removeClip}
+              onUpdateClip={updateClip}
+              onAddOverlay={addOverlay}
+              onUpdateOverlay={updateOverlay}
+              onRemoveOverlay={removeOverlay}
+              onSelectOverlay={setActiveOverlayId}
+              onUpdateEffect={updateEffect}
+              onRemoveEffect={removeEffect}
+              onAddEffectParamTrack={addEffectParamTrack}
+              onRemoveEffectParamTrack={removeEffectParamTrack}
+              onAddKeyframe={addKeyframe}
+              onUpdateKeyframe={updateKeyframe}
+              onRemoveKeyframe={removeKeyframe}
+              onSeek={setCurrentTime}
+              onPlay={play}
+              onPause={pause}
+              onStop={stop}
+            />
+          </ErrorBoundary>
         </Panel>
       </PanelGroup>
 
@@ -581,6 +634,7 @@ function App() {
       )}
 
       {showWelcome && <WelcomeModal onClose={handleCloseWelcome} />}
+      <Toaster />
     </div>
   );
 }

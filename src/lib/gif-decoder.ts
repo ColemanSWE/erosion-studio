@@ -1,15 +1,4 @@
-function resolveGifSrc(path: string): string {
-  if (
-    path.startsWith("blob:") ||
-    path.startsWith("data:") ||
-    path.startsWith("http://") ||
-    path.startsWith("https://") ||
-    path.startsWith("file://")
-  ) {
-    return path;
-  }
-  return `file://${path}`;
-}
+import { toMediaUrl } from "./media-url";
 
 export class GifDecoder {
   private decoder: ImageDecoder;
@@ -25,7 +14,7 @@ export class GifDecoder {
   }
 
   static async create(path: string): Promise<GifDecoder> {
-    const src = resolveGifSrc(path);
+    const src = toMediaUrl(path);
     const response = await fetch(src);
     if (!response.ok) throw new Error(`Failed to fetch GIF: ${src}`);
     // Load the full buffer so the decoder can seek to any frame (needed for looping)

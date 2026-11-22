@@ -1,0 +1,448 @@
+@use "../../styles/variables" as v;
+
+// ── Buttons ──────────────────────────────────────────────────────────────────
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: v.$spacing-xs;
+  height: v.$control-height-md;
+  padding: 0 v.$spacing-md;
+  border: 1px solid transparent;
+  border-radius: v.$radius-md;
+  font-family: v.$font-mono;
+  font-size: v.$font-md;
+  font-weight: v.$font-weight-medium;
+  white-space: nowrap;
+  transition: background-color v.$transition-fast, border-color v.$transition-fast,
+    color v.$transition-fast, box-shadow v.$transition-fast;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px v.$accent-glow-strong;
+  }
+}
+
+.sm {
+  height: v.$control-height-sm;
+  padding: 0 v.$spacing-sm;
+  font-size: v.$font-sm;
+}
+
+.primary {
+  background-color: v.$accent-primary;
+  color: v.$text-inverse;
+  font-weight: v.$font-weight-bold;
+  letter-spacing: 0.05em;
+
+  &:hover:not(:disabled) {
+    background-color: v.$accent-secondary;
+    box-shadow: 0 0 12px v.$accent-glow-strong;
+  }
+}
+
+.secondary {
+  background-color: v.$bg-elevated;
+  border-color: v.$border-primary;
+  color: v.$text-secondary;
+
+  &:hover:not(:disabled) {
+    border-color: v.$border-accent;
+    color: v.$text-primary;
+  }
+}
+
+.ghost {
+  background-color: transparent;
+  color: v.$text-secondary;
+
+  &:hover:not(:disabled) {
+    background-color: v.$bg-elevated;
+    color: v.$text-primary;
+  }
+}
+
+.danger {
+  background-color: transparent;
+  border-color: v.$border-primary;
+  color: v.$error;
+
+  &:hover:not(:disabled) {
+    border-color: v.$error;
+    background-color: rgba(v.$error, 0.1);
+  }
+}
+
+.iconButton {
+  width: v.$control-height-md;
+  padding: 0;
+
+  &.sm {
+    width: v.$control-height-sm;
+    padding: 0;
+  }
+}
+
+.pressed {
+  color: v.$accent-primary;
+  background-color: v.$accent-glow;
+
+  &:hover:not(:disabled) {
+    color: v.$accent-primary;
+    background-color: v.$accent-glow-strong;
+  }
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// ── Form controls ────────────────────────────────────────────────────────────
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: v.$spacing-xs;
+}
+
+.fieldLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: v.$spacing-sm;
+  font-family: v.$font-mono;
+  font-size: v.$font-xs;
+  text-transform: uppercase;
+  letter-spacing: v.$letter-spacing-caps;
+  color: v.$text-tertiary;
+}
+
+.fieldValue {
+  color: v.$text-secondary;
+  text-transform: none;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  font-size: v.$font-xs;
+  color: v.$text-tertiary;
+  line-height: 1.5;
+}
+
+.select {
+  height: v.$control-height-md;
+  padding: 0 20px 0 v.$spacing-sm;
+  border: 1px solid v.$border-primary;
+  background-color: v.$bg-elevated;
+  border-radius: v.$radius-md;
+  font-family: v.$font-mono;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' viewBox='0 0 8 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23888899' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+
+  &:hover:not(:disabled) {
+    border-color: v.$border-accent;
+    color: v.$text-primary;
+  }
+
+  option {
+    background-color: v.$bg-elevated;
+    color: v.$text-primary;
+  }
+
+  &.sm {
+    height: v.$control-height-sm;
+  }
+}
+
+.slider {
+  width: 100%;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+
+  &:focus {
+    box-shadow: none;
+  }
+
+  &::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 99px;
+    background: v.$border-primary;
+  }
+
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4.5px;
+    border-radius: 50%;
+    background: v.$accent-primary;
+    border: 2px solid v.$bg-surface;
+    transition: transform v.$transition-fast;
+  }
+
+  &:hover::-webkit-slider-thumb,
+  &:focus-visible::-webkit-slider-thumb {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 3px v.$accent-glow;
+  }
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: v.$spacing-sm;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
+  cursor: pointer;
+  user-select: none;
+
+  input {
+    width: 13px;
+    height: 13px;
+    padding: 0;
+    accent-color: v.$accent-primary;
+    cursor: pointer;
+  }
+
+  &:hover {
+    color: v.$text-primary;
+  }
+}
+
+.colorInput {
+  display: inline-flex;
+  align-items: center;
+  gap: v.$spacing-sm;
+  font-family: v.$font-mono;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
+
+  input {
+    width: 28px;
+    height: v.$control-height-sm;
+    padding: 2px;
+    cursor: pointer;
+  }
+}
+
+.textInput {
+  height: v.$control-height-md;
+  padding: 0 v.$spacing-sm;
+  font-size: v.$font-sm;
+  width: 100%;
+}
+
+// ── Segmented control ────────────────────────────────────────────────────────
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: v.$bg-base;
+  border: 1px solid v.$border-primary;
+  border-radius: v.$radius-md;
+}
+
+.segment {
+  flex: 1;
+  height: v.$control-height-sm;
+  padding: 0 v.$spacing-sm;
+  border-radius: v.$radius-sm;
+  font-family: v.$font-mono;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
+  text-align: center;
+  transition: background-color v.$transition-fast, color v.$transition-fast;
+
+  &:hover:not(.segmentActive) {
+    background: v.$bg-elevated;
+    color: v.$text-primary;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px v.$accent-glow-strong;
+  }
+}
+
+.segmentActive {
+  background: v.$accent-primary;
+  color: v.$text-inverse;
+  font-weight: v.$font-weight-bold;
+}
+
+// ── Dialog ───────────────────────────────────────────────────────────────────
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: v.$z-modal;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  min-width: 400px;
+  max-width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  background: v.$bg-surface;
+  border: 1px solid v.$border-primary;
+  border-radius: v.$radius-lg;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px v.$border-secondary;
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: v.$spacing-md v.$spacing-lg;
+  border-bottom: 1px solid v.$border-secondary;
+}
+
+.dialogTitle {
+  margin: 0;
+  font-family: v.$font-mono;
+  font-size: v.$font-lg;
+  font-weight: v.$font-weight-bold;
+  text-transform: uppercase;
+  letter-spacing: v.$letter-spacing-caps;
+  color: v.$text-primary;
+}
+
+.dialogBody {
+  display: flex;
+  flex-direction: column;
+  gap: v.$spacing-md;
+  padding: v.$spacing-lg;
+  overflow-y: auto;
+}
+
+.dialogFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: v.$spacing-sm;
+  padding: v.$spacing-md v.$spacing-lg;
+  border-top: 1px solid v.$border-secondary;
+}
+
+// ── Toasts ───────────────────────────────────────────────────────────────────
+
+.toaster {
+  position: fixed;
+  right: v.$spacing-md;
+  bottom: v.$spacing-md;
+  z-index: v.$z-tooltip;
+  display: flex;
+  flex-direction: column;
+  gap: v.$spacing-sm;
+  max-width: 380px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: v.$spacing-sm;
+  padding: v.$spacing-sm v.$spacing-md;
+  background: v.$bg-elevated;
+  border: 1px solid v.$border-primary;
+  border-left-width: 3px;
+  border-radius: v.$radius-md;
+  box-shadow: v.$shadow-lg;
+  font-size: v.$font-sm;
+  color: v.$text-primary;
+  pointer-events: auto;
+  animation: toastIn v.$transition-slow;
+  word-break: break-word;
+}
+
+.toastBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toastDetail {
+  font-size: v.$font-xs;
+  color: v.$text-secondary;
+}
+
+.toastSuccess {
+  border-left-color: v.$success;
+}
+
+.toastError {
+  border-left-color: v.$error;
+}
+
+.toastInfo {
+  border-left-color: v.$accent-primary;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+// ── Error boundary ───────────────────────────────────────────────────────────
+
+.errorPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: v.$spacing-sm;
+  height: 100%;
+  padding: v.$spacing-lg;
+  background: v.$bg-surface;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
+  overflow: auto;
+}
+
+.errorTitle {
+  font-family: v.$font-mono;
+  font-size: v.$font-md;
+  font-weight: v.$font-weight-bold;
+  color: v.$error;
+}
+
+.errorMessage {
+  font-family: v.$font-mono;
+  font-size: v.$font-xs;
+  white-space: pre-wrap;
+  color: v.$text-tertiary;
+}

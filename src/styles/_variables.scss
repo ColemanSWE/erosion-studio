@@ -35,12 +35,32 @@ $timeline-effect: #1e6a50;
 $timeline-effect-hover: #2a8a68;
 $timeline-overlay: #5a3a6a;
 $timeline-keyframe: #cc7700;
+$timeline-keyframe-hover: #e09900;
 
 // Typography
 $font-primary: "JetBrains Mono", "Fira Code", "SF Mono", Monaco, "Cascadia Code",
   "Roboto Mono", Consolas, "Courier New", monospace;
 $font-mono: "JetBrains Mono", "Fira Code", "SF Mono", Monaco, "Cascadia Code",
   "Roboto Mono", Consolas, "Courier New", monospace;
+
+// Type scale — use these instead of raw px font sizes.
+$font-base: 13px;    // body default
+$font-xs: 10px;      // uppercase labels, badges, timecodes
+$font-sm: 11px;      // default panel text
+$font-md: 12px;      // inputs, buttons, list items
+$font-lg: 14px;      // section and dialog titles
+$font-xl: 18px;      // modal headings
+$font-display: 28px; // welcome screen
+
+$font-weight-normal: 400;
+$font-weight-medium: 500;
+$font-weight-bold: 600;
+
+$letter-spacing-caps: 0.08em;
+
+// Control sizing
+$control-height-sm: 22px;
+$control-height-md: 28px;
 
 // Spacing
 $spacing-xs: 4px;

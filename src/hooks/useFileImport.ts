@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { MediaItem } from "../lib/project";
+import { toast } from "../stores/toastStore";
 
 interface UseFileImportOptions {
   addMedia: (item: MediaItem) => void;
@@ -16,7 +17,7 @@ export function useFileImport({
 }: UseFileImportOptions) {
   const handleImport = useCallback(async () => {
     if (!window.electron) {
-      alert("File dialog only available in Electron");
+      toast.error("Importing needs the desktop app", "File dialogs aren't available in a browser tab.");
       return;
     }
 
@@ -69,10 +70,14 @@ export function useFileImport({
 
   const handleDropFiles = useCallback(
     async (files: FileList) => {
+      const skipped: string[] = [];
       for (const file of Array.from(files)) {
         const isVideoFile = /\.(mp4|mov|webm|avi|mkv|m4v)$/i.test(file.name);
         const isImageFile = /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name);
-        if (!isVideoFile && !isImageFile) continue;
+        if (!isVideoFile && !isImageFile) {
+          skipped.push(file.name);
+          continue;
+        }
 
         // Electron adds a `path` property to File objects for local files
         const filePath = (file as File & { path?: string }).path || file.name;
@@ -86,7 +91,8 @@ export function useFileImport({
               if (info.duration > duration) setDuration(info.duration);
             }
           } catch (e) {
-            void e;
+            // Duration also arrives from the <video> element's metadata later.
+            console.warn("Couldn't probe video duration:", filePath, e);
           }
         }
 
@@ -97,6 +103,12 @@ export function useFileImport({
           path: filePath.startsWith("/") ? filePath : URL.createObjectURL(file),
           duration: videoDuration,
         });
+      }
+      if (skipped.length > 0) {
+        toast.info(
+          `Skipped ${skipped.length} unsupported file${skipped.length > 1 ? "s" : ""}`,
+          skipped.slice(0, 3).join(", ") + (skipped.length > 3 ? "…" : ""),
+        );
       }
     },
     [addMedia, duration, setDuration],

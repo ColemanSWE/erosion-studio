@@ -29,27 +29,29 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcuts) {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+      // With Shift held (or Caps Lock on) e.key is upper-case ("Z", "S").
+      const key = e.key.toLowerCase();
 
-      if (cmdOrCtrl && e.key === "z" && !e.shiftKey && shortcuts.canUndo) {
+      if (cmdOrCtrl && key === "z" && !e.shiftKey && shortcuts.canUndo) {
         e.preventDefault();
         shortcuts.undo();
       } else if (
         cmdOrCtrl &&
-        ((e.key === "z" && e.shiftKey) || e.key === "y") &&
+        ((key === "z" && e.shiftKey) || key === "y") &&
         shortcuts.canRedo
       ) {
         e.preventDefault();
         shortcuts.redo();
-      } else if (cmdOrCtrl && e.key === "s" && e.shiftKey) {
+      } else if (cmdOrCtrl && key === "s" && e.shiftKey) {
         e.preventDefault();
         shortcuts.saveAs();
-      } else if (cmdOrCtrl && e.key === "s") {
+      } else if (cmdOrCtrl && key === "s") {
         e.preventDefault();
         shortcuts.save();
-      } else if (cmdOrCtrl && e.key === "n" && !isEditableTarget(e.target)) {
+      } else if (cmdOrCtrl && key === "n" && !isEditableTarget(e.target)) {
         e.preventDefault();
         shortcuts.newProject();
-      } else if (cmdOrCtrl && e.key === "e") {
+      } else if (cmdOrCtrl && key === "e") {
         e.preventDefault();
         shortcuts.export();
       } else if (e.key === " " && !isEditableTarget(e.target)) {

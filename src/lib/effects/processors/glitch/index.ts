@@ -1,0 +1,26 @@
+// Registers every effect in this group. Import order = registration order.
+import "./glitch";
+import "./motion-smear";
+import "./block-shoving";
+import "./block-corrupt";
+import "./pixel-sort";
+import "./rgb-channel-separation";
+import "./screen-tear";
+import "./bitcrush";
+import "./fragment-glitch";
+import "./data-destroy";
+import "./chaos";
+import "./jpeg-artifacts";
+import "./codec-damage";
+import "./xor-blend";
+import "./rgb-vertical-xor";
+import "./frame-trails";
+import "./rgb-color-trails";
+import "./feedback-echo";
+import "./frame-delay";
+import "./alpha-trails";
+import "./square-swap";
+import "./buffer-corrupt";
+import "./neon-crush";
+import "./line-massacre";
+import "./nerve-damage";

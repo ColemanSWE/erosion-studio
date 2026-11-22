@@ -1,15 +1,15 @@
-@use "../../styles/variables";
+@use "../../styles/variables" as v;
 
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 variables.$spacing-sm;
-  border-bottom: 1px solid variables.$border-primary;
-  background-color: variables.$bg-surface;
+  gap: v.$spacing-sm;
   height: 40px;
+  padding: 0 v.$spacing-sm;
+  border-bottom: 1px solid v.$border-primary;
+  background-color: v.$bg-surface;
   flex-shrink: 0;
-  gap: variables.$spacing-sm;
 }
 
 .left,
@@ -17,7 +17,7 @@
 .right {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
+  gap: v.$spacing-xs;
   flex: 1;
 }
 
@@ -31,170 +31,70 @@
 }
 
 .logo {
-  font-family: variables.$font-mono;
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.1em;
+  padding: 0 v.$spacing-xs;
+  font-family: v.$font-mono;
+  font-size: v.$font-lg;
+  font-weight: v.$font-weight-bold;
+  letter-spacing: v.$letter-spacing-caps;
   text-transform: uppercase;
-  color: variables.$text-primary;
+  color: v.$text-primary;
   user-select: none;
-  padding: 0 variables.$spacing-xs;
 }
 
 .projectIcon {
-  color: variables.$text-tertiary;
+  color: v.$text-tertiary;
   flex-shrink: 0;
 }
 
 .projectNameWrapper {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: v.$spacing-xs;
 }
 
 .projectName {
-  font-size: 12px;
-  color: variables.$text-secondary;
-  font-family: variables.$font-mono;
   max-width: 180px;
+  padding: 1px 3px;
+  border-radius: v.$radius-sm;
+  font-family: v.$font-mono;
+  font-size: v.$font-md;
+  color: v.$text-secondary;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
-  border-radius: variables.$radius-sm;
-  padding: 1px 3px;
-  transition: color variables.$transition-fast, background-color variables.$transition-fast;
+  transition: color v.$transition-fast, background-color v.$transition-fast;
 
   &:hover {
-    color: variables.$text-primary;
-    background-color: variables.$bg-elevated;
+    color: v.$text-primary;
+    background-color: v.$bg-elevated;
   }
 }
 
 .projectNameInput {
-  font-size: 12px;
-  color: variables.$text-primary;
-  font-family: variables.$font-mono;
-  background: variables.$bg-base;
-  border: 1px solid variables.$accent-primary;
-  border-radius: variables.$radius-sm;
-  padding: 1px 4px;
   width: 180px;
-  outline: none;
-  box-shadow: 0 0 0 2px variables.$accent-glow;
+  padding: 1px v.$spacing-xs;
+  border: 1px solid v.$accent-primary;
+  border-radius: v.$radius-sm;
+  background: v.$bg-base;
+  font-family: v.$font-mono;
+  font-size: v.$font-md;
+  color: v.$text-primary;
+  box-shadow: 0 0 0 2px v.$accent-glow;
 }
 
 .dirtyDot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: variables.$accent-primary;
-  flex-shrink: 0;
+  background: v.$accent-primary;
   opacity: 0.85;
+  flex-shrink: 0;
 }
 
 .divider {
   width: 1px;
   height: 18px;
-  background: variables.$border-primary;
-  margin: 0 variables.$spacing-xs;
+  margin: 0 v.$spacing-xs;
+  background: v.$border-primary;
   flex-shrink: 0;
-}
-
-.iconButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: variables.$radius-md;
-  color: variables.$text-secondary;
-  transition: color variables.$transition-fast, background-color variables.$transition-fast;
-
-  &:hover:not(:disabled) {
-    color: variables.$text-primary;
-    background-color: variables.$bg-elevated;
-  }
-
-  &:disabled {
-    color: variables.$text-tertiary;
-    opacity: 0.4;
-  }
-}
-
-.panelToggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: variables.$radius-md;
-  color: variables.$text-tertiary;
-  transition: color variables.$transition-fast, background-color variables.$transition-fast;
-
-  &:hover {
-    color: variables.$text-secondary;
-    background-color: variables.$bg-elevated;
-  }
-
-  &.active {
-    color: variables.$accent-primary;
-    background-color: variables.$accent-glow;
-  }
-}
-
-.exportButton {
-  display: flex;
-  align-items: center;
-  gap: variables.$spacing-xs;
-  padding: 0 variables.$spacing-sm;
-  height: 28px;
-  background-color: variables.$accent-primary;
-  color: variables.$text-inverse;
-  border-radius: variables.$radius-md;
-  font-size: 12px;
-  font-family: variables.$font-mono;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  transition: background-color variables.$transition-fast, box-shadow variables.$transition-fast;
-
-  &:hover {
-    background-color: variables.$accent-secondary;
-    box-shadow: 0 0 12px variables.$accent-glow-strong;
-  }
-}
-
-.resolutionSelect {
-  padding: 0 variables.$spacing-sm;
-  height: 28px;
-  border: 1px solid variables.$border-primary;
-  background-color: variables.$bg-elevated;
-  border-radius: variables.$radius-md;
-  font-size: 11px;
-  font-family: variables.$font-mono;
-  color: variables.$text-secondary;
-  cursor: pointer;
-  transition: border-color variables.$transition-fast, color variables.$transition-fast;
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 20px;
-  background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' viewBox='0 0 8 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23555566' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 6px center;
-
-  &:hover {
-    border-color: variables.$border-accent;
-    color: variables.$text-primary;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: variables.$accent-primary;
-    box-shadow: 0 0 0 2px variables.$accent-glow;
-  }
-
-  option {
-    background-color: variables.$bg-elevated;
-    color: variables.$text-primary;
-  }
 }

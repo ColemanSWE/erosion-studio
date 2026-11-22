@@ -1,4 +1,3 @@
-import React from "react";
 import { Camera, Video, Square as StopIcon } from "lucide-react";
 import styles from "./Preview.module.scss";
 
@@ -14,6 +13,7 @@ export function CameraHud({ captureMode, recSeconds, onSnap, onStartRecording, o
   return (
     <div className={styles.captureHud}>
       <button
+        type="button"
         className={`${styles.captureBtn} ${styles.snap}`}
         onClick={onSnap}
         title="Snap photo from canvas (effects included)"
@@ -23,6 +23,7 @@ export function CameraHud({ captureMode, recSeconds, onSnap, onStartRecording, o
       </button>
       {captureMode === "idle" ? (
         <button
+        type="button"
           className={`${styles.captureBtn} ${styles.record}`}
           onClick={onStartRecording}
           title="Start recording (effects included)"
@@ -32,11 +33,12 @@ export function CameraHud({ captureMode, recSeconds, onSnap, onStartRecording, o
         </button>
       ) : (
         <>
-          <span className={styles.recTimer}>
+          <span className={styles.recTimer} role="timer" aria-label="Recording time">
             {String(Math.floor(recSeconds / 60)).padStart(2, "0")}:
             {String(recSeconds % 60).padStart(2, "0")}
           </span>
           <button
+        type="button"
             className={`${styles.captureBtn} ${styles.record} ${styles.recording}`}
             onClick={onStopRecording}
             title="Stop recording"

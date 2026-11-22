@@ -26,7 +26,7 @@
   flex-shrink: 0;
 
   h3 {
-    font-size: 10px;
+    font-size: variables.$font-xs;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -41,42 +41,9 @@
   gap: variables.$spacing-xs;
 }
 
-.importButton {
-  display: flex;
-  align-items: center;
-  gap: variables.$spacing-xs;
-  padding: 3px variables.$spacing-sm;
-  border: 1px solid variables.$border-primary;
-  background-color: variables.$bg-elevated;
-  border-radius: variables.$radius-md;
-  font-size: 11px;
-  color: variables.$text-secondary;
-  transition: all variables.$transition-fast;
-
-  &:hover {
-    background-color: variables.$bg-overlay;
-    border-color: variables.$accent-primary;
-    color: variables.$text-primary;
-  }
-}
-
-.cameraButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid variables.$border-primary;
-  background-color: variables.$bg-elevated;
-  border-radius: variables.$radius-md;
-  color: variables.$text-tertiary;
-  transition: all variables.$transition-fast;
-
-  &:hover {
-    border-color: variables.$accent-primary;
-    color: variables.$accent-primary;
-    background-color: variables.$accent-glow;
-  }
+.mediaItem:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px variables.$accent-primary;
 }
 
 .mediaList {
@@ -97,11 +64,11 @@
   padding: variables.$spacing-md;
 
   p {
-    font-size: 12px;
+    font-size: variables.$font-md;
     line-height: 1.6;
 
     &.hint {
-      font-size: 11px;
+      font-size: variables.$font-sm;
       color: variables.$text-tertiary;
     }
   }
@@ -159,7 +126,7 @@
 }
 
 .name {
-  font-size: 11px;
+  font-size: variables.$font-sm;
   font-family: variables.$font-mono;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -168,26 +135,22 @@
 }
 
 .duration {
-  font-size: 10px;
+  font-size: variables.$font-xs;
   color: variables.$text-tertiary;
   font-family: variables.$font-mono;
 }
 
 .removeButton {
-  padding: 3px;
-  border: none;
-  background-color: transparent;
-  border-radius: variables.$radius-sm;
-  color: variables.$text-tertiary;
-  opacity: 0;
-  transition: all variables.$transition-fast;
   flex-shrink: 0;
+  opacity: 0;
 
-  .mediaItem:hover & {
+  .mediaItem:hover &,
+  .mediaItem:focus-within &,
+  &:focus-visible {
     opacity: 1;
   }
 
-  &:hover {
+  &:hover:not(:disabled) {
     color: variables.$error;
   }
 }
@@ -203,7 +166,7 @@
   gap: variables.$spacing-sm;
   color: variables.$accent-primary;
   font-family: variables.$font-mono;
-  font-size: 12px;
+  font-size: variables.$font-md;
   pointer-events: none;
   z-index: 10;
   border: 1px dashed variables.$accent-primary;

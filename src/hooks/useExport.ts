@@ -23,6 +23,14 @@ function canvasToRawRGBA(canvas: HTMLCanvasElement): Uint8Array {
   return new Uint8Array(imageData.data.buffer);
 }
 
+export interface ExportResult {
+  success: boolean;
+  filePath?: string;
+  error?: string;
+  /** The user dismissed the save dialog — not an error. */
+  canceled?: boolean;
+}
+
 export interface ExportHook {
   /** Start an offline (frame-by-frame) export via FFmpeg. */
   exportOffline: (
@@ -33,21 +41,14 @@ export interface ExportHook {
      *  currentTime so the canvas re-renders to that frame. It must
      *  return a Promise that resolves after the canvas has been drawn. */
     seek: (time: number) => Promise<void>,
-  ) => Promise<{ success: boolean; filePath?: string; error?: string }>;
-
-  /** Real-time WebM export (legacy, used when format=webm). */
-  exportRealtime: (
-    canvas: HTMLCanvasElement,
-    duration: number,
-    fps: number,
-  ) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  ) => Promise<ExportResult>;
 
   /** Still image export. */
   exportImage: (
     canvas: HTMLCanvasElement,
     format: "png" | "jpeg" | "webp",
     quality?: number,
-  ) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  ) => Promise<ExportResult>;
 
   isExporting: boolean;
   exportProgress: number;
@@ -64,7 +65,7 @@ export function useExport(): ExportHook {
       duration: number,
       settings: ExportSettings,
       seek: (time: number) => Promise<void>,
-    ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+    ): Promise<ExportResult> => {
       if (!window.electron) {
         return { success: false, error: "Export requires the Electron window. You are viewing the app in a browser — use the Electron window that opened alongside the Vite dev server, not a browser tab or IDE preview." };
       }
@@ -81,7 +82,7 @@ export function useExport(): ExportHook {
       });
 
       if (saveResult.canceled || !saveResult.filePath) {
-        return { success: false, error: "Export canceled" };
+        return { success: false, canceled: true };
       }
 
       const filePath = saveResult.filePath;
@@ -127,101 +128,40 @@ export function useExport(): ExportHook {
             fps,
             format,
             outputPath: filePath,
+            quality: settings.quality,
           });
           if (!startResult.success) throw new Error(startResult.error || "Failed to start FFmpeg stream");
 
-          for (let i = 0; i < totalFrames; i++) {
-            const time = (i / totalFrames) * duration;
-            await seek(time);
-            const frameData = canvasToRawRGBA(canvas);
-            const writeResult = await window.electron.ffmpeg.writeFrame(sessionId, frameData);
-            if (!writeResult.success) throw new Error(writeResult.error || "Failed to write frame");
-            setExportProgress(Math.round(((i + 1) / totalFrames) * 90));
+          // Render frame N+1 while FFmpeg is still consuming frame N: per-frame
+          // cost becomes max(render, encode) instead of render + encode. At most
+          // one write is in flight, so memory stays bounded to a couple of frames.
+          const ffmpeg = window.electron.ffmpeg;
+          let pendingWrite: Promise<void> | null = null;
+          const writeFrame = (frame: Uint8Array) =>
+            ffmpeg.writeFrame(sessionId, frame).then((r) => {
+              if (!r.success) throw new Error(r.error || "Failed to write frame");
+            });
+
+          try {
+            for (let i = 0; i < totalFrames; i++) {
+              const time = (i / totalFrames) * duration;
+              await seek(time);
+              const frameData = canvasToRawRGBA(canvas);
+              if (pendingWrite) await pendingWrite;
+              pendingWrite = writeFrame(frameData);
+              setExportProgress(Math.round(((i + 1) / totalFrames) * 90));
+            }
+            if (pendingWrite) await pendingWrite;
+          } catch (err) {
+            // Don't leave an FFmpeg process waiting on stdin.
+            await ffmpeg.endStreamExport(sessionId).catch(() => {});
+            throw err;
           }
 
           setExportProgress(95);
-          const endResult = await window.electron.ffmpeg.endStreamExport(sessionId);
+          const endResult = await ffmpeg.endStreamExport(sessionId);
           if (!endResult.success) throw new Error(endResult.error || "FFmpeg encoding failed");
         }
-
-        setExportProgress(100);
-        setIsExporting(false);
-        return { success: true, filePath };
-      } catch (error) {
-        setIsExporting(false);
-        return { success: false, error: String(error) };
-      }
-    },
-    [],
-  );
-
-  // ── Real-time WebM export via MediaRecorder ────────────────────────────
-  const exportRealtime = useCallback(
-    async (
-      canvas: HTMLCanvasElement,
-      duration: number,
-      fps: number,
-    ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
-      if (!window.electron) {
-        return { success: false, error: "Export requires the Electron window. You are viewing the app in a browser — use the Electron window that opened alongside the Vite dev server, not a browser tab or IDE preview." };
-      }
-
-      const saveResult = await window.electron.saveFile({
-        filters: [{ name: "WebM Video", extensions: ["webm"] }],
-        defaultPath: "export.webm",
-      });
-
-      if (saveResult.canceled || !saveResult.filePath) {
-        return { success: false, error: "Export canceled" };
-      }
-
-      const filePath = saveResult.filePath;
-
-      try {
-        setIsExporting(true);
-        setExportProgress(0);
-
-        const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-          ? "video/webm;codecs=vp9"
-          : "video/webm";
-
-        const stream = canvas.captureStream(fps);
-        const recorder = new MediaRecorder(stream, {
-          mimeType,
-          videoBitsPerSecond: 8_000_000,
-        });
-
-        const chunks: Blob[] = [];
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunks.push(e.data);
-        };
-
-        await new Promise<void>((resolve, reject) => {
-          recorder.onstop = () => resolve();
-          recorder.onerror = () => reject(new Error("MediaRecorder error"));
-          recorder.start(100);
-
-          // Progress ticker
-          const startMs = Date.now();
-          const progressInterval = setInterval(() => {
-            const elapsed = (Date.now() - startMs) / 1000;
-            setExportProgress(Math.min(90, Math.round((elapsed / duration) * 90)));
-          }, 250);
-
-          setTimeout(() => {
-            clearInterval(progressInterval);
-            if (recorder.state !== "inactive") recorder.stop();
-          }, duration * 1000);
-        });
-
-        setExportProgress(80);
-
-        const blob = new Blob(chunks, { type: "video/webm" });
-        const bytes = new Uint8Array(await blob.arrayBuffer());
-
-        setExportProgress(95);
-        const writeResult = await window.electron.file.writeBinary(filePath, bytes);
-        if (!writeResult.success) throw new Error(writeResult.error);
 
         setExportProgress(100);
         setIsExporting(false);
@@ -240,7 +180,7 @@ export function useExport(): ExportHook {
       canvas: HTMLCanvasElement,
       format: "png" | "jpeg" | "webp" = "png",
       quality = 0.95,
-    ): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+    ): Promise<ExportResult> => {
       if (!window.electron) {
         return { success: false, error: "Export requires the Electron window. You are viewing the app in a browser — use the Electron window that opened alongside the Vite dev server, not a browser tab or IDE preview." };
       }
@@ -255,7 +195,7 @@ export function useExport(): ExportHook {
       });
 
       if (saveResult.canceled || !saveResult.filePath) {
-        return { success: false, error: "Export canceled" };
+        return { success: false, canceled: true };
       }
 
       const filePath = saveResult.filePath;
@@ -279,7 +219,6 @@ export function useExport(): ExportHook {
 
   return {
     exportOffline,
-    exportRealtime,
     exportImage,
     isExporting,
     exportProgress,

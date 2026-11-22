@@ -199,7 +199,7 @@ export async function renderWithEffects(
         const { descriptors: overlayDescriptors, textOverlays } = buildOverlayDescriptors(
           overlays, context, sourceWidth, sourceHeight,
         );
-        context.glPipeline.renderEffects(
+        await context.glPipeline.renderEffects(
           source, sourceWidth, sourceHeight, globalEffects, processConfig,
           ctx, drawX, drawY, drawWidth, drawHeight, canvasWidth, canvasHeight,
           allGLRegions.length > 0 ? allGLRegions : undefined,
@@ -216,7 +216,7 @@ export async function renderWithEffects(
     if (context.glPipeline && globalEffects.length === 0 && regionEffects.length === 0 && !hasOverlayMasks) {
       const { descriptors, textOverlays } = buildOverlayDescriptors(overlays, context, sourceWidth, sourceHeight);
       if (descriptors.length > 0) {
-        context.glPipeline.compositeOverlaysOnto(
+        await context.glPipeline.compositeOverlaysOnto(
           source, sourceWidth, sourceHeight, descriptors,
           ctx, drawX, drawY, drawWidth, drawHeight, canvasWidth, canvasHeight,
         );
@@ -238,7 +238,7 @@ export async function renderWithEffects(
         sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight, 1.0, context.isFlipped,
       ) : [];
 
-      context.glPipeline.renderEffects(
+      await context.glPipeline.renderEffects(
         source, sourceWidth, sourceHeight,
         globalEffects, processConfig,
         bufferCtx, 0, 0, sourceWidth, sourceHeight, sourceWidth, sourceHeight,
@@ -254,7 +254,7 @@ export async function renderWithEffects(
       const { descriptors: remainingDescriptors, textOverlays: remainingTextOverlays } =
         buildOverlayDescriptors(overlays, context, sourceWidth, sourceHeight, compositedOverlayIds);
 
-      context.glPipeline.compositeOverlaysOnto(
+      await context.glPipeline.compositeOverlaysOnto(
         buffer, sourceWidth, sourceHeight,
         remainingDescriptors,
         ctx, drawX, drawY, drawWidth, drawHeight, canvasWidth, canvasHeight,
@@ -302,7 +302,7 @@ export async function renderWithEffects(
           )
         : null;
       if (glRegions && glRegions.length > 0) {
-        context.glPipeline!.renderEffects(
+        await context.glPipeline!.renderEffects(
           buffer, sourceWidth, sourceHeight, [], processConfig, bufferCtx,
           0, 0, sourceWidth, sourceHeight, sourceWidth, sourceHeight, glRegions,
         );

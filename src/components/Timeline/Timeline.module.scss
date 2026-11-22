@@ -25,7 +25,7 @@
 
 .timelineTitle {
   font-family: variables.$font-mono;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   font-weight: 600;
   color: variables.$text-tertiary;
   text-transform: uppercase;
@@ -44,7 +44,7 @@
   border-radius: variables.$radius-sm;
   color: variables.$text-secondary;
   font-family: variables.$font-mono;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   cursor: pointer;
   transition: color variables.$transition-fast, border-color variables.$transition-fast, background variables.$transition-fast;
 
@@ -63,7 +63,7 @@
 
 .timeDisplay {
   font-family: variables.$font-mono;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   color: variables.$text-tertiary;
   min-width: 60px;
   text-align: center;
@@ -78,7 +78,7 @@
 
 .zoomLabel {
   font-family: variables.$font-mono;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   color: variables.$text-tertiary;
   min-width: 36px;
   text-align: center;
@@ -235,7 +235,7 @@
 
 .trackLabelText {
   font-family: variables.$font-mono;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   color: variables.$text-secondary;
   white-space: nowrap;
   overflow: hidden;
@@ -266,7 +266,7 @@
   border: 1px solid variables.$accent-primary;
   color: variables.$text-primary;
   font-family: variables.$font-mono;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   padding: 1px 4px;
   min-width: 0;
 
@@ -287,7 +287,7 @@
   border-bottom: 1px solid variables.$border-secondary;
   color: variables.$text-tertiary;
   font-family: variables.$font-mono;
-  font-size: 9px;
+  font-size: variables.$font-xs;
   cursor: pointer;
   letter-spacing: 0.05em;
 
@@ -422,7 +422,7 @@
 
 .clipName {
   font-family: variables.$font-mono;
-  font-size: 9px;
+  font-size: variables.$font-xs;
   color: rgba(255, 255, 255, 0.75);
   white-space: nowrap;
   overflow: hidden;
@@ -434,7 +434,7 @@
 
 .clipDuration {
   font-family: variables.$font-mono;
-  font-size: 9px;
+  font-size: variables.$font-xs;
   color: rgba(255, 255, 255, 0.45);
   white-space: nowrap;
   pointer-events: none;
@@ -512,7 +512,7 @@
   top: 50%;
   transform: translateY(-50%);
   font-family: variables.$font-mono;
-  font-size: 9px;
+  font-size: variables.$font-xs;
   color: rgba(0, 229, 255, 0.5);
   pointer-events: none;
   white-space: nowrap;
@@ -551,7 +551,7 @@
   transition: background variables.$transition-fast, border-color variables.$transition-fast;
 
   &:hover {
-    background: #e09900;
+    background: variables.$timeline-keyframe-hover;
     border-color: variables.$text-primary;
   }
 
@@ -571,7 +571,7 @@
   gap: variables.$spacing-sm;
   color: variables.$text-tertiary;
   font-family: variables.$font-mono;
-  font-size: 11px;
+  font-size: variables.$font-sm;
 }
 
 // ─── Tooltip / Popup ─────────────────────────────────────────────────────────
@@ -583,7 +583,7 @@
   padding: variables.$spacing-xs variables.$spacing-sm;
   z-index: 100;
   font-family: variables.$font-mono;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   color: variables.$text-primary;
   display: flex;
   flex-direction: column;
@@ -596,7 +596,7 @@
   border: 1px solid variables.$border-primary;
   color: variables.$text-primary;
   font-family: variables.$font-mono;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   padding: 2px 4px;
   width: 80px;
   border-radius: variables.$radius-sm;
@@ -650,7 +650,7 @@
   align-items: center;
   gap: variables.$spacing-sm;
   padding: 6px variables.$spacing-md;
-  font-size: 12px;
+  font-size: variables.$font-md;
   font-family: variables.$font-mono;
   color: variables.$text-secondary;
   cursor: pointer;

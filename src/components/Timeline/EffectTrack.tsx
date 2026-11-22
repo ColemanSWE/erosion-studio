@@ -11,6 +11,7 @@ import type {
 import { getEffectDefinition } from "../../lib/effects/effect-registry";
 import { collectSnapTargets, applySnap, type SnapTarget } from "../../lib/timeline";
 import { useDragHandler, useResizeHandler } from "../../hooks/useDragHandler";
+import { playbackClock } from "../../lib/engine/clock";
 import styles from "./Timeline.module.scss";
 
 interface EffectTrackProps {
@@ -20,7 +21,6 @@ interface EffectTrackProps {
   overlays: Overlay[];
   zoom: number;
   duration: number;
-  currentTime: number;
   snapEnabled: boolean;
   expanded: boolean;
   onToggleExpanded: () => void;
@@ -44,7 +44,6 @@ export function EffectTrack({
   overlays,
   zoom,
   duration,
-  currentTime,
   snapEnabled,
   expanded,
   onToggleExpanded,
@@ -71,8 +70,8 @@ export function EffectTrack({
   const barWidth = Math.max(4, (endTime - startTime) * zoom);
 
   const buildSnapTargets = useCallback(
-    () => collectSnapTargets(clips, overlays, currentTime),
-    [clips, overlays, currentTime],
+    () => collectSnapTargets(clips, overlays, playbackClock.time),
+    [clips, overlays],
   );
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -163,17 +162,17 @@ export function EffectTrack({
   // ─── Keyframe actions ─────────────────────────────────────────────────────
   const addKeyframeAtPlayhead = useCallback(
     (track: EffectParamTrack) => {
-      const existing = track.keyframes.find((k) => Math.abs(k.time - currentTime) < 0.05);
+      const existing = track.keyframes.find((k) => Math.abs(k.time - playbackClock.time) < 0.05);
       if (existing) return;
       const rawVal = effect.params[track.paramKey];
       const val = typeof rawVal === "number" ? rawVal : 0;
       onAddKeyframe(track.id, {
         id: `kf-${Date.now()}-${kfIdCounter++}`,
-        time: currentTime,
+        time: playbackClock.time,
         value: val,
       });
     },
-    [currentTime, effect.params, onAddKeyframe],
+    [effect.params, onAddKeyframe],
   );
 
   const addNewParamTrack = useCallback(

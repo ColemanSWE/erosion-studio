@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { Download } from "lucide-react";
+import { Button, Dialog, Field, SegmentedControl } from "../ui";
 import styles from "./ExportDialog.module.scss";
 
 export type ExportFormat = "mp4" | "webm" | "gif" | "png" | "jpeg";
@@ -20,144 +21,87 @@ interface ExportDialogProps {
 
 const FORMAT_HINTS: Record<ExportFormat, string> = {
   mp4: "Best quality · Offline render · Universal playback",
-  webm: "Good quality · Real-time capture · Web-friendly",
+  webm: "Good quality · Offline render · Web-friendly",
   gif: "Offline render · Large file size · No audio",
   png: "Lossless screenshot of current frame",
   jpeg: "Compressed screenshot of current frame",
 };
 
-export default function ExportDialog({
-  isVideo,
-  isExporting,
-  exportProgress,
-  onExport,
-  onCancel,
-}: ExportDialogProps) {
+const VIDEO_FORMATS = [
+  { value: "mp4", label: "MP4" },
+  { value: "webm", label: "WebM" },
+  { value: "gif", label: "GIF" },
+] as const;
+const IMAGE_FORMATS = [
+  { value: "png", label: "PNG" },
+  { value: "jpeg", label: "JPEG" },
+] as const;
+const FPS_OPTIONS = [24, 30, 60].map((f) => ({ value: f, label: `${f} fps` }));
+const QUALITY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+] as const;
+
+export default function ExportDialog({ isVideo, isExporting, exportProgress, onExport, onCancel }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>(isVideo ? "mp4" : "png");
-  const [fps, setFps] = useState<number>(30);
-  const [quality, setQuality] = useState<"low" | "medium" | "high">("high");
+  const [fps, setFps] = useState(30);
+  const [quality, setQuality] = useState<ExportSettings["quality"]>("high");
 
   const isVideoFormat = format === "mp4" || format === "webm" || format === "gif";
+  const formats = isVideo ? [...VIDEO_FORMATS, ...IMAGE_FORMATS] : IMAGE_FORMATS;
 
   if (isExporting) {
     return (
-      <div className={styles.progressOverlay}>
-        <div className={styles.progressBox}>
-          <div className={styles.progressLabel}>Exporting {format.toUpperCase()}</div>
-          <div className={styles.progressBarContainer}>
-            <div
-              className={styles.progressBar}
-              style={{ width: `${exportProgress}%` }}
-            />
+      <Dialog title={`Exporting ${format.toUpperCase()}`} onClose={onCancel} dismissible={false}>
+        <div className={styles.progress}>
+          <div
+            className={styles.progressTrack}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={exportProgress}
+            aria-label="Export progress"
+          >
+            <div className={styles.progressBar} style={{ width: `${exportProgress}%` }} />
           </div>
-          <div className={styles.progressPercent}>{exportProgress}%</div>
+          <div className={styles.progressPercent} aria-hidden>
+            {exportProgress}%
+          </div>
         </div>
-      </div>
+      </Dialog>
     );
   }
 
   return (
-    <div className={styles.overlay} onClick={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className={styles.dialog}>
-        <div className={styles.header}>
-          <h2>Export</h2>
-          <button className={styles.closeBtn} onClick={onCancel}>
-            <X size={14} />
-          </button>
-        </div>
-
-        <div className={styles.body}>
-          {/* Format */}
-          <div className={styles.field}>
-            <span className={styles.label}>Format</span>
-            <div className={styles.optionGroup}>
-              {isVideo && (
-                <>
-                  <button
-                    className={`${styles.option} ${format === "mp4" ? styles.active : ""}`}
-                    onClick={() => setFormat("mp4")}
-                  >
-                    MP4
-                  </button>
-                  <button
-                    className={`${styles.option} ${format === "webm" ? styles.active : ""}`}
-                    onClick={() => setFormat("webm")}
-                  >
-                    WebM
-                  </button>
-                  <button
-                    className={`${styles.option} ${format === "gif" ? styles.active : ""}`}
-                    onClick={() => setFormat("gif")}
-                  >
-                    GIF
-                  </button>
-                </>
-              )}
-              <button
-                className={`${styles.option} ${format === "png" ? styles.active : ""}`}
-                onClick={() => setFormat("png")}
-              >
-                PNG
-              </button>
-              <button
-                className={`${styles.option} ${format === "jpeg" ? styles.active : ""}`}
-                onClick={() => setFormat("jpeg")}
-              >
-                JPEG
-              </button>
-            </div>
-            <span className={styles.formatHint}>{FORMAT_HINTS[format]}</span>
-          </div>
-
-          {/* FPS — only for video formats */}
-          {isVideoFormat && (
-            <div className={styles.field}>
-              <span className={styles.label}>Frame Rate</span>
-              <div className={styles.optionGroup}>
-                {[24, 30, 60].map((f) => (
-                  <button
-                    key={f}
-                    className={`${styles.option} ${fps === f ? styles.active : ""}`}
-                    onClick={() => setFps(f)}
-                  >
-                    {f} fps
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Quality — only for video formats */}
-          {isVideoFormat && (
-            <div className={styles.field}>
-              <span className={styles.label}>Quality</span>
-              <div className={styles.optionGroup}>
-                {(["low", "medium", "high"] as const).map((q) => (
-                  <button
-                    key={q}
-                    className={`${styles.option} ${quality === q ? styles.active : ""}`}
-                    onClick={() => setQuality(q)}
-                  >
-                    {q.charAt(0).toUpperCase() + q.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className={styles.footer}>
-          <button className={styles.cancelBtn} onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            className={styles.exportBtn}
-            onClick={() => onExport({ format, fps, quality })}
-          >
+    <Dialog
+      title="Export"
+      onClose={onCancel}
+      footer={
+        <>
+          <Button onClick={onCancel}>Cancel</Button>
+          <Button variant="primary" icon={<Download size={14} />} onClick={() => onExport({ format, fps, quality })}>
             Export
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </>
+      }
+    >
+      <Field label="Format" hint={FORMAT_HINTS[format]}>
+        <SegmentedControl aria-label="Format" value={format} options={formats} onChange={setFormat} />
+      </Field>
+
+      {isVideoFormat && (
+        <>
+          <Field label="Frame rate">
+            <SegmentedControl aria-label="Frame rate" value={fps} options={FPS_OPTIONS} onChange={setFps} />
+          </Field>
+          {format !== "gif" && (
+            <Field label="Quality">
+              <SegmentedControl aria-label="Quality" value={quality} options={QUALITY_OPTIONS} onChange={setQuality} />
+            </Field>
+          )}
+        </>
+      )}
+    </Dialog>
   );
 }

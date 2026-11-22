@@ -1,153 +1,91 @@
 # Effects System
 
-## Overview
+Every effect is a registry entry: metadata, default parameters, UI controls, a CPU processor, and optionally a GLSL fragment shader. The renderer decides per frame whether each effect runs on the GPU or the CPU.
 
-The effects system processes `Uint8ClampedArray` pixel buffers through a stack of registered effects. Every effect is pure data: a registry entry with a CPU processor function, optional GLSL shader, and default parameters. The renderer (`effects-renderer.ts`) decides whether to use the GL pipeline or the CPU path, and handles compositing.
+To write one, see [adding-an-effect.md](adding-an-effect.md). This document covers how they run.
 
-## Architecture
+## Layout
 
 ```
-effects-renderer.ts        orchestrates everything
-├── effect-registry.ts     holds the Map of all registered effects
-├── gl/pipeline.ts         WebGL2 FBO ping-pong for GPU effects
-├── gl/shaders.ts          GLSL preamble, vertex shader, utilities
-├── processors/            one file per category, each calls registerEffect()
-│   ├── index.ts           imports all processor files (side-effect only)
-│   ├── glitch.ts          glitch, pixel-sort, rgb-split, datamosh, …
-│   ├── distortion.ts      chromatic aberration, wave, melt, perlin, …
-│   ├── color.ts           invert, vignette, bloom, duotone, …
-│   ├── retro.ts           VHS, scanlines, CRT, dither, …
-│   ├── noise.ts           film grain, noise
-│   ├── style.ts           blob-track, detection labels, pixelate, emoji, …
-│   ├── face.ts            face-aware effects using MediaPipe landmarks
-│   ├── standard.ts        standard utility effects
-│   ├── creative.ts        creative / experimental effects
-│   ├── experimental.ts    slit-scan, droste, …
-│   └── shared.ts          shared state, math helpers, frame history
-├── worker-pool.ts         Web Worker wrapper for CPU effects
-├── effects-worker.ts      Worker entry point (runs applyEffects off-thread)
-├── renderers.ts           style-effect renderers (pixelate, emoji, ascii, …)
-├── mesh-renderer.ts       Three.js 3D-mesh effect renderer
-├── emoji-map.ts           emoji palette bitmap cache
-└── face-detector.ts       MediaPipe face/hand/pose detection
+src/lib/effects/
+├── effect-registry.ts     registerEffect(), lookups, EffectDefinition type
+├── effects-renderer.ts    renderWithEffects(): picks a render path per frame
+├── gl/
+│   ├── pipeline.ts        GLPipeline — WebGL2 FBO ping-pong, CPU batching, history rings
+│   ├── shaders.ts         preamble, helpers, HISTORY_GLSL, uniform binding
+│   └── shader-dump.test.ts  feeds `npm run check:shaders`
+├── processors/
+│   ├── index.ts           imports every group (registration side effects)
+│   ├── shared.ts          math helpers, cross-frame state, scratch buffers
+│   └── <group>/           one file per effect + index.ts
+│        glitch/ distortion/ color/ retro/ noise/ style/ face/
+│        standard/ creative/ experimental/ datamosh/
+├── worker-pool.ts         the effects worker (single, persistent)
+├── effects-worker.ts      worker entry: applyEffects() on transferred buffers
+├── overlay-compositor.ts  overlay drawing, region and effect-zone masking (CPU)
+├── style-renderer.ts      style effects (pixelate, emoji, ascii, matrix, halftone, 3D)
+├── *-renderer.ts          Three.js renderers for the 3D style effects
+└── face-detector.ts       MediaPipe face landmarks
 ```
 
-## Registering an Effect
+Groups are about where code lives; the catalog groups effects by each definition's `category`.
 
-Every effect is registered with `registerEffect()` from `effect-registry.ts`. The minimal shape:
+## Definition
 
 ```ts
-registerEffect({
-  type: "my-effect", // must match EffectType union in types.ts
-  label: "My Effect",
-  category: "glitch", // "glitch" | "distortion" | "color" | "retro" | "noise" | "style" | "face" | "standard"
-  defaultParams: { intensity: 50 },
-  paramsConfig: [
-    {
-      key: "intensity",
-      label: "Intensity",
-      type: "slider",
-      min: 0,
-      max: 100,
-      step: 1,
-    },
-  ],
-  processor: (data, { width, height, time }, params) => {
-    // mutate data in-place
-  },
-});
+interface EffectDefinition {
+  type: EffectType;            // id, also in the EffectType union (types.ts)
+  label: string;               // shown in the catalog and effect stack
+  category: "glitch" | "distortion" | "color" | "retro" | "noise" | "style" | "face" | "standard";
+  defaultParams: Record<string, unknown>;
+  paramsConfig: EffectParamConfig[];   // UI controls; one per user-facing param
+  processor: (data, config, params) => void;   // CPU path, mutates RGBA in place
+  glsl?: GLSLEffect;           // GPU path
+  animated?: boolean;          // override animation inference (see below)
+  experimental?: boolean;      // hidden unless "Show experimental effects" is on
+}
 ```
 
-To add a GPU path, add a `glsl` property:
+`EffectParams.tsx` renders controls straight from `paramsConfig` (slider, checkbox, select, color, text), grouped by the optional `group` field.
 
-```ts
-  glsl: {
-    fragment: `
-uniform float u_intensity;
-void main() {
-  vec4 c = texture(u_source, v_texCoord);
-  fragColor = mix(c, vec4(1.0 - c.rgb, c.a), u_intensity / 100.0);
-}`,
-    uniforms: { intensity: "float" },
-  },
-```
+## Render paths — `effects-renderer.ts`
 
-The fragment shader automatically gets the preamble from `shaders.ts` which includes `u_source`, `u_resolution`, `u_time`, `v_texCoord`, and helpers like `pseudoRandom`, `perlinNoise`, `sampleClamped`.
+Each frame the active effects are split into **global** (no target), **region** (`regionId`) and **overlay** (`overlayId`) effects. Then one path is chosen:
 
-When a `uniformMapper` is provided, it transforms the raw `params` object before binding uniforms. Use this when param names or scales differ between the CPU and GPU paths:
+| Path | When | What happens |
+| --- | --- | --- |
+| Style | a style effect (pixelate, emoji, ascii, matrix, halftone, 3D) is active | effects before it run first, the style renderer draws, effects after it run on the result |
+| GPU chain | WebGL2 available, no overlay masks | the GL pipeline runs global effects, then each region/effect-zone with a scissor rect, composites image/video overlays, blits to the canvas; text overlays are drawn on top |
+| GPU overlays only | no effects, only overlays | upload source, composite overlays on the GPU |
+| Hybrid | effects target a (non-zone) overlay | GPU chain into the buffer, CPU masking per overlay, GPU composite of the rest |
+| CPU | no WebGL2 | everything on 2D canvas; global effects run in the effects worker |
 
-```ts
-  glsl: {
-    fragment: `...`,
-    uniforms: { speed: "float" },
-    uniformMapper: (p) => ({ speed: (p.speed as number) / 100.0 }),
-  },
-```
+## GL pipeline — `gl/pipeline.ts`
 
-To add a new `EffectType`, add it to the union in `src/lib/effects/types.ts`.
+- **Ping-pong.** The source is uploaded into one FBO; each GPU effect renders a full-screen pass into the other, then they swap. Multi-pass effects declare `multiPass`.
+- **CPU effects inside a GPU chain.** Consecutive effects without a usable shader (no `glsl`, or `skipGL(params)` true) are *batched*: one `readPixels`, the whole batch runs in the effects worker, one upload. GPU work never waits on the main thread's JS.
+- **Previous frame.** `needsPrevFrame` binds the last rendered output as `u_prevFrame` (feedback effects).
+- **History rings.** `historyFrames(params)` gives an effect its own ring of up to 16 past *input* frames in a `TEXTURE_2D_ARRAY`, read through `historyFrame(age)` from `HISTORY_GLSL` (age 0 = this frame). Rings are per effect instance (stacked trails don't interfere) and freed after 120 unused frames.
+- **Orientation.** All GPU passes use `u_flipY = -1`; the final blit corrects orientation, and CPU readbacks are flipped so processors always see row 0 as the image top.
 
-## Processing Pipeline
+## CPU processors
 
-### Render entry point
+Processors receive `(data: Uint8ClampedArray, config, params)` with `config = { width, height, time, faceBounds, timelineFrames, … }` and mutate `data`. `params` already has defaults merged in.
 
-`renderWithEffects(context, effects, regions?, overlays?)` in `effects-renderer.ts` is the single entry point called every frame by the hooks (`useVideoPlayer`, `usePhotoEditor`, `useCameraPlayer`).
+- **The worker.** CPU batches run in one persistent worker (`worker-pool.ts`). It's deliberately a single worker: stateful effects keep their cross-frame state in module memory, and every frame must reach the same copy. Transition effects that read `timelineFrames` run on the main thread to avoid cloning extra frames.
+- **Scratch buffers.** Per-frame temporaries use `scratchCopy(data, "<effect>/<name>")` and `scratchFloats(length, key)` from `shared.ts`, which reuse a buffer per call site instead of allocating megabytes per frame. Never keep a scratch buffer across frames — allocate state you need to keep.
+- **Frame history.** `storeFrame` / `getFrameFromHistory` (`shared.ts`) keep the CPU-path history; buffers are recycled once the ring is full.
 
-### Effect splitting
+## Animation inference
 
-Effects are split into three buckets each frame:
+On a still image the engine only keeps rendering if some active effect changes over time. `isAnimatedEffectType` (`lib/engine/effect-traits.ts`) decides: `animated` if set; else the shader uses `u_time` or `needsPrevFrame`; else the CPU processor's source mentions `time`, `Math.random`, `performance.now`, `Date.now`, `prevFrame` or `history`. Set `animated` explicitly if that guess is wrong for your effect.
 
-| Bucket          | Condition                             | Processed by                                 |
-| --------------- | ------------------------------------- | -------------------------------------------- |
-| `globalEffects` | active, no `regionId`, no `overlayId` | Applied to the full frame                    |
-| `regionEffects` | active, has `regionId`                | Applied only inside a user-drawn region      |
-| overlay effects | active, has `overlayId`               | Applied inside an overlay with alpha masking |
+## Face effects
 
-### GL path (fast)
+`face-detector.ts` lazily loads MediaPipe's face landmarker. The engine runs detection only while a face effect is active — every 10th frame for video/camera, once per still image — and passes the results as `config.faceBounds`.
 
-When `GLPipeline` is available and there are no overlay masks, all effects route through WebGL2:
+## Guards
 
-1. Source frame uploaded to a texture via `texImage2D` / `texSubImage2D`
-2. Each effect with a `glsl` shader runs as a full-screen FBO pass (ping-pong between two FBOs)
-3. Effects without `glsl` fall back to CPU: `readPixels` → CPU processor → `texSubImage2D` upload
-4. Region effects run with `gl.scissor` so pixels outside the region are untouched
-5. Final FBO blit to the display canvas
-
-### CPU path (fallback)
-
-Used when `GLPipeline` is unavailable or overlay masks are present:
-
-1. `drawImage(source)` into an offscreen buffer canvas
-2. `getImageData` → `applyEffects(data, globalEffects)` → `putImageData`
-3. For each region: `getImageData(rx, ry, rw, rh)` → `applyEffects` → `putImageData`
-4. For overlay effects: extract region, apply effects, composite back with `destination-in` masking
-
-### Worker path
-
-When global effects are running on the CPU path and there are no timeline frames, the pixel buffer is transferred (zero-copy) to a Web Worker. The worker runs `applyEffects`, then transfers the result back. This keeps the main thread free during the CPU processing.
-
-### Style effects
-
-Effects in the "style" category that have a dedicated visual renderer (pixelate, emoji, ascii, matrix, halftone, 3d-mesh) bypass the pixel processor path. Instead:
-
-1. Pre-style effects (all active non-style effects before the style effect in the stack) are applied first
-2. The style renderer runs (downsample, render character grid or mesh, etc.)
-3. Post-style effects are applied to the output
-
-The 3D mesh effect uses a separate Three.js `WebGLRenderer` (`mesh-renderer.ts`) and is not part of the FBO pipeline.
-
-## Shared State and Caching
-
-`processors/shared.ts` holds cross-frame state used by temporal effects:
-
-- `motionSmearState`, `datamoshState`, `blockShovingState` — previous-frame buffers for motion effects
-- `meltState` — persistent melt columns keyed by `"WxH"` (max 3 entries, LRU-evicted)
-- `posterizeTimeCache` — cached frozen frames for posterize-time keyed by `"WxH"` (max 3 entries)
-- `frameHistoryStore` — rolling buffer of the last 16 frames for temporal effects
-- `storeFrame` / `getFrameFromHistory` — helpers to write/read frame history
-
-## Performance Notes
-
-- All `Uint8ClampedArray` allocations in hot effects (pixel-sort, GL pipeline readback) use module-level pools that are reused when dimensions match
-- Blob-track detection (connected-component labeling) runs at most every 3 frames; intermediate frames reuse the last detected blob positions
-- The region effects temp canvas is cached at module level rather than created each frame
-- GL pipeline CPU-fallback buffers (`cpuBufFull`, `cpuBufRegion`) are preallocated on the pipeline instance
+- `params-config.test.ts` — every user-facing param has a control; slider defaults are in range; configs only reference real params.
+- `engine.test.ts` — animation inference on known effects.
+- `npm run check:shaders` — compiles and links every shader in a real WebGL2 context.

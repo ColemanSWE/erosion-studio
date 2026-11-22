@@ -1,4 +1,5 @@
 import type { StateCreator } from "zustand";
+import { toast } from "../toastStore";
 import type { Effect, Region, Overlay, TimelineClip, TimelineTrack, EffectParamTrack } from "../../lib/effects/types";
 import type { MediaItem, Resolution, SourceTransform } from "../../lib/project";
 import { DEFAULT_RESOLUTION, DEFAULT_SOURCE_TRANSFORM } from "../../lib/project";
@@ -107,9 +108,11 @@ export const createProjectIOSlice: StateCreator<ProjectState, [], [], Omit<Proje
     const res = await window.electron.file.writeText(targetPath, JSON.stringify(projectData, null, 2));
     if (!res.success) {
       console.error("Failed to save project:", res.error);
+      toast.error("Couldn't save project", res.error);
       return;
     }
     set({ filePath: targetPath, isDirty: false });
+    toast.success("Project saved", targetPath);
     const { useAppStore } = await import("../appStore");
     useAppStore.getState().addRecentProject({ name: state.projectName, path: targetPath, lastOpened: Date.now() });
   },
@@ -158,6 +161,7 @@ export const createProjectIOSlice: StateCreator<ProjectState, [], [], Omit<Proje
       const res = await window.electron.file.readText(resolvedPath);
       if (!res.success || !res.data) {
         console.error("Failed to load project:", res.error);
+        toast.error("Couldn't open project", res.error ?? resolvedPath);
         return;
       }
 
@@ -231,6 +235,7 @@ export const createProjectIOSlice: StateCreator<ProjectState, [], [], Omit<Proje
       }
     } catch (e) {
       console.error("Failed to open project:", e);
+      toast.error("Couldn't open project", e instanceof Error ? e.message : String(e));
     }
   },
 });

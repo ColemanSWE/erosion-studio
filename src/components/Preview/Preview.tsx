@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { memo, useRef, useEffect, useState, useCallback } from "react";
 import { Maximize2, Minimize2, RotateCcw } from "lucide-react";
 import styles from "./Preview.module.scss";
 import type { Region, Overlay } from "../../lib/effects/types";
@@ -331,7 +331,6 @@ function Preview({
 
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onOverlaySelect, onOverlayUpdate]);
 
   const isFillMode = sourceTransform?.mode === "fill";
@@ -457,4 +456,4 @@ function Preview({
   );
 }
 
-export default Preview;
+export default memo(Preview);

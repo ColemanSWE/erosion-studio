@@ -8,7 +8,32 @@ export interface GLSLEffect {
   skipGL?: (params: Record<string, unknown>) => boolean;
   /** When true, GLPipeline binds a persistent previous-frame texture to u_prevFrame (sampler2D, unit 1). */
   needsPrevFrame?: boolean;
+  /**
+   * Number of past *input* frames this effect reads (including the current one).
+   * GLPipeline keeps a per-effect-instance ring of that many frames and exposes
+   * it through HISTORY_GLSL's `historyFrame(age)`. Capped at MAX_HISTORY_FRAMES.
+   */
+  historyFrames?: (params: Record<string, unknown>) => number;
 }
+
+export const MAX_HISTORY_FRAMES = 16;
+
+/**
+ * Prepend to an effect fragment that declares `historyFrames`.
+ * age 0 is this frame's input (identical to u_source); age n is n frames ago.
+ * Only ages below u_historyCount hold real frames.
+ */
+export const HISTORY_GLSL = `
+uniform highp sampler2DArray u_history;
+uniform int u_historyCount;
+uniform int u_historyHead;
+uniform int u_historyCap;
+vec4 historyFrameAt(int age, vec2 uv) {
+  int layer = (u_historyHead - age + u_historyCap) % u_historyCap;
+  return texture(u_history, vec3(uv, float(layer)));
+}
+vec4 historyFrame(int age) { return historyFrameAt(age, v_texCoord); }
+`;
 
 // layout(location) qualifiers are required so the VAO binding by index (0,1) works
 // regardless of when the program is linked.

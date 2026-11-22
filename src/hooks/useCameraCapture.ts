@@ -3,7 +3,7 @@ import { useRef, useState, useCallback } from "react";
 export type CaptureMode = "idle" | "recording";
 
 interface UseCameraCaptureOptions {
-  /** The live camera stream from useCameraPlayer */
+  /** The live camera stream from useCameraStream */
   stream: MediaStream | null;
   /** The canvas currently showing the processed camera feed (with effects applied) */
   canvas: HTMLCanvasElement | null;

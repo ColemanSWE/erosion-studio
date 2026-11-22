@@ -4,109 +4,78 @@ import type { ProcessConfig } from "./effect-registry";
 type WorkerMessage = { id: number; buffer: Uint8ClampedArray; effects: Effect[]; config: ProcessConfig };
 type WorkerResponse = { id: number; buffer: Uint8ClampedArray; error?: string };
 
-const POOL_SIZE = 4;
-
-interface PoolWorker {
-  worker: Worker;
-  busy: boolean;
-}
-
-const pool: Array<PoolWorker | null> = Array(POOL_SIZE).fill(null);
+/**
+ * One persistent worker for CPU effects.
+ *
+ * Deliberately a single worker rather than a pool: several CPU effects
+ * (datamosh, slit-scan, frame trails, …) keep module-level state between
+ * frames, and that state lives inside whichever worker ran them. Routing every
+ * frame through the same worker keeps it coherent. Frames are processed one at
+ * a time anyway because the render loop awaits each frame.
+ */
+let worker: Worker | null = null;
+let workerBroken = false;
 let nextId = 0;
-let roundRobinIdx = 0;
+const pending = new Map<number, { resolve: (buf: Uint8ClampedArray) => void; reject: (err: unknown) => void }>();
 
-const pending = new Map<number, {
-  resolve: (buf: Uint8ClampedArray) => void;
-  reject: (err: unknown) => void;
-  workerIdx: number;
-}>();
-
-function makeWorker(idx: number): PoolWorker | null {
+function getWorker(): Worker | null {
+  if (worker || workerBroken) return worker;
   try {
     const w = new Worker(new URL("./effects-worker.ts", import.meta.url), { type: "module" });
-    const entry: PoolWorker = { worker: w, busy: false };
-
     w.onmessage = (e: MessageEvent<WorkerResponse>) => {
       const { id, buffer, error } = e.data;
       const p = pending.get(id);
       if (!p) return;
       pending.delete(id);
-      pool[p.workerIdx]!.busy = false;
-      if (error) console.error("Worker effect processing error:", error);
-      p.resolve(buffer);
-    };
-
-    w.onerror = (err) => {
-      for (const [pid, p] of pending.entries()) {
-        if (p.workerIdx === idx) {
-          pending.delete(pid);
-          p.reject(err);
-        }
+      if (error) {
+        console.error("Worker effect processing error:", error);
+        p.reject(new Error(error));
+      } else {
+        p.resolve(buffer);
       }
-      pool[idx] = null;
     };
-
-    return entry;
+    w.onerror = (err) => {
+      // A crashed worker loses its transferred buffers; callers fall back to the main thread.
+      for (const p of pending.values()) p.reject(err);
+      pending.clear();
+      w.terminate();
+      worker = null;
+      workerBroken = true;
+    };
+    worker = w;
   } catch {
-    return null;
+    workerBroken = true;
   }
+  return worker;
 }
 
-function getIdleWorkerIdx(): number {
-  // Prefer an idle worker; fall back to round-robin.
-  for (let i = 0; i < POOL_SIZE; i++) {
-    const idx = (roundRobinIdx + i) % POOL_SIZE;
-    const entry = pool[idx];
-    if (entry && !entry.busy) {
-      roundRobinIdx = (idx + 1) % POOL_SIZE;
-      return idx;
-    }
-  }
-  const idx = roundRobinIdx % POOL_SIZE;
-  roundRobinIdx = (roundRobinIdx + 1) % POOL_SIZE;
-  return idx;
+export function isEffectsWorkerAvailable(): boolean {
+  return getWorker() !== null;
 }
 
-function getWorkerAt(idx: number): PoolWorker | null {
-  if (!pool[idx]) pool[idx] = makeWorker(idx);
-  return pool[idx];
-}
-
+/**
+ * Apply `effects` to `buffer` off the main thread. The buffer is transferred
+ * (detached on this side); use the returned array. Rejects if the worker is
+ * unavailable or fails — callers should re-read pixels and run on the main thread.
+ */
 export function processEffectsInWorker(
   buffer: Uint8ClampedArray,
   effects: Effect[],
   config: ProcessConfig,
 ): Promise<Uint8ClampedArray> {
-  const workerIdx = getIdleWorkerIdx();
-  const entry = getWorkerAt(workerIdx);
-  if (!entry) return Promise.reject(new Error("Worker unavailable"));
+  const w = getWorker();
+  if (!w) return Promise.reject(new Error("Worker unavailable"));
 
   const id = nextId++;
-  entry.busy = true;
-
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject, workerIdx });
-    const configCopy: ProcessConfig = {
-      ...config,
-      timelineFrames: undefined,
-      faceBounds: config.faceBounds,
-      handBounds: config.handBounds,
-      poseBounds: config.poseBounds,
-    };
-    entry.worker.postMessage(
-      { id, buffer, effects, config: configCopy } as WorkerMessage,
-      [buffer.buffer],
-    );
+    pending.set(id, { resolve, reject });
+    w.postMessage({ id, buffer, effects, config } as WorkerMessage, [buffer.buffer]);
   });
 }
 
 export function disposeEffectsWorker(): void {
-  for (let i = 0; i < POOL_SIZE; i++) {
-    if (pool[i]) {
-      pool[i]!.worker.terminate();
-      pool[i] = null;
-    }
-  }
+  worker?.terminate();
+  worker = null;
   for (const p of pending.values()) p.reject(new Error("Worker disposed"));
   pending.clear();
 }

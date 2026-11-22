@@ -55,7 +55,7 @@ export const createTimelineSlice: StateCreator<ProjectState, [], [], TimelineSli
 
   updateClip: (id, updates) =>
     set((state) => ({
-      ...withHistory(state),
+      ...withHistory(state, `clip:${id}`),
       clips: state.clips.map((c) => (c.id === id ? { ...c, ...updates } : c)),
     })),
 
@@ -71,6 +71,7 @@ export const createTimelineSlice: StateCreator<ProjectState, [], [], TimelineSli
 
   updateRegion: (id, updates) =>
     set((state) => ({
+      ...withHistory(state, `region:${id}`),
       regions: state.regions.map((r) => (r.id === id ? { ...r, ...updates } : r)),
     })),
 
@@ -86,6 +87,7 @@ export const createTimelineSlice: StateCreator<ProjectState, [], [], TimelineSli
 
   updateOverlay: (id, updates) =>
     set((state) => ({
+      ...withHistory(state, `overlay:${id}`),
       overlays: state.overlays.map((o) => (o.id === id ? { ...o, ...updates } : o)),
     })),
 

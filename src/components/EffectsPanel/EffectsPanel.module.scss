@@ -15,7 +15,7 @@
   flex-shrink: 0;
 
   h3 {
-    font-size: 10px;
+    font-size: variables.$font-xs;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -35,7 +35,7 @@
 }
 
 .applyingToLabel {
-  font-size: 10px;
+  font-size: variables.$font-xs;
   font-family: variables.$font-mono;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -43,7 +43,7 @@
 }
 
 .applyingToTarget {
-  font-size: 10px;
+  font-size: variables.$font-xs;
   font-family: variables.$font-mono;
   font-weight: 600;
   color: variables.$accent-primary;
@@ -71,7 +71,7 @@
   background: transparent;
   border: none;
   color: variables.$text-primary;
-  font-size: 12px;
+  font-size: variables.$font-md;
   outline: none;
   font-family: inherit;
 
@@ -108,7 +108,7 @@
   border: none;
   text-align: left;
   font-family: variables.$font-mono;
-  font-size: 11px;
+  font-size: variables.$font-sm;
   font-weight: 600;
   color: variables.$text-secondary;
   transition: color variables.$transition-fast, background-color variables.$transition-fast;
@@ -125,7 +125,7 @@
 
   .count {
     color: variables.$text-tertiary;
-    font-size: 10px;
+    font-size: variables.$font-xs;
   }
 }
 
@@ -144,7 +144,7 @@
   border: 1px solid transparent;
   border-radius: variables.$radius-sm;
   text-align: left;
-  font-size: 11px;
+  font-size: variables.$font-sm;
   color: variables.$text-secondary;
   margin-bottom: 1px;
   transition: all variables.$transition-fast;
@@ -177,7 +177,7 @@
   flex-shrink: 0;
 
   h4 {
-    font-size: 10px;
+    font-size: variables.$font-xs;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -187,7 +187,7 @@
 
   .count {
     color: variables.$accent-primary;
-    font-size: 10px;
+    font-size: variables.$font-xs;
     font-family: variables.$font-mono;
     font-weight: 600;
   }
@@ -211,7 +211,7 @@
   background-color: variables.$bg-elevated;
   border: 1px solid variables.$border-primary;
   border-radius: variables.$radius-sm;
-  font-size: 11px;
+  font-size: variables.$font-sm;
   color: variables.$text-secondary;
   font-family: variables.$font-mono;
   transition: all variables.$transition-fast;
@@ -250,7 +250,7 @@
   align-items: center;
   justify-content: space-between;
   padding: variables.$spacing-xs variables.$spacing-sm;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   font-family: variables.$font-mono;
   font-weight: 600;
   text-transform: uppercase;
@@ -304,10 +304,10 @@
   gap: variables.$spacing-xs;
 
   p {
-    font-size: 12px;
+    font-size: variables.$font-md;
 
     &.hint {
-      font-size: 10px;
+      font-size: variables.$font-xs;
     }
   }
 }
@@ -338,7 +338,7 @@
 
   span {
     flex: 1;
-    font-size: 11px;
+    font-size: variables.$font-sm;
     font-family: variables.$font-mono;
     color: variables.$text-primary;
   }
@@ -390,7 +390,7 @@
   background-color: variables.$bg-elevated;
 
   h5 {
-    font-size: 10px;
+    font-size: variables.$font-xs;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -415,7 +415,7 @@
 }
 
 .paramLabel {
-  font-size: 10px;
+  font-size: variables.$font-xs;
   color: variables.$text-tertiary;
   font-family: variables.$font-mono;
   text-transform: uppercase;
@@ -425,7 +425,7 @@
 
 .textInput {
   flex: 1;
-  font-size: 11px;
+  font-size: variables.$font-sm;
   padding: 3px variables.$spacing-xs;
   height: auto;
 }
@@ -444,7 +444,7 @@
   display: flex;
   align-items: center;
   gap: variables.$spacing-xs;
-  font-size: 11px;
+  font-size: variables.$font-sm;
   color: variables.$text-secondary;
   cursor: pointer;
 
@@ -457,7 +457,7 @@
 
 .fontSelect {
   flex: 1;
-  font-size: 11px;
+  font-size: variables.$font-sm;
   padding: 3px variables.$spacing-xs;
   height: auto;
   background-color: variables.$bg-elevated;
@@ -504,7 +504,7 @@
 }
 
 .sliderValue {
-  font-size: 10px;
+  font-size: variables.$font-xs;
   font-family: variables.$font-mono;
   color: variables.$accent-primary;
   min-width: 28px;
@@ -512,7 +512,7 @@
 }
 
 .zoneHint {
-  font-size: 10px;
+  font-size: variables.$font-xs;
   color: variables.$text-tertiary;
   line-height: 1.4;
   padding: variables.$spacing-xs variables.$spacing-sm;
@@ -523,6 +523,33 @@
 
 .count {
   color: variables.$text-tertiary;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   font-family: variables.$font-mono;
+}
+
+.experimentalBadge {
+  margin-left: auto;
+  padding: 0 variables.$spacing-xs;
+  border: 1px solid variables.$border-primary;
+  border-radius: variables.$radius-sm;
+  font-size: variables.$font-xs;
+  letter-spacing: variables.$letter-spacing-caps;
+  text-transform: uppercase;
+  color: variables.$text-tertiary;
+}
+
+.experimentalToggle {
+  display: flex;
+  align-items: center;
+  gap: variables.$spacing-sm;
+  padding: variables.$spacing-sm variables.$spacing-md;
+  border-top: 1px solid variables.$border-primary;
+  font-size: variables.$font-sm;
+  color: variables.$text-secondary;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:hover {
+    color: variables.$text-primary;
+  }
 }

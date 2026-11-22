@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, ChevronDown, ChevronRight, Search } from "lucide-react";
 import type { EffectType } from "../../lib/effects/types";
 import type { Overlay, Region } from "../../lib/effects/types";
-import { isStyleEffect, getAllEffects } from "../../lib/effects/effect-registry";
-import { formatEffectName } from "./effectsPanelUtils";
+import { isStyleEffect, getAllEffects, type EffectDefinition } from "../../lib/effects/effect-registry";
+import { useUIStore } from "../../stores/uiStore";
 import styles from "./EffectsPanel.module.scss";
+
+const CATEGORY_ORDER: EffectDefinition["category"][] = [
+  "standard", "color", "glitch", "distortion", "retro", "noise", "style", "face",
+];
 
 interface EffectsCatalogProps {
   activeRegionId: string | null;
@@ -15,15 +19,22 @@ interface EffectsCatalogProps {
 }
 
 export function EffectsCatalog({ activeRegionId, activeOverlayId, regions, overlays, onAddEffect }: EffectsCatalogProps) {
-  const allDefs = getAllEffects();
-  const EFFECT_CATEGORIES = allDefs.reduce(
-    (acc, def) => {
-      if (!acc[def.category]) acc[def.category] = [];
-      acc[def.category].push(def.type);
-      return acc;
-    },
-    {} as Record<string, string[]>,
-  );
+  const showExperimental = useUIStore((s) => s.showExperimentalEffects);
+  const setShowExperimental = useUIStore((s) => s.setShowExperimentalEffects);
+  const experimentalCount = useMemo(() => getAllEffects().filter((d) => d.experimental).length, []);
+
+  const categories = useMemo(() => {
+    const byCategory = new Map<string, EffectDefinition[]>();
+    for (const def of getAllEffects()) {
+      if (def.experimental && !showExperimental) continue;
+      if (!byCategory.has(def.category)) byCategory.set(def.category, []);
+      byCategory.get(def.category)!.push(def);
+    }
+    for (const defs of byCategory.values()) defs.sort((a, b) => a.label.localeCompare(b.label));
+    return [...byCategory.entries()].sort(
+      ([a], [b]) => CATEGORY_ORDER.indexOf(a as EffectDefinition["category"]) - CATEGORY_ORDER.indexOf(b as EffectDefinition["category"]),
+    );
+  }, [showExperimental]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
@@ -68,9 +79,10 @@ export function EffectsCatalog({ activeRegionId, activeOverlayId, regions, overl
       </div>
 
       <div className={styles.categories}>
-        {Object.entries(EFFECT_CATEGORIES).map(([category, effectTypes]) => {
-          const filteredEffects = effectTypes.filter((type) =>
-            formatEffectName(type).toLowerCase().includes(searchQuery.toLowerCase()),
+        {categories.map(([category, defs]) => {
+          const query = searchQuery.trim().toLowerCase();
+          const filteredEffects = defs.filter(
+            (def) => !query || def.label.toLowerCase().includes(query) || def.type.includes(query),
           );
 
           if (filteredEffects.length === 0) return null;
@@ -94,8 +106,8 @@ export function EffectsCatalog({ activeRegionId, activeOverlayId, regions, overl
 
               {(expandedCategories[category] || searchQuery) && (
                 <div className={styles.effectList}>
-                  {filteredEffects.map((type) => {
-                    const isStyle = isStyleEffect(type as EffectType);
+                  {filteredEffects.map((def) => {
+                    const isStyle = isStyleEffect(def.type);
                     const disabled = isOverlayEffectsDisabled || (isStyleEffectDisabled && isStyle);
                     const title = isOverlayEffectsDisabled
                       ? "Enable Effect Zone on this overlay to apply effects to the video behind it"
@@ -104,14 +116,15 @@ export function EffectsCatalog({ activeRegionId, activeOverlayId, regions, overl
                         : undefined;
                     return (
                       <button
-                        key={type}
+                        key={def.type}
                         className={styles.effectButton}
-                        onClick={() => handleAddEffect(type as EffectType)}
+                        onClick={() => handleAddEffect(def.type)}
                         disabled={disabled}
                         title={title}
                       >
                         <Plus size={14} />
-                        <span>{formatEffectName(type)}</span>
+                        <span>{def.label}</span>
+                        {def.experimental && <span className={styles.experimentalBadge}>beta</span>}
                       </button>
                     );
                   })}
@@ -121,6 +134,17 @@ export function EffectsCatalog({ activeRegionId, activeOverlayId, regions, overl
           );
         })}
       </div>
+
+      {experimentalCount > 0 && (
+        <label className={styles.experimentalToggle}>
+          <input
+            type="checkbox"
+            checked={showExperimental}
+            onChange={(e) => setShowExperimental(e.target.checked)}
+          />
+          <span>Show experimental effects ({experimentalCount})</span>
+        </label>
+      )}
     </>
   );
 }

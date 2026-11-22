@@ -3,19 +3,27 @@ import path from "path";
 import fs from "fs/promises";
 import { fileURLToPath } from "url";
 import { setupFFmpegHandlers } from "./ffmpeg";
+import { registerMediaScheme, handleMediaProtocol } from "./media-protocol";
 
 /** Reject paths that escape the user's home directory or look suspicious. */
 function isAllowedPath(filePath: string): boolean {
   const normalized = path.normalize(filePath);
+  // Media often lives on other drives on Windows; drive roots are fine there.
+  if (process.platform === "win32") return path.isAbsolute(normalized);
   const home = app.getPath("home");
   const temp = app.getPath("temp");
   return (
     normalized.startsWith(home) ||
     normalized.startsWith(temp) ||
-    normalized.startsWith("/Volumes/") ||
+    normalized.startsWith("/Volumes/") || // macOS external drives
+    normalized.startsWith("/media/") || // Linux removable media
+    normalized.startsWith("/mnt/") ||
     normalized.startsWith("/tmp/")
   );
 }
+
+// Privileged schemes must be registered before the app is ready.
+registerMediaScheme();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,9 +40,8 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      // Allow loading local file:// resources (video/images from disk)
-      // Safe for a fully-local desktop app with no untrusted web content
-      webSecurity: false,
+      // Local media is served through the media:// protocol, so the renderer
+      // keeps the default web security model.
     },
   });
 
@@ -152,6 +159,7 @@ function buildMenu() {
 }
 
 app.whenReady().then(() => {
+  handleMediaProtocol(isAllowedPath);
   setupFFmpegHandlers();
   buildMenu();
   createWindow();

@@ -1,4 +1,5 @@
-import React, { useRef, useState, useCallback, useEffect, type MutableRefObject } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
 import {
   Play,
   Pause,
@@ -26,6 +27,8 @@ import { OverlayTrack } from "./OverlayTrack";
 import { EffectTrack } from "./EffectTrack";
 import { formatTime } from "../../lib/timeline";
 import { useProjectStore } from "../../stores/projectStore";
+import { playbackClock } from "../../lib/engine/clock";
+import { useClockSelector } from "../../hooks/useClock";
 import styles from "./Timeline.module.scss";
 
 interface TimelineProps {
@@ -61,7 +64,6 @@ interface TimelineProps {
   onPlay: () => void;
   onPause: () => void;
   onStop: () => void;
-  liveTimeRef: MutableRefObject<number>;
 }
 
 const MIN_ZOOM = 2;
@@ -71,6 +73,12 @@ const MIN_TRACK_H = 24;
 const MAX_TRACK_H = 100;
 const DEFAULT_TRACK_H = 40;
 const LABEL_W = 170;
+
+/** Re-renders only when the formatted time string changes. */
+function LiveTimeDisplay({ className }: { className: string }) {
+  const text = useClockSelector(formatTime);
+  return <span className={className}>{text}</span>;
+}
 
 export function Timeline({
   media,
@@ -100,7 +108,6 @@ export function Timeline({
   onPlay,
   onPause,
   onStop,
-  liveTimeRef,
 }: TimelineProps) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [trackHeight, setTrackHeight] = useState(DEFAULT_TRACK_H);
@@ -132,29 +139,38 @@ export function Timeline({
     addOverlayTrack,
     removeOverlayTrack,
     renameOverlayTrack,
-  } = useProjectStore();
+  } = useProjectStore(
+    useShallow((s) => ({
+      mediaTracks: s.mediaTracks,
+      overlayTracks: s.overlayTracks,
+      addMediaTrack: s.addMediaTrack,
+      removeMediaTrack: s.removeMediaTrack,
+      renameMediaTrack: s.renameMediaTrack,
+      addOverlayTrack: s.addOverlayTrack,
+      removeOverlayTrack: s.removeOverlayTrack,
+      renameOverlayTrack: s.renameOverlayTrack,
+    })),
+  );
 
   // Keep zoom/scrollLeft refs in sync so the playhead RAF reads fresh values.
   zoomRef.current = zoom;
   scrollLeftRef.current = scrollLeft;
 
-  // Direct-DOM playhead update during playback — bypasses React reconciliation
-  // so the needle moves at RAF rate (60fps) rather than at the throttled store
-  // update rate (~20fps).
+  // Direct-DOM playhead + auto-scroll during playback, driven by the playback
+  // clock so the needle moves every frame without any React re-render.
   useEffect(() => {
     if (!isPlaying) return;
-
-    let rafId: number;
-    const tick = () => {
-      if (playheadLineRef.current) {
-        playheadLineRef.current.style.left = `${liveTimeRef.current * zoomRef.current}px`;
+    return playbackClock.subscribe((time) => {
+      const px = time * zoomRef.current;
+      if (playheadLineRef.current) playheadLineRef.current.style.left = `${px}px`;
+      const ta = tracksAreaRef.current;
+      if (!ta) return;
+      if (px < ta.scrollLeft || px > ta.scrollLeft + ta.clientWidth - 60) {
+        // onScroll → syncScroll propagates the new scrollLeft to the ruler.
+        ta.scrollLeft = Math.max(0, px - ta.clientWidth / 2);
       }
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, liveTimeRef]);
+    });
+  }, [isPlaying]);
 
   const syncScroll = useCallback(() => {
     const ta = tracksAreaRef.current;
@@ -169,20 +185,6 @@ export function Timeline({
       });
     }
   }, []);
-
-  // Auto-scroll playhead into view during playback
-  useEffect(() => {
-    if (!isPlaying) return;
-    const ta = tracksAreaRef.current;
-    if (!ta) return;
-    const px = currentTime * zoom;
-    const { scrollLeft: sl, clientWidth } = ta;
-    if (px < sl || px > sl + clientWidth - 60) {
-      const newLeft = Math.max(0, px - clientWidth / 2);
-      ta.scrollLeft = newLeft;
-      setScrollLeft(newLeft);
-    }
-  }, [currentTime, isPlaying, zoom]);
 
   const zoomIn = useCallback(() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.5)), []);
   const zoomOut = useCallback(() => setZoom((z) => Math.max(MIN_ZOOM, z / 1.5)), []);
@@ -354,7 +356,7 @@ export function Timeline({
           <Square size={12} />
         </button>
 
-        <span className={styles.timeDisplay}>{formatTime(currentTime)}</span>
+        <LiveTimeDisplay className={styles.timeDisplay} />
 
         <button
           className={`${styles.headerBtn} ${snapEnabled ? styles.active : ""}`}
@@ -408,7 +410,6 @@ export function Timeline({
               onSeek={onSeek}
               scrollLeft={scrollLeft}
               isPlaying={isPlaying}
-              liveTimeRef={liveTimeRef}
             />
           </div>
 
@@ -419,7 +420,8 @@ export function Timeline({
               ref={playheadLineRef}
               style={{
                 position: "absolute",
-                left: currentTime * zoom,
+                // Live clock time, so a re-render mid-playback never snaps the line back.
+                left: playbackClock.time * zoom,
                 top: 0,
                 bottom: 0,
                 width: 1,
@@ -446,7 +448,6 @@ export function Timeline({
                 media={media}
                 zoom={zoom}
                 duration={duration}
-                currentTime={currentTime}
                 rowHeight={trackHeight}
                 snapEnabled={snapEnabled}
                 minWidth={totalWidth}
@@ -468,7 +469,6 @@ export function Timeline({
                 zoom={zoom}
                 duration={duration}
                 minWidth={totalWidth}
-                currentTime={currentTime}
                 rowHeight={trackHeight}
                 snapEnabled={snapEnabled}
                 onAddOverlay={onAddOverlay}
@@ -492,7 +492,6 @@ export function Timeline({
                   overlays={overlays}
                   zoom={zoom}
                   duration={duration}
-                  currentTime={currentTime}
                   snapEnabled={snapEnabled}
                   expanded={expandedEffects[effect.id] ?? false}
                   onToggleExpanded={() => toggleEffectExpanded(effect.id)}

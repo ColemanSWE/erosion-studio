@@ -101,7 +101,7 @@
   position: absolute;
   top: -18px;
   left: 0;
-  font-size: 10px;
+  font-size: variables.$font-xs;
   font-family: variables.$font-mono;
   font-weight: 600;
   padding: 1px 5px;
@@ -164,7 +164,7 @@
   gap: 5px;
   padding: 4px 10px;
   font-family: variables.$font-mono;
-  font-size: 11px;
+  font-size: variables.$font-sm;
   font-weight: 600;
   border: 1px solid;
   border-radius: variables.$radius-sm;
@@ -202,7 +202,7 @@
 
 .recTimer {
   font-family: variables.$font-mono;
-  font-size: 11px;
+  font-size: variables.$font-sm;
   color: variables.$error;
   min-width: 40px;
   text-align: center;

@@ -4,6 +4,7 @@ import { Type, Image as ImageIcon, Trash2, Copy, Scissors } from "lucide-react";
 import type { Overlay, TimelineClip, TimelineTrack } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
 import { collectSnapTargets, applySnap } from "../../lib/timeline";
+import { playbackClock } from "../../lib/engine/clock";
 import styles from "./Timeline.module.scss";
 
 interface OverlayTrackProps {
@@ -13,7 +14,6 @@ interface OverlayTrackProps {
   media: MediaItem[];
   zoom: number;
   duration: number;
-  currentTime: number;
   rowHeight: number;
   snapEnabled: boolean;
   minWidth: number;
@@ -46,7 +46,6 @@ export function OverlayTrack({
   media,
   zoom,
   duration,
-  currentTime,
   rowHeight,
   snapEnabled,
   minWidth,
@@ -157,15 +156,13 @@ export function OverlayTrack({
           const dy = lastY - r.startY;
           if (!r.hasMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
           r.hasMoved = true;
-
-          const overlayDuration = r.origEnd - r.origStart;
           const rawStart = r.origStart + dx / zoom;
 
           const currentNumTracks = Math.max(tracks.length, ...overlays.map((o) => o.trackIndex + 1));
           const trackDelta = Math.round(dy / rowHeight);
           const newTrackIndex = Math.max(0, Math.min(currentNumTracks, r.origTrack + trackDelta));
 
-          const snapTargets = collectSnapTargets(clips, overlays, currentTime, undefined, r.overlayId);
+          const snapTargets = collectSnapTargets(clips, overlays, playbackClock.time, undefined, r.overlayId);
           const { snappedTime: finalStart, magnetTime } = applySnap(
             rawStart, snapTargets, zoom, snapEnabled,
           );
@@ -198,7 +195,7 @@ export function OverlayTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [overlays, clips, zoom, rowHeight, currentTime, snapEnabled, tracks, onUpdateOverlay, onAddOverlay, onSelectOverlay, onSnapLine],
+    [overlays, clips, zoom, rowHeight, snapEnabled, tracks, onUpdateOverlay, onAddOverlay, onSelectOverlay, onSnapLine],
   );
 
   // ─── Resize handles ───────────────────────────────────────────────────────
@@ -225,7 +222,7 @@ export function OverlayTrack({
         mediaDuration,
       };
 
-      const snapTargets = collectSnapTargets(clips, overlays, currentTime, undefined, overlayId);
+      const snapTargets = collectSnapTargets(clips, overlays, playbackClock.time, undefined, overlayId);
 
       const onMove = (me: MouseEvent) => {
         lastResizeX.current = me.clientX;
@@ -267,7 +264,7 @@ export function OverlayTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [overlays, clips, media, zoom, currentTime, snapEnabled, onUpdateOverlay, onSnapLine],
+    [overlays, clips, media, zoom, snapEnabled, onUpdateOverlay, onSnapLine],
   );
 
   // ─── Context menu ─────────────────────────────────────────────────────────
@@ -295,12 +292,12 @@ export function OverlayTrack({
 
   const handleSplit = useCallback((overlayId: string) => {
     const overlay = overlays.find((o) => o.id === overlayId);
-    if (!overlay || currentTime <= overlay.startTime || currentTime >= overlay.endTime) return;
+    if (!overlay || playbackClock.time <= overlay.startTime || playbackClock.time >= overlay.endTime) return;
     const newId = `overlay-${Date.now()}-${overlayIdCounter++}`;
-    onUpdateOverlay(overlayId, { endTime: currentTime });
-    onAddOverlay({ ...overlay, id: newId, startTime: currentTime });
+    onUpdateOverlay(overlayId, { endTime: playbackClock.time });
+    onAddOverlay({ ...overlay, id: newId, startTime: playbackClock.time });
     closeContextMenu();
-  }, [overlays, currentTime, onUpdateOverlay, onAddOverlay, closeContextMenu]);
+  }, [overlays, onUpdateOverlay, onAddOverlay, closeContextMenu]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -345,7 +342,7 @@ export function OverlayTrack({
       const rect = el.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const rawStart = x / zoom;
-      const snapTargets = collectSnapTargets(clips, overlays, currentTime);
+      const snapTargets = collectSnapTargets(clips, overlays, playbackClock.time);
       const { snappedTime: startTime } = applySnap(rawStart, snapTargets, zoom, snapEnabled);
       const defaultDuration =
         item.duration && isFinite(item.duration) ? item.duration : item.type === "image" ? 5 : 10;
@@ -367,7 +364,7 @@ export function OverlayTrack({
         isEffectZone: false,
       });
     },
-    [zoom, duration, clips, overlays, currentTime, snapEnabled, yToTrackIndex, onAddOverlay],
+    [zoom, clips, overlays, snapEnabled, yToTrackIndex, onAddOverlay],
   );
 
   const maxEnd = overlays.reduce(

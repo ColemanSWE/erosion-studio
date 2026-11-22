@@ -316,12 +316,18 @@ export function storeFrame(
     frameHistoryStore.height = height;
   }
 
-  const frame = new Uint8ClampedArray(data);
-  frameHistoryStore.frames.unshift(frame);
-
-  if (frameHistoryStore.frames.length > frameHistoryStore.maxSize) {
-    frameHistoryStore.frames.pop();
+  // Recycle the oldest frame's buffer once the history is full instead of
+  // allocating a fresh full-frame copy every frame.
+  const frames = frameHistoryStore.frames;
+  const recycled = frames.length >= frameHistoryStore.maxSize ? frames.pop() : undefined;
+  let frame: Uint8ClampedArray;
+  if (recycled && recycled.length === data.length) {
+    recycled.set(data);
+    frame = recycled;
+  } else {
+    frame = new Uint8ClampedArray(data);
   }
+  frames.unshift(frame);
 }
 
 export function getFrameFromHistory(index: number): Uint8ClampedArray | null {
@@ -347,3 +353,35 @@ export function getFrameFromHistory(index: number): Uint8ClampedArray | null {
 // 14. Square Swap Effect
 
 export const clamp255 = (value: number) => Math.max(0, Math.min(255, value));
+
+// ── Per-frame scratch buffers ───────────────────────────────────────────────
+// Processors run every frame; allocating full-frame copies each time (8 MB at
+// 1080p) churns the GC and causes playback hitches. These return a buffer
+// owned by one call site and reused across frames. Only use them for
+// temporaries that never outlive the processor call — never for state kept
+// between frames.
+const scratchBytes = new Map<string, Uint8ClampedArray>();
+const scratchFloatBufs = new Map<string, Float32Array>();
+
+/** Reusable copy of `data` for call site `site`. */
+export function scratchCopy(data: Uint8ClampedArray, site: string): Uint8ClampedArray {
+  let buf = scratchBytes.get(site);
+  if (!buf || buf.length !== data.length) {
+    buf = new Uint8ClampedArray(data.length);
+    scratchBytes.set(site, buf);
+  }
+  buf.set(data);
+  return buf;
+}
+
+/** Reusable zero-filled Float32Array of `length` for call site `site`. */
+export function scratchFloats(length: number, site: string): Float32Array {
+  let buf = scratchFloatBufs.get(site);
+  if (!buf || buf.length !== length) {
+    buf = new Float32Array(length);
+    scratchFloatBufs.set(site, buf);
+  } else {
+    buf.fill(0);
+  }
+  return buf;
+}

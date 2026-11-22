@@ -38,6 +38,17 @@ export interface EffectDefinition {
   processor: EffectProcessor;
   /** Optional GPU path. When present, the GL pipeline uses this shader instead of the CPU processor. */
   glsl?: GLSLEffect;
+  /**
+   * Whether output changes from frame to frame on a still source. Inferred when
+   * omitted (see `isAnimatedEffectType` in lib/engine/effect-traits.ts); set it
+   * explicitly only when the inference is wrong for this effect.
+   */
+  animated?: boolean;
+  /**
+   * Hidden from the catalog unless "Show experimental" is on: effects that are
+   * slow (CPU-only full-frame simulations) or still rough around the edges.
+   */
+  experimental?: boolean;
 }
 
 const registry = new Map<EffectType, EffectDefinition>();

@@ -1,4 +1,5 @@
-import React, { useRef, useEffect, useCallback, useLayoutEffect, type MutableRefObject } from "react";
+import React, { useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import { playbackClock } from "../../lib/engine/clock";
 import { formatTime } from "../../lib/timeline";
 import styles from "./Timeline.module.scss";
 
@@ -9,7 +10,6 @@ interface TimelineRulerProps {
   onSeek: (time: number) => void;
   scrollLeft: number;
   isPlaying?: boolean;
-  liveTimeRef?: MutableRefObject<number>;
 }
 
 export function TimelineRuler({
@@ -19,7 +19,6 @@ export function TimelineRuler({
   onSeek,
   scrollLeft,
   isPlaying,
-  liveTimeRef,
 }: TimelineRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,7 +32,9 @@ export function TimelineRuler({
   zoomRef.current = zoom;
   scrollLeftRef.current = scrollLeft;
 
-  const playheadX = currentTime * zoom - scrollLeft;
+  // Read the live clock (not just the committed prop) so a re-render during
+  // playback never snaps the playhead back to the last committed time.
+  const playheadX = (isPlaying ? playbackClock.time : currentTime) * zoom - scrollLeft;
 
   // Draw tick marks
   useEffect(() => {
@@ -84,22 +85,15 @@ export function TimelineRuler({
     }
   }, [duration, zoom, scrollLeft]);
 
-  // Direct-DOM playhead during playback — reads liveTimeRef every RAF frame so
-  // the indicator moves at 60fps independently of React re-renders.
+  // Direct-DOM playhead during playback, driven by the playback clock.
   useEffect(() => {
-    if (!isPlaying || !liveTimeRef) return;
-
-    let rafId: number;
-    const tick = () => {
+    if (!isPlaying) return;
+    return playbackClock.subscribe((time) => {
       if (playheadDivRef.current) {
-        playheadDivRef.current.style.left = `${liveTimeRef.current * zoomRef.current - scrollLeftRef.current}px`;
+        playheadDivRef.current.style.left = `${time * zoomRef.current - scrollLeftRef.current}px`;
       }
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [isPlaying, liveTimeRef]);
+    });
+  }, [isPlaying]);
 
   const seekFromEvent = useCallback(
     (e: React.MouseEvent | MouseEvent) => {

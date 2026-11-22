@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { ProjectState, HistoricalState } from "../projectState";
-import { snapshotHistorical, MAX_HISTORY } from "../projectUtils";
+import { snapshotHistorical, MAX_HISTORY, resetHistoryCoalescing } from "../projectUtils";
 
 export type HistorySlice = {
   _historyPast: HistoricalState[];
@@ -13,7 +13,8 @@ export const createHistorySlice: StateCreator<ProjectState, [], [], HistorySlice
   _historyPast: [],
   _historyFuture: [],
 
-  undo: () =>
+  undo: () => {
+    resetHistoryCoalescing();
     set((state) => {
       if (state._historyPast.length === 0) return state;
       const previous = state._historyPast[state._historyPast.length - 1];
@@ -25,9 +26,11 @@ export const createHistorySlice: StateCreator<ProjectState, [], [], HistorySlice
           ...state._historyFuture.slice(0, MAX_HISTORY - 1),
         ],
       };
-    }),
+    });
+  },
 
-  redo: () =>
+  redo: () => {
+    resetHistoryCoalescing();
     set((state) => {
       if (state._historyFuture.length === 0) return state;
       const next = state._historyFuture[0];
@@ -39,5 +42,6 @@ export const createHistorySlice: StateCreator<ProjectState, [], [], HistorySlice
         ],
         _historyFuture: state._historyFuture.slice(1),
       };
-    }),
+    });
+  },
 });

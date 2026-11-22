@@ -109,15 +109,26 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
 
   const isSetup = !projectsDirectory;
 
+  // Escape closes the modal (the project-name input handles its own Escape).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || namingNew) return;
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [namingNew, onClose]);
+
   return (
     <div className={styles.overlay}>
-      <div className={styles.dialog}>
+      <div className={styles.dialog} role="dialog" aria-modal="true" aria-label="Welcome to Erosion Studio">
         <div className={styles.header}>
           <div className={styles.headerLeft}>
             <span className={styles.logo}>Erosion</span>
             <span className={styles.tagline}>Studio</span>
           </div>
-          <button className={styles.closeBtn} onClick={onClose} title="Close">
+          <button type="button" className={styles.closeBtn} onClick={onClose} title="Close" aria-label="Close">
             <X size={12} />
           </button>
         </div>

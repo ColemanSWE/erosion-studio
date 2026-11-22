@@ -36,6 +36,14 @@ interface StreamSession {
 
 const streamSessions = new Map<string, StreamSession>();
 
+type ExportQuality = "low" | "medium" | "high";
+
+/** Constant-rate-factor per codec and quality (lower = better / larger). */
+const CRF: Record<"mp4" | "webm", Record<ExportQuality, number>> = {
+  mp4: { low: 28, medium: 23, high: 18 },
+  webm: { low: 40, medium: 31, high: 20 },
+};
+
 export function setupFFmpegHandlers() {
   // ── Extract video frames as PNG files ─────────────────────────────────────
   ipcMain.handle(
@@ -226,11 +234,12 @@ export function setupFFmpegHandlers() {
     async (
       _,
       sessionId: string,
-      opts: { width: number; height: number; fps: number; format: "mp4" | "webm"; outputPath: string },
+      opts: { width: number; height: number; fps: number; format: "mp4" | "webm"; outputPath: string; quality?: ExportQuality },
     ) => {
       try {
         const ffmpegPath = getFFmpegPath();
         const { width, height, fps, format, outputPath } = opts;
+        const crf = String(CRF[format][opts.quality ?? "high"]);
 
         const args: string[] = [
           "-y",
@@ -242,9 +251,9 @@ export function setupFFmpegHandlers() {
         ];
 
         if (format === "mp4") {
-          args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-preset", "fast");
+          args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", crf, "-preset", "fast");
         } else {
-          args.push("-c:v", "libvpx-vp9", "-crf", "20", "-b:v", "0", "-pix_fmt", "yuv420p");
+          args.push("-c:v", "libvpx-vp9", "-crf", crf, "-b:v", "0", "-pix_fmt", "yuv420p");
         }
 
         args.push(outputPath);

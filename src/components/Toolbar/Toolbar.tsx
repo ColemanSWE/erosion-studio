@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { memo, useState, useRef, useCallback, useEffect } from "react";
 import {
   Undo,
   Redo,
@@ -14,6 +14,7 @@ import {
   Home,
 } from "lucide-react";
 import { PREDEFINED_RESOLUTIONS } from "../../lib/project";
+import { Button, IconButton, Select } from "../ui";
 import type { Resolution } from "../../lib/project";
 import styles from "./Toolbar.module.scss";
 
@@ -94,46 +95,29 @@ function Toolbar({
     if (editing) inputRef.current?.select();
   }, [editing]);
 
-  const handleResolutionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = PREDEFINED_RESOLUTIONS.find((r) => r.name === e.target.value);
+  const handleResolutionChange = (name: string) => {
+    const selected = PREDEFINED_RESOLUTIONS.find((r) => r.name === name);
     if (selected) onResolutionChange(selected);
   };
 
   return (
     <header className={styles.toolbar}>
       <div className={styles.left}>
-        <button
-          className={styles.iconButton}
-          onClick={onShowWelcome}
-          title="Home / Recent projects"
-        >
-          <Home size={14} />
-        </button>
+        <IconButton label="Home / Recent projects" icon={<Home size={14} />} onClick={onShowWelcome} />
         <span className={styles.logo}>Erosion</span>
         <div className={styles.divider} />
-        <button
-          className={styles.iconButton}
-          onClick={onNewProject}
-          title="New project (Cmd+N)"
-        >
-          <FilePlus size={14} />
-        </button>
-        <button className={styles.iconButton} onClick={onSave} title="Save project (Cmd+S)">
-          <Save size={14} />
-        </button>
-        <button className={styles.iconButton} onClick={onSaveAs} title="Save project as (Cmd+Shift+S)">
-          <SaveAll size={14} />
-        </button>
-        <button className={styles.iconButton} onClick={onOpen} title="Open project">
-          <FolderOpen size={14} />
-        </button>
+        <IconButton label="New project" title="New project (Cmd+N)" icon={<FilePlus size={14} />} onClick={onNewProject} />
+        <IconButton label="Save project" title="Save project (Cmd+S)" icon={<Save size={14} />} onClick={onSave} />
+        <IconButton label="Save project as" title="Save project as (Cmd+Shift+S)" icon={<SaveAll size={14} />} onClick={onSaveAs} />
+        <IconButton label="Open project" icon={<FolderOpen size={14} />} onClick={onOpen} />
         <div className={styles.divider} />
-        <FileText size={12} className={styles.projectIcon} />
+        <FileText size={12} className={styles.projectIcon} aria-hidden />
         <div className={styles.projectNameWrapper}>
           {editing ? (
             <input
               ref={inputRef}
               className={styles.projectNameInput}
+              aria-label="Project name"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={commitEdit}
@@ -143,80 +127,38 @@ function Toolbar({
               }}
             />
           ) : (
-            <span
-              className={styles.projectName}
-              onClick={startEditing}
-              title="Click to rename"
-            >
+            <button type="button" className={styles.projectName} onClick={startEditing} title="Click to rename">
               {projectName}
-            </span>
+            </button>
           )}
-          {isDirty && !editing && <span className={styles.dirtyDot} title="Unsaved changes" />}
+          {isDirty && !editing && <span className={styles.dirtyDot} title="Unsaved changes" aria-label="Unsaved changes" />}
         </div>
       </div>
 
       <div className={styles.center}>
-        <button
-          className={`${styles.panelToggle} ${showMediaBrowser ? styles.active : ""}`}
-          onClick={onToggleMediaBrowser}
-          title="Toggle media browser"
-        >
-          <PanelLeft size={14} />
-        </button>
-        <button
-          className={`${styles.panelToggle} ${showTimeline ? styles.active : ""}`}
-          onClick={onToggleTimeline}
-          title="Toggle timeline"
-        >
-          <PanelBottom size={14} />
-        </button>
-        <button
-          className={`${styles.panelToggle} ${showEffectsPanel ? styles.active : ""}`}
-          onClick={onToggleEffectsPanel}
-          title="Toggle effects panel"
-        >
-          <PanelRight size={14} />
-        </button>
+        <IconButton label="Toggle media browser" icon={<PanelLeft size={14} />} pressed={showMediaBrowser} onClick={onToggleMediaBrowser} />
+        <IconButton label="Toggle timeline" icon={<PanelBottom size={14} />} pressed={showTimeline} onClick={onToggleTimeline} />
+        <IconButton label="Toggle effects panel" icon={<PanelRight size={14} />} pressed={showEffectsPanel} onClick={onToggleEffectsPanel} />
       </div>
 
       <div className={styles.right}>
-        <select
-          className={styles.resolutionSelect}
-          value={resolution.name}
-          onChange={handleResolutionChange}
+        <Select
+          aria-label="Canvas resolution"
           title="Canvas resolution"
-        >
-          {PREDEFINED_RESOLUTIONS.map((r) => (
-            <option key={r.name} value={r.name}>
-              {r.name}
-            </option>
-          ))}
-        </select>
+          value={resolution.name}
+          options={PREDEFINED_RESOLUTIONS.map((r) => r.name)}
+          onChange={handleResolutionChange}
+        />
         <div className={styles.divider} />
-        <button
-          className={styles.iconButton}
-          onClick={onUndo}
-          disabled={!canUndo}
-          title="Undo (Cmd+Z)"
-        >
-          <Undo size={14} />
-        </button>
-        <button
-          className={styles.iconButton}
-          onClick={onRedo}
-          disabled={!canRedo}
-          title="Redo (Cmd+Shift+Z)"
-        >
-          <Redo size={14} />
-        </button>
+        <IconButton label="Undo" title="Undo (Cmd+Z)" icon={<Undo size={14} />} onClick={onUndo} disabled={!canUndo} />
+        <IconButton label="Redo" title="Redo (Cmd+Shift+Z)" icon={<Redo size={14} />} onClick={onRedo} disabled={!canRedo} />
         <div className={styles.divider} />
-        <button className={styles.exportButton} onClick={onExport} title="Export (Cmd+E)">
-          <Download size={14} />
-          <span>Export</span>
-        </button>
+        <Button variant="primary" icon={<Download size={14} />} onClick={onExport} title="Export (Cmd+E)">
+          Export
+        </Button>
       </div>
     </header>
   );
 }
 
-export default Toolbar;
+export default memo(Toolbar);

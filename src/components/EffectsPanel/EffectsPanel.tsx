@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { EffectsCatalog } from "./EffectsCatalog";
 import { ActiveEffectsStack } from "./ActiveEffectsStack";
 import styles from "./EffectsPanel.module.scss";
@@ -73,4 +74,4 @@ function EffectsPanel({
   );
 }
 
-export default EffectsPanel;
+export default memo(EffectsPanel);

@@ -4,6 +4,7 @@ import { Film, Image, Camera, Trash2, Copy, Scissors } from "lucide-react";
 import type { TimelineClip, Overlay, TimelineTrack } from "../../lib/effects/types";
 import type { MediaItem } from "../../lib/project";
 import { collectSnapTargets, applySnap } from "../../lib/timeline";
+import { playbackClock } from "../../lib/engine/clock";
 import styles from "./Timeline.module.scss";
 
 export const MEDIA_ROW_H = 40;
@@ -16,7 +17,6 @@ interface MediaTrackProps {
   media: MediaItem[];
   zoom: number;
   duration: number;
-  currentTime: number;
   rowHeight: number;
   snapEnabled: boolean;
   minWidth: number;
@@ -48,7 +48,6 @@ export function MediaTrack({
   media,
   zoom,
   duration,
-  currentTime,
   rowHeight,
   snapEnabled,
   minWidth,
@@ -174,8 +173,6 @@ export function MediaTrack({
           const dy = lastY - r.startY;
           if (!r.hasMoved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
           r.hasMoved = true;
-
-          const clipDuration = r.origEnd - r.origStart;
           const rawStart = r.origStart + dx / zoom;
 
           const el = dropRef.current;
@@ -191,7 +188,7 @@ export function MediaTrack({
             Math.min(currentNumTracks, r.origTrack + trackDelta),
           );
 
-          const snapTargets = collectSnapTargets(clips, overlays, currentTime, r.clipId);
+          const snapTargets = collectSnapTargets(clips, overlays, playbackClock.time, r.clipId);
           const { snappedTime: finalStart, magnetTime } = applySnap(
             rawStart, snapTargets, zoom, snapEnabled,
           );
@@ -224,7 +221,7 @@ export function MediaTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [clips, overlays, zoom, rowHeight, numTracks, currentTime, snapEnabled, tracks, onUpdateClip, onAddClip, onSnapLine],
+    [clips, overlays, zoom, rowHeight, numTracks, snapEnabled, tracks, onUpdateClip, onAddClip, onSnapLine, onClearOverlaySelection],
   );
 
   // ─── Resize handles ───────────────────────────────────────────────────────
@@ -251,7 +248,7 @@ export function MediaTrack({
         mediaDuration,
       };
 
-      const snapTargets = collectSnapTargets(clips, overlays, currentTime, clipId);
+      const snapTargets = collectSnapTargets(clips, overlays, playbackClock.time, clipId);
 
       const onMove = (me: MouseEvent) => {
         lastResizeX.current = me.clientX;
@@ -295,7 +292,7 @@ export function MediaTrack({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [clips, overlays, media, zoom, duration, currentTime, snapEnabled, onUpdateClip, onSnapLine],
+    [clips, overlays, media, zoom, duration, snapEnabled, onUpdateClip, onSnapLine],
   );
 
   // ─── Context menu ─────────────────────────────────────────────────────────
@@ -320,12 +317,12 @@ export function MediaTrack({
 
   const handleSplitClip = useCallback((clipId: string) => {
     const clip = clips.find((c) => c.id === clipId);
-    if (!clip || currentTime <= clip.startTime || currentTime >= clip.endTime) return;
+    if (!clip || playbackClock.time <= clip.startTime || playbackClock.time >= clip.endTime) return;
     const newId = `clip-${Date.now()}-${clipIdCounter++}`;
-    onUpdateClip(clipId, { endTime: currentTime });
-    onAddClip({ ...clip, id: newId, startTime: currentTime });
+    onUpdateClip(clipId, { endTime: playbackClock.time });
+    onAddClip({ ...clip, id: newId, startTime: playbackClock.time });
     closeContextMenu();
-  }, [clips, currentTime, onUpdateClip, onAddClip, closeContextMenu]);
+  }, [clips, onUpdateClip, onAddClip, closeContextMenu]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -373,7 +370,7 @@ export function MediaTrack({
       const rect = el.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const rawStart = x / zoom;
-      const snapTargets = collectSnapTargets(clips, overlays, currentTime);
+      const snapTargets = collectSnapTargets(clips, overlays, playbackClock.time);
       const { snappedTime: startTime } = applySnap(rawStart, snapTargets, zoom, snapEnabled);
       const clipDuration = getMediaDuration(item.id);
       const endTime = startTime + clipDuration;
@@ -387,7 +384,7 @@ export function MediaTrack({
         trackIndex,
       });
     },
-    [zoom, duration, clips, overlays, currentTime, snapEnabled, onAddClip, getMediaDuration, yToTrackIndex],
+    [zoom, clips, overlays, snapEnabled, onAddClip, getMediaDuration, yToTrackIndex],
   );
 
   const maxClipEnd = clips.reduce(

@@ -15,6 +15,7 @@ interface UIState {
   effectsPanelSize: number;
   timelineSize: number;
   effectsSplitSize: number;
+  showExperimentalEffects: boolean;
 
   toggleMediaBrowser: () => void;
   toggleEffectsPanel: () => void;
@@ -30,6 +31,7 @@ interface UIState {
   setEffectsPanelSize: (size: number) => void;
   setTimelineSize: (size: number) => void;
   setEffectsSplitSize: (size: number) => void;
+  setShowExperimentalEffects: (show: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -47,6 +49,7 @@ export const useUIStore = create<UIState>()(
       effectsPanelSize: 30,
       timelineSize: 35,
       effectsSplitSize: 50,
+      showExperimentalEffects: false,
 
       toggleMediaBrowser: () =>
         set((state) => ({ showMediaBrowser: !state.showMediaBrowser })),
@@ -67,6 +70,7 @@ export const useUIStore = create<UIState>()(
       setEffectsPanelSize: (size) => set({ effectsPanelSize: size }),
       setTimelineSize: (size) => set({ timelineSize: size }),
       setEffectsSplitSize: (size) => set({ effectsSplitSize: size }),
+      setShowExperimentalEffects: (show) => set({ showExperimentalEffects: show }),
     }),
     {
       name: "erosion-ui-state",
@@ -76,6 +80,7 @@ export const useUIStore = create<UIState>()(
         effectsPanelSize: state.effectsPanelSize,
         timelineSize: state.timelineSize,
         effectsSplitSize: state.effectsSplitSize,
+        showExperimentalEffects: state.showExperimentalEffects,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<UIState>;
@@ -85,6 +90,7 @@ export const useUIStore = create<UIState>()(
           effectsPanelSize: Math.max(14, p.effectsPanelSize ?? current.effectsPanelSize),
           timelineSize: Math.max(12, p.timelineSize ?? current.timelineSize),
           effectsSplitSize: Math.min(90, Math.max(10, p.effectsSplitSize ?? current.effectsSplitSize)),
+          showExperimentalEffects: p.showExperimentalEffects ?? current.showExperimentalEffects,
         };
       },
     }

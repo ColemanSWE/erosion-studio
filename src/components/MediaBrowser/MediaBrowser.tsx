@@ -1,6 +1,7 @@
 import { Upload, Image, Film, Camera, X, Plus } from "lucide-react";
-import { useCallback, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import styles from "./MediaBrowser.module.scss";
+import { Button, IconButton } from "../ui";
 import type { MediaItem } from "../../lib/project";
 
 interface MediaBrowserProps {
@@ -57,17 +58,14 @@ function MediaBrowser({
       <div className={styles.header}>
         <h3>Media</h3>
         <div className={styles.headerActions}>
-          <button className={styles.cameraButton} onClick={onAddCamera} title="Add Live Camera">
-            <Camera size={12} />
-          </button>
-          <button className={styles.importButton} onClick={onImport} title="Import File">
-            <Upload size={12} />
-            <span>Import</span>
-          </button>
+          <IconButton label="Add live camera" size="sm" variant="secondary" icon={<Camera size={12} />} onClick={onAddCamera} />
+          <Button size="sm" variant="primary" icon={<Upload size={12} />} onClick={onImport} title="Import file">
+            Import
+          </Button>
         </div>
       </div>
 
-      <div className={styles.mediaList}>
+      <div className={styles.mediaList} role="list" aria-label="Imported media">
         {media.length === 0 ? (
           <div className={styles.empty}>
             <Upload size={24} />
@@ -90,6 +88,19 @@ function MediaBrowser({
                 className={`${styles.mediaItem} ${
                   selectedId === item.id ? styles.selected : ""
                 }`}
+                role="listitem"
+                tabIndex={0}
+                aria-current={selectedId === item.id || undefined}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelect(item);
+                  } else if (e.key === "Delete" || e.key === "Backspace") {
+                    e.preventDefault();
+                    onRemove(item.id);
+                  }
+                }}
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData(
@@ -117,15 +128,16 @@ function MediaBrowser({
                     </span>
                   )}
                 </div>
-                <button
+                <IconButton
+                  label={`Remove ${item.name}`}
+                  size="sm"
                   className={styles.removeButton}
+                  icon={<X size={14} />}
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemove(item.id);
                   }}
-                >
-                  <X size={14} />
-                </button>
+                />
               </div>
             ))}
           </>
@@ -141,4 +153,4 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export default MediaBrowser;
+export default memo(MediaBrowser);

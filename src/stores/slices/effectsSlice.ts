@@ -58,7 +58,7 @@ export const createEffectsSlice: StateCreator<ProjectState, [], [], EffectsSlice
 
   updateEffect: (id, updates) => {
     set((state) => ({
-      ...withHistory(state),
+      ...withHistory(state, `effect:${id}`),
       effects: state.effects.map((e) => (e.id === id ? { ...e, ...updates } : e)),
     }));
     const effect = get().effects.find((e) => e.id === id);
@@ -108,7 +108,7 @@ export const createEffectsSlice: StateCreator<ProjectState, [], [], EffectsSlice
 
   updateKeyframe: (trackId, keyframeId, updates) =>
     set((state) => ({
-      ...withHistory(state),
+      ...withHistory(state, `keyframe:${keyframeId}`),
       effectParamTracks: state.effectParamTracks.map((t) =>
         t.id === trackId
           ? {
