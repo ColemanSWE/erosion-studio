@@ -1,180 +1,303 @@
-@use "../../styles/variables";
+@use "../../styles/variables" as v;
 
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(30, 80, 120, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: variables.$z-modal;
-  backdrop-filter: blur(12px);
+  z-index: v.$z-modal;
+  backdrop-filter: blur(8px);
+  animation: fadeIn v.$transition-slow;
 }
 
+// A Windows 7 window: tinted glass frame around a solid content area.
 .dialog {
-  background: variables.$bg-surface;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-lg;
-  width: 560px;
-  max-height: 80vh;
+  width: 620px;
+  max-height: 88vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px variables.$border-secondary;
-  overflow: hidden;
+  padding: 0 7px 7px;
+  background:
+    radial-gradient(70% 60% at 15% 0%, rgba(v.$white, 0.75), transparent 70%),
+    linear-gradient(180deg, rgba(185, 225, 250, 0.88), rgba(150, 205, 240, 0.82));
+  border: 1px solid rgba(60, 110, 160, 0.7);
+  border-radius: v.$radius-lg;
+  box-shadow: inset 0 0 0 1px rgba(v.$white, 0.6), v.$shadow-window;
+  backdrop-filter: blur(16px);
+  animation: dialogIn v.$transition-slow;
 }
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: variables.$spacing-md variables.$spacing-lg;
-  border-bottom: 1px solid variables.$border-secondary;
+  min-height: 32px;
   flex-shrink: 0;
 }
 
 .headerLeft {
   display: flex;
-  align-items: baseline;
-  gap: variables.$spacing-sm;
+  align-items: center;
+  gap: v.$spacing-sm;
+  padding-left: 2px;
 }
 
-.logo {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-lg;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: variables.$text-primary;
-  text-transform: uppercase;
+.windowOrb {
+  @include v.orb(v.$sky, 14px);
 }
 
-.tagline {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
-  letter-spacing: 0.05em;
+.windowTitle {
+  font-size: v.$font-md;
+  color: v.$ink;
+  text-shadow: 0 0 8px rgba(v.$white, 0.95), v.$text-glow;
 }
 
+// Red gel close button.
 .closeBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: none;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-md;
+  align-self: flex-start;
+  width: 44px;
+  height: 19px;
+  border: 1px solid rgba(110, 20, 10, 0.75);
+  border-top: none;
+  border-radius: 0 0 v.$radius-sm v.$radius-sm;
+  background: v.$gel-coral;
+  box-shadow: inset 0 1px 0 rgba(v.$white, 0.4);
   cursor: pointer;
-  color: variables.$text-secondary;
-  transition: all variables.$transition-fast;
+  color: v.$white;
+  filter: drop-shadow(0 1px 1px rgba(100, 20, 0, 0.3));
+  transition: filter v.$transition-fast, box-shadow v.$transition-normal;
 
   &:hover {
-    color: variables.$text-primary;
-    border-color: variables.$accent-primary;
-    background: variables.$accent-glow;
+    filter: brightness(1.12);
+    box-shadow: inset 0 1px 0 rgba(v.$white, 0.5), 0 0 10px rgba(232, 80, 58, 0.7);
   }
 }
 
-.body {
-  padding: variables.$spacing-lg;
+.content {
   display: flex;
   flex-direction: column;
-  gap: variables.$spacing-lg;
+  min-height: 0;
+  flex: 1;
+  background: v.$bg-surface;
+  border: 1px solid rgba(60, 110, 160, 0.55);
+  border-radius: v.$radius-sm;
+  overflow: hidden;
+}
+
+// ── Hero: a bright sky with soft light ribbons and a few bubbles ──────────────
+
+.hero {
+  position: relative;
+  height: 150px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border-bottom: 1px solid v.$border-primary;
+  background:
+    radial-gradient(50% 70% at 85% 0%, rgba(v.$white, 0.95), transparent 70%),
+    radial-gradient(60% 60% at 0% 110%, rgba(140, 230, 120, 0.55), transparent 70%),
+    linear-gradient(180deg, rgba(120, 200, 250, 1) 0%, rgba(190, 232, 255, 1) 60%, rgba(236, 248, 255, 1) 100%);
+}
+
+// Two soft swooshes of light across the sky.
+.ribbons span {
+  position: absolute;
+  left: -20%;
+  width: 140%;
+  height: 120px;
+  border-radius: 50%;
+  border-top: 2px solid rgba(v.$white, 0.85);
+  background: linear-gradient(180deg, rgba(v.$white, 0.35), transparent 60%);
+  filter: blur(0.5px);
+  transform: rotate(-7deg);
+
+  &:nth-child(1) {
+    top: 70px;
+  }
+
+  &:nth-child(2) {
+    top: 96px;
+    border-top-color: rgba(v.$white, 0.55);
+    transform: rotate(-4deg);
+  }
+}
+
+.bubbles span {
+  position: absolute;
+  bottom: -40px;
+  border-radius: 50%;
+  border: 1px solid rgba(v.$white, 0.85);
+  background: radial-gradient(circle at 32% 28%, rgba(v.$white, 0.95) 0 12%, rgba(v.$white, 0.2) 45%, rgba(160, 220, 255, 0.25) 75%);
+  box-shadow: inset 0 0 8px rgba(v.$white, 0.6), 0 2px 6px rgba(20, 80, 130, 0.12);
+  animation: rise 10s ease-in infinite;
+
+  &:nth-child(1) { left: 54%; width: 28px; height: 28px; animation-delay: 0s; }
+  &:nth-child(2) { left: 64%; width: 14px; height: 14px; animation-delay: 2.5s; animation-duration: 8s; }
+  &:nth-child(3) { left: 74%; width: 38px; height: 38px; animation-delay: 4.5s; animation-duration: 12s; }
+  &:nth-child(4) { left: 84%; width: 18px; height: 18px; animation-delay: 1.2s; }
+  &:nth-child(5) { left: 92%; width: 24px; height: 24px; animation-delay: 6.5s; animation-duration: 11s; }
+}
+
+@keyframes rise {
+  0% { transform: translateY(0) translateX(0); opacity: 0; }
+  12% { opacity: 1; }
+  50% { transform: translateY(-100px) translateX(8px); }
+  100% { transform: translateY(-200px) translateX(-6px); opacity: 0; }
+}
+
+.heroText {
+  position: relative;
+  z-index: 1;
+  padding: 30px v.$spacing-lg 0;
+}
+
+.logo {
+  margin: 0;
+  font-family: v.$font-display;
+  font-size: v.$font-hero;
+  font-weight: v.$font-weight-light;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: v.$navy;
+  text-shadow: 0 0 18px rgba(v.$white, 0.9), v.$text-glow;
+}
+
+.logoStudio {
+  font-weight: v.$font-weight-normal;
+  color: v.$sky-deep;
+}
+
+.heroTagline {
+  margin: 10px 0 0;
+  font-size: v.$font-lg;
+  color: v.$text-secondary;
+  text-shadow: v.$text-glow;
+}
+
+.body {
+  padding: v.$spacing-lg;
+  display: flex;
+  flex-direction: column;
+  gap: v.$spacing-lg;
   overflow-y: auto;
   flex: 1;
 }
 
-// ── First-time setup ──────────────────────────────────────────────────────────
+// ── First-time setup: an info bar ─────────────────────────────────────────────
 
 .setupSection {
   display: flex;
   flex-direction: column;
-  gap: variables.$spacing-md;
-  padding: variables.$spacing-lg;
-  background: variables.$bg-elevated;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-md;
+  gap: 6px;
+  padding: 14px v.$spacing-md;
+  border: 1px solid v.$select-border;
+  border-radius: v.$radius-md;
+  background: v.$select-fill;
 }
 
 .setupTitle {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-sm;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: variables.$text-primary;
+  font-size: v.$font-lg;
+  font-weight: v.$font-weight-bold;
+  color: v.$navy;
   margin: 0;
 }
 
 .setupDescription {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-sm;
-  color: variables.$text-secondary;
-  line-height: 1.6;
-  margin: 0;
+  font-size: v.$font-md;
+  color: v.$text-secondary;
+  line-height: 1.55;
+  margin: 0 0 6px;
 }
 
 .setupActions {
   display: flex;
-  gap: variables.$spacing-sm;
+  gap: v.$spacing-sm;
   align-items: center;
 }
 
 .dirPath {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-secondary;
-  background: variables.$bg-base;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-sm;
-  padding: variables.$spacing-xs variables.$spacing-sm;
+  font-family: v.$font-mono;
+  font-size: v.$font-xs;
+  color: v.$text-secondary;
+  @include v.field-inset;
+  padding: v.$spacing-xs v.$spacing-sm;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-// ── Action buttons ────────────────────────────────────────────────────────────
+// ── Action tiles: Windows 7 command links ─────────────────────────────────────
 
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: variables.$spacing-sm;
+  gap: v.$spacing-sm;
 }
 
 .actionBtn {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: variables.$spacing-md;
-  background: variables.$bg-elevated;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-md;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: v.$radius-md;
+  background: transparent;
   cursor: pointer;
-  color: variables.$text-primary;
-  transition: all variables.$transition-fast;
+  color: v.$ink;
   text-align: left;
+  transition: background v.$transition-fast, border-color v.$transition-fast, box-shadow v.$transition-normal;
 
   &:hover {
-    border-color: variables.$accent-primary;
-    background: variables.$accent-glow;
+    @include v.row-hover;
+    box-shadow: inset 0 1px 0 rgba(v.$white, 0.9), v.$shadow-sm;
+
+    .actionLabel {
+      color: v.$sky-deep;
+    }
+  }
+
+  &:active {
+    @include v.row-selected;
+  }
+
+  &:nth-child(2) .actionIcon {
+    background: v.$gel-grass;
+    box-shadow: 0 0 0 1px v.$grass-deep, 0 2px 6px rgba(79, 174, 25, 0.4);
   }
 }
 
+// Gel orb behind the icon.
 .actionIcon {
-  color: variables.$accent-primary;
+  grid-row: 1 / 3;
+  width: 40px;
+  height: 40px;
+  padding: 10px;
+  border-radius: 50%;
+  color: v.$white;
+  background: v.$gel-sky;
+  box-shadow: 0 0 0 1px v.$timeline-clip-border, 0 2px 6px rgba(v.$sky, 0.45);
+  filter: drop-shadow(0 1px 0 rgba(0, 50, 90, 0.2));
 }
 
 .actionLabel {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-md;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  align-self: end;
+  font-size: v.$font-xl;
+  font-weight: v.$font-weight-normal;
+  color: v.$navy;
+  transition: color v.$transition-fast;
 }
 
 .actionDesc {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-secondary;
+  align-self: start;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
   line-height: 1.4;
 }
 
@@ -183,32 +306,26 @@
 .newProjectForm {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-md;
-  background: variables.$bg-elevated;
-  border: 1px solid variables.$accent-primary;
-  border-radius: variables.$radius-md;
-  box-shadow: 0 0 0 2px variables.$accent-glow;
+  gap: v.$spacing-sm;
+  padding: 10px 12px;
+  border: 1px solid v.$select-border;
+  border-radius: v.$radius-md;
+  background: v.$select-fill;
+
+  .actionIcon {
+    width: 30px;
+    height: 30px;
+    padding: 7px;
+  }
 }
 
 .newProjectInput {
   flex: 1;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-md;
-  color: variables.$text-primary;
-  background: variables.$bg-base;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-sm;
-  padding: variables.$spacing-xs variables.$spacing-sm;
-  outline: none;
-  transition: border-color variables.$transition-fast;
-
-  &:focus {
-    border-color: variables.$accent-primary;
-  }
+  font-size: v.$font-md;
+  padding: 5px 8px;
 
   &::placeholder {
-    color: variables.$text-tertiary;
+    color: v.$text-tertiary;
   }
 }
 
@@ -217,40 +334,47 @@
 .recentSection {
   display: flex;
   flex-direction: column;
-  gap: variables.$spacing-sm;
+  border: 1px solid v.$border-primary;
+  border-radius: v.$radius-md;
+  overflow: hidden;
 }
 
 .sectionLabel {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: variables.$text-tertiary;
+  padding: 5px 12px;
+  font-size: v.$font-md;
+  font-weight: v.$font-weight-bold;
+  color: v.$navy;
+  background: v.$glass-shine;
+  border-bottom: 1px solid v.$border-secondary;
+  text-shadow: v.$text-glow;
 }
 
 .recentList {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  padding: 3px;
 }
 
 .recentItem {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-sm variables.$spacing-md;
-  border-radius: variables.$radius-md;
-  cursor: pointer;
-  transition: background variables.$transition-fast;
+  gap: 10px;
+  padding: 6px 9px;
   border: 1px solid transparent;
+  border-radius: v.$radius-sm;
+  cursor: pointer;
+  transition: background v.$transition-fast, border-color v.$transition-fast;
 
   &:hover {
-    background: variables.$bg-elevated;
-    border-color: variables.$border-primary;
+    @include v.row-hover;
+
+    .recentIcon {
+      color: v.$sky-deep;
+    }
   }
 
   &.missing {
-    opacity: 0.45;
+    opacity: 0.5;
     cursor: default;
 
     &:hover {
@@ -260,15 +384,20 @@
   }
 }
 
+.recentIcon {
+  flex-shrink: 0;
+  color: v.$text-tertiary;
+  transition: color v.$transition-fast;
+}
+
 .recentInfo {
   flex: 1;
   min-width: 0;
 }
 
 .recentName {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-md;
-  color: variables.$text-primary;
+  font-size: v.$font-md;
+  color: v.$ink;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -276,14 +405,13 @@
 
 .recentMeta {
   display: flex;
-  gap: variables.$spacing-sm;
-  margin-top: 2px;
+  gap: v.$spacing-sm;
+  margin-top: 1px;
 }
 
 .recentPath {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
+  font-size: v.$font-xs;
+  color: v.$text-tertiary;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -292,19 +420,20 @@
 }
 
 .recentDate {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
+  font-size: v.$font-xs;
+  color: v.$text-tertiary;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .missingBadge {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: variables.$warning;
+  padding: 0 7px;
+  border-radius: v.$radius-pill;
+  font-size: v.$font-xs;
+  font-weight: v.$font-weight-bold;
+  color: v.$ink;
+  background: v.$gel-amber;
+  border: 1px solid rgba(180, 110, 0, 0.6);
   flex-shrink: 0;
 }
 
@@ -316,11 +445,11 @@
   height: 22px;
   background: none;
   border: none;
-  border-radius: variables.$radius-sm;
+  border-radius: 50%;
   cursor: pointer;
-  color: variables.$text-tertiary;
+  color: v.$text-tertiary;
   opacity: 0;
-  transition: all variables.$transition-fast;
+  transition: opacity v.$transition-fast, color v.$transition-fast, background v.$transition-fast;
   flex-shrink: 0;
 
   .recentItem:hover & {
@@ -328,92 +457,88 @@
   }
 
   &:hover {
-    color: variables.$error;
-    background: rgba(255, 68, 68, 0.12);
+    color: v.$white;
+    background: v.$gel-coral;
   }
 }
 
 .emptyRecent {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-sm;
-  color: variables.$text-tertiary;
+  font-size: v.$font-md;
+  color: v.$text-tertiary;
   text-align: center;
-  padding: variables.$spacing-lg 0;
+  padding: v.$spacing-md 0;
 }
 
 // ── Footer ────────────────────────────────────────────────────────────────────
 
 .footer {
-  padding: variables.$spacing-sm variables.$spacing-lg;
-  border-top: 1px solid variables.$border-secondary;
+  padding: 10px v.$spacing-lg;
+  border-top: 1px solid v.$border-secondary;
+  background: v.$bg-elevated;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: v.$spacing-md;
   flex-shrink: 0;
 }
 
 .changeDir {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
+  font-size: v.$font-sm;
+  color: v.$sky-deep;
   background: none;
   border: none;
   cursor: pointer;
   padding: 0;
-  transition: color variables.$transition-fast;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 
   &:hover {
-    color: variables.$accent-primary;
+    text-decoration: underline;
   }
 }
 
 .dirLabel {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
+  font-size: v.$font-xs;
+  color: v.$text-tertiary;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 280px;
+  max-width: 320px;
 }
 
-// ── Generic button ────────────────────────────────────────────────────────────
+// ── Buttons ───────────────────────────────────────────────────────────────────
 
 .btn {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
-  padding: variables.$spacing-xs variables.$spacing-md;
-  border-radius: variables.$radius-md;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-sm;
-  font-weight: 600;
+  gap: 6px;
+  height: v.$control-height-md;
+  padding: 0 v.$spacing-md;
+  font-size: v.$font-md;
   cursor: pointer;
-  transition: all variables.$transition-fast;
   white-space: nowrap;
+  transition: filter v.$transition-fast, box-shadow v.$transition-normal, border-color v.$transition-fast;
 
   &.primary {
-    background: variables.$accent-primary;
-    border: 1px solid variables.$accent-primary;
-    color: variables.$text-inverse;
-
-    &:hover {
-      background: variables.$accent-secondary;
-      border-color: variables.$accent-secondary;
-    }
+    @include v.button-grass;
+    padding: 0 18px;
   }
 
   &.secondary {
-    background: variables.$bg-elevated;
-    border: 1px solid variables.$border-primary;
-    color: variables.$text-secondary;
+    @include v.button-gel;
+  }
+}
 
-    &:hover {
-      border-color: variables.$accent-primary;
-      color: variables.$text-primary;
-    }
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
   }
 }

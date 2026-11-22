@@ -1,17 +1,20 @@
-@use "../styles/variables";
+@use "../styles/variables" as v;
 
 .app {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: variables.$bg-base;
+  background: v.$app-backdrop;
+  background-color: v.$bg-base;
   overflow: hidden;
 }
 
+// Panes float on the sky with a small gap between them.
 .panelGroupVertical {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  padding: v.$pane-gap;
 }
 
 .mainPanel {

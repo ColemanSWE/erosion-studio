@@ -3,21 +3,22 @@
 .effectParams {
   display: flex;
   flex-direction: column;
-  gap: v.$spacing-sm;
-  padding: v.$spacing-sm;
-  border-top: 1px solid v.$border-secondary;
-  background-color: v.$bg-base;
+  gap: 10px;
+  margin: 0 v.$spacing-sm v.$spacing-sm 24px;
+  padding: 10px 12px 12px;
+  border: 1px solid v.$border-secondary;
+  border-radius: v.$radius-md;
+  background: v.$bg-elevated;
+  box-shadow: inset 0 1px 2px rgba(20, 80, 130, 0.08);
 }
 
 .paramGroup {
   margin-top: v.$spacing-xs;
-  padding-bottom: v.$spacing-xs;
-  border-bottom: 1px solid v.$border-secondary;
-  font-family: v.$font-mono;
-  font-size: v.$font-xs;
-  text-transform: uppercase;
-  letter-spacing: v.$letter-spacing-caps;
-  color: v.$text-tertiary;
+  padding-bottom: 3px;
+  border-bottom: 1px solid v.$border-primary;
+  font-size: v.$font-sm;
+  font-weight: v.$font-weight-bold;
+  color: v.$navy;
 
   &:first-child {
     margin-top: 0;

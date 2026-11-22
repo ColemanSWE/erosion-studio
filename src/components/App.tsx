@@ -34,7 +34,7 @@ import styles from "./App.module.scss";
 import { ErrorBoundary, Toaster, toast } from "./ui";
 import "../lib/effects/processors";
 
-const REGION_COLORS = ["#ff3366", "#33ccff", "#ffcc00", "#66ff66", "#cc66ff", "#ff9933"];
+const REGION_COLORS = ["#ff6ad5", "#3fd0ff", "#ffd36e", "#b69cff", "#6dffc8", "#ff9a6a"];
 
 function App() {
   const {

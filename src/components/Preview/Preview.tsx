@@ -390,7 +390,7 @@ function Preview({
                 top: `${overlay.y * 100}%`,
                 width: `${overlay.width * 100}%`,
                 height: `${overlay.height * 100}%`,
-                borderColor: overlay.isEffectZone ? '#00ffcc' : '#ffffff',
+                borderColor: overlay.isEffectZone ? 'var(--cool)' : '#ffffff',
                 borderStyle: overlay.isEffectZone ? 'dashed' : 'solid',
                 cursor: isDraggingOverlay && dragStateRef.current?.id === overlay.id
                 ? (dragStateRef.current?.type === 'move' ? 'grabbing' : 'nwse-resize')
@@ -398,7 +398,7 @@ function Preview({
               }}
               onMouseDown={(e) => handleOverlayMouseDown(overlay, e, "move")}
             >
-              <div className={styles.regionLabel} style={{ color: overlay.isEffectZone ? '#00ffcc' : '#ffffff' }}>
+              <div className={styles.regionLabel} style={{ color: overlay.isEffectZone ? 'var(--cool)' : '#ffffff' }}>
                 {overlay.type === 'text' ? 'T' : (overlay.type === 'image' ? 'Img' : 'Vid')}
               </div>
               

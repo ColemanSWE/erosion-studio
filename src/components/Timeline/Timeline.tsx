@@ -300,7 +300,7 @@ export function Timeline({
             className={styles.trackLabel}
             style={{
               height: trackHeight,
-              borderLeft: `2px solid ${effect.startTime != null || effect.endTime != null ? "#4ad0d0" : "#555"}`,
+              borderLeft: `2px solid ${effect.startTime != null || effect.endTime != null ? "var(--cool)" : "var(--border-strong)"}`,
             }}
           >
             <span className={styles.trackLabelText}>{effectName}</span>
@@ -317,10 +317,10 @@ export function Timeline({
           {isExpanded && (
             <>
               {/* Matches the 24px "add param tracks" row in EffectTrack */}
-              <div style={{ height: 24, background: "var(--bg-base, #0c0c0e)" }} />
+              <div style={{ height: 24, background: "var(--bg-base)" }} />
               {tracks.map((t) => (
                 <div key={t.id} className={styles.trackLabel} style={{ height: 24, paddingLeft: 20 }}>
-                  <span className={styles.trackLabelText} style={{ color: "#cc7700", fontSize: 9 }}>
+                  <span className={styles.trackLabelText} style={{ color: "var(--keyframe-text)", fontSize: 9 }}>
                     {t.paramKey}
                   </span>
                   <div className={styles.trackLabelActions}>
@@ -425,7 +425,7 @@ export function Timeline({
                 top: 0,
                 bottom: 0,
                 width: 1,
-                background: "rgba(255,51,102,0.3)",
+                background: "var(--hot-dim)",
                 pointerEvents: "none",
                 zIndex: 4,
               }}

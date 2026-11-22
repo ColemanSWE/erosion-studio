@@ -1,13 +1,14 @@
-@use "../../styles/variables";
+@use "../../styles/variables" as v;
 
+// The viewer: a glass pane holding a dark, neutral well so footage reads true.
 .preview {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: variables.$bg-base;
-  padding: variables.$spacing-md;
+  @include v.glass-pane;
+  padding: 10px;
   min-width: 0;
   min-height: 0;
 }
@@ -19,11 +20,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid variables.$border-primary;
-  background: repeating-conic-gradient(
-    variables.$bg-surface 0% 25%,
-    variables.$bg-base 0% 50%
-  ) 0 0 / 16px 16px;
+  border-radius: v.$radius-md;
+  background:
+    repeating-conic-gradient(rgba(v.$white, 0.035) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px,
+    v.$well;
+  box-shadow: 0 0 0 1px rgba(60, 110, 160, 0.6), inset 0 2px 8px rgba(0, 0, 0, 0.6), 0 4px 14px rgba(20, 80, 130, 0.2);
 }
 
 .overlay {
@@ -60,23 +61,19 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  background: rgba(12, 12, 14, 0.85);
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-sm;
-  color: variables.$text-secondary;
+  @include v.button-gel;
+  color: v.$text-secondary;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  transition: all variables.$transition-fast;
+  transition: color v.$transition-fast, border-color v.$transition-fast, box-shadow v.$transition-normal;
 
   &:hover {
-    color: variables.$text-primary;
-    border-color: variables.$accent-primary;
-    background: variables.$bg-elevated;
+    color: v.$ink;
   }
 
   &.active {
-    color: variables.$accent-primary;
-    border-color: variables.$accent-primary;
+    color: v.$white;
+    border-color: v.$timeline-clip-border;
+    background: v.$gel-sky;
   }
 }
 
@@ -85,7 +82,7 @@
   border: 1px dashed;
   pointer-events: all;
   cursor: pointer;
-  transition: opacity variables.$transition-fast;
+  transition: opacity v.$transition-fast;
 
   &:hover {
     opacity: 0.8;
@@ -99,44 +96,46 @@
 
 .regionLabel {
   position: absolute;
-  top: -18px;
-  left: 0;
-  font-size: variables.$font-xs;
-  font-family: variables.$font-mono;
-  font-weight: 600;
-  padding: 1px 5px;
-  background-color: rgba(0, 0, 0, 0.85);
-  border-radius: variables.$radius-sm;
+  top: -21px;
+  left: -1px;
+  font-size: v.$font-xs;
+  font-weight: v.$font-weight-bold;
+  padding: 1px 8px;
+  border-radius: v.$radius-pill;
+  background: rgba(12, 26, 38, 0.85);
+  border: 1px solid rgba(v.$white, 0.25);
   white-space: nowrap;
 }
 
 .resizeHandle {
   position: absolute;
-  width: 8px;
-  height: 8px;
-  background: variables.$bg-base;
-  border: 1.5px solid variables.$text-primary;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: v.$knob-fill;
+  border: 1px solid v.$knob-border;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   pointer-events: all;
   z-index: 11;
 
-  &.nw { top: -5px; left: -5px; cursor: nw-resize; }
-  &.ne { top: -5px; right: -5px; cursor: ne-resize; }
-  &.sw { bottom: -5px; left: -5px; cursor: sw-resize; }
-  &.se { bottom: -5px; right: -5px; cursor: se-resize; }
+  &.nw { top: -6px; left: -6px; cursor: nw-resize; }
+  &.ne { top: -6px; right: -6px; cursor: ne-resize; }
+  &.sw { bottom: -6px; left: -6px; cursor: sw-resize; }
+  &.se { bottom: -6px; right: -6px; cursor: se-resize; }
 }
 
 .drawingRect {
   position: absolute;
-  border: 1px dashed variables.$accent-primary;
+  border: 1px dashed v.$sky-light;
   pointer-events: none;
-  background-color: variables.$accent-glow;
+  background-color: rgba(v.$sky, 0.15);
 }
 
 .canvas {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
   position: relative;
   z-index: 1;
 }
@@ -144,17 +143,18 @@
 // ─── Camera capture HUD ──────────────────────────────────────────────────────
 .captureHud {
   position: absolute;
-  bottom: 12px;
+  bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  background: rgba(12, 12, 14, 0.85);
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-md;
-  padding: 6px 12px;
+  gap: v.$spacing-sm;
+  padding: 5px 7px;
+  background: v.$glass-strong;
+  border: 1px solid v.$glass-edge;
+  border-radius: v.$radius-pill;
+  box-shadow: 0 0 0 1px v.$glass-ring, v.$shadow-lg;
   backdrop-filter: blur(12px);
 }
 
@@ -162,54 +162,47 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-sm;
-  font-weight: 600;
+  height: 26px;
+  padding: 0 12px;
+  font-size: v.$font-sm;
+  font-weight: v.$font-weight-bold;
   border: 1px solid;
-  border-radius: variables.$radius-sm;
+  border-radius: v.$radius-pill;
   cursor: pointer;
-  transition: all variables.$transition-fast;
-  background: transparent;
+  transition: filter v.$transition-fast, box-shadow v.$transition-normal;
 
   &.snap {
-    color: variables.$text-secondary;
-    border-color: variables.$border-primary;
-
-    &:hover {
-      background: variables.$bg-elevated;
-      color: variables.$text-primary;
-      border-color: variables.$accent-primary;
-    }
+    @include v.button-gel;
+    border-radius: v.$radius-pill;
   }
 
   &.record {
-    color: variables.$error;
-    border-color: variables.$error;
+    color: v.$white;
+    border-color: v.$error;
+    background: v.$gel-coral;
+    text-shadow: 0 1px 1px rgba(100, 20, 0, 0.5);
 
     &:hover {
-      background: variables.$error;
-      color: variables.$bg-base;
+      box-shadow: 0 0 10px rgba(v.$coral, 0.6);
     }
 
     &.recording {
-      background: variables.$error;
-      color: variables.$bg-base;
       animation: pulse 1s ease-in-out infinite;
     }
   }
 }
 
 .recTimer {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-sm;
-  color: variables.$error;
+  font-family: v.$font-mono;
+  font-size: v.$font-sm;
+  color: v.$error;
   min-width: 40px;
   text-align: center;
   letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  0%, 100% { box-shadow: 0 0 3px rgba(232, 80, 58, 0.4); }
+  50% { box-shadow: 0 0 14px rgba(232, 80, 58, 0.9); }
 }

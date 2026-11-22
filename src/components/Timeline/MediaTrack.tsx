@@ -394,9 +394,9 @@ export function MediaTrack({
   const safeMinWidth = isFinite(minWidth) ? minWidth : 0;
   const totalWidth = Math.max(maxClipEnd * zoom + 120, safeMinWidth, 400);
 
-  const trackHues = [210, 160, 40, 300, 20];
+  const trackHues = [200, 140, 268, 30, 330];
   const getTrackColor = (trackIndex: number) =>
-    `hsl(${trackHues[trackIndex % trackHues.length]}, 70%, 45%)`;
+    `hsl(${trackHues[trackIndex % trackHues.length]}, 72%, 46%)`;
 
   return (
     <div
@@ -417,8 +417,8 @@ export function MediaTrack({
             top: idx * rowHeight,
             width: "100%",
             height: rowHeight,
-            borderBottom: "1px solid rgba(255,255,255,0.05)",
-            background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)",
+            borderBottom: "1px solid var(--border-secondary)",
+            background: idx % 2 === 0 ? "transparent" : "rgba(110,170,215,0.06)",
             pointerEvents: "none",
           }}
         />
@@ -462,7 +462,7 @@ export function MediaTrack({
               width: clipW,
               top,
               height: rowHeight - 4,
-              background: `linear-gradient(90deg, ${color} 0%, color-mix(in srgb, ${color} 70%, #000) 100%)`,
+              "--clip-tint": color,
               "--clip-accent": color,
             } as React.CSSProperties}
             tabIndex={0}
@@ -520,8 +520,8 @@ export function MediaTrack({
             pointerEvents: "none",
           }}
         >
-          <Film size={14} style={{ color: "#444", marginRight: 6 }} />
-          <span style={{ fontFamily: "monospace", fontSize: 10, color: "#444" }}>
+          <Film size={14} style={{ color: "var(--text-tertiary)", marginRight: 6 }} />
+          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
             Drag media here — use multiple rows to overlap clips (for transitions)
           </span>
         </div>

@@ -1,92 +1,302 @@
-// Brutalist Design System
+// Erosion design system: "Aero Daylight"
+//
+// Windows Vista/7-era Frutiger Aero: bright sky to white, frosted glass panes,
+// glossy gel controls, grass-green for the main action, the pale blue
+// selection of Windows 7 Explorer. The preview well stays dark and neutral so
+// it never tints the footage.
+// Component stylesheets must use these tokens (enforced by src/styles/tokens.test.ts).
 
-// Colors
-$bg-base: #0c0c0e;
-$bg-surface: #141418;
-$bg-elevated: #1c1c22;
-$bg-overlay: #24242c;
+@use "sass:color";
 
-$border-primary: #2a2a36;
-$border-secondary: #1e1e28;
-$border-accent: #00e5ff;
+// ── Base colors ──────────────────────────────────────────────────────────────
+$white: #ffffff;
+$ink: #10263b;          // primary text, a deep blue-black
+$navy: #0b4f86;         // titles, links, wordmark
+$well: #0c1a26;         // the dark preview well
 
-$text-primary: #f0f0f0;
-$text-secondary: #888899;
-$text-tertiary: #555566;
-$text-inverse: #0c0c0e;
+$sky: #2fb0ef;
+$sky-light: #8fe0ff;
+$sky-deep: #1497dc;
+$grass: #4fae19;
+$grass-light: #b6ef7f;
+$grass-deep: #3f8a1d;
+$amber: #ffb52e;
+$coral: #e8503a;
 
-$accent-primary: #00e5ff;
-$accent-secondary: #00b8d4;
-$accent-glow: rgba(0, 229, 255, 0.12);
-$accent-glow-strong: rgba(0, 229, 255, 0.25);
+// ── Surfaces ─────────────────────────────────────────────────────────────────
+$bg-base: #f7fcff;
+$bg-surface: #ffffff;
+$bg-elevated: #f2f8fd;
+$bg-overlay: #e4f1fb;
 
-// Error/Warning/Success
-$error: #ff4444;
-$warning: #ffaa00;
-$success: #44ff88;
+$glass: rgba(255, 255, 255, 0.62);
+$glass-strong: rgba(250, 253, 255, 0.92);
+$glass-edge: rgba(255, 255, 255, 0.95);   // the bright inner rim
+$glass-ring: rgba(110, 170, 215, 0.45);   // the cool outer outline
+$glass-well: rgba(232, 243, 251, 0.75);   // recessed light fields
 
-// Timeline-specific tokens
-$timeline-playhead: #ff3366;
-$timeline-snap: $accent-primary;
-$timeline-clip: #1e5a7a;
-$timeline-clip-hover: #2a7aaa;
-$timeline-clip-border: #2e7aa0;
-$timeline-effect: #1e6a50;
-$timeline-effect-hover: #2a8a68;
-$timeline-overlay: #5a3a6a;
-$timeline-keyframe: #cc7700;
-$timeline-keyframe-hover: #e09900;
+$border-primary: rgba(110, 170, 215, 0.45);
+$border-secondary: rgba(110, 170, 215, 0.22);
+$border-strong: #8fb2cf;
+$border-accent: $sky;
 
-// Typography
-$font-primary: "JetBrains Mono", "Fira Code", "SF Mono", Monaco, "Cascadia Code",
-  "Roboto Mono", Consolas, "Courier New", monospace;
+$text-primary: $ink;
+$text-secondary: #4a6378;
+$text-tertiary: #7d93a6;
+$text-inverse: $white;
+
+$accent-primary: $sky;
+$accent-secondary: $grass;
+$accent-glow: rgba($sky, 0.16);
+$accent-glow-strong: rgba($sky, 0.32);
+
+// Windows 7 Explorer selection and hover.
+$select-fill: linear-gradient(180deg, #e7f4ff, #cce8ff);
+$select-border: #99d1ff;
+$hover-fill: linear-gradient(180deg, #f4faff, #e5f3ff);
+$hover-border: #cce8ff;
+$select-fill-hover: linear-gradient(180deg, #dcefff, #c1e3ff);
+$select-border-hover: #7dbdf2;
+
+// Slider parts.
+$track-fill: linear-gradient(180deg, #cfdde9, #f2f7fb);
+$track-ring: #9fb9cf;
+$knob-fill: radial-gradient(circle at 40% 30%, $white 0 25%, #d6ecfb 60%, #9cc6e6 100%);
+$knob-border: #6d9cc4;
+
+// Notification balloon.
+$balloon-fill: linear-gradient(180deg, $white, #eef6fc);
+$balloon-border: #7fa8cc;
+
+// The sky the whole app sits on.
+$app-backdrop:
+  radial-gradient(60% 50% at 85% 5%, rgba($white, 0.9), transparent 60%),
+  radial-gradient(45% 40% at 5% 100%, rgba(140, 230, 120, 0.4), transparent 70%),
+  linear-gradient(180deg, #a9dcff 0%, #e4f5ff 55%, #f7fcff 100%);
+
+// ── Status ───────────────────────────────────────────────────────────────────
+$error: #d93a2b;
+$warning: #e69500;
+$success: $grass;
+
+// ── Timeline ─────────────────────────────────────────────────────────────────
+$timeline-playhead: $coral;
+$timeline-snap: $grass;
+$timeline-clip: $sky;
+$timeline-clip-border: #1a7fbf;
+$timeline-keyframe: $amber;
+$keyframe-text: #a86400; // amber dark enough to read on white
+
+// ── Typography ───────────────────────────────────────────────────────────────
+$font-primary: "Segoe UI Variable Text", "Segoe UI", Frutiger, "Myriad Pro", "Inter",
+  "Helvetica Neue", Arial, sans-serif;
+$font-display: "Segoe UI Variable Display", "Segoe UI Light", "Segoe UI", Frutiger,
+  "Myriad Pro", "Inter", sans-serif;
 $font-mono: "JetBrains Mono", "Fira Code", "SF Mono", Monaco, "Cascadia Code",
   "Roboto Mono", Consolas, "Courier New", monospace;
 
-// Type scale — use these instead of raw px font sizes.
+// Type scale: use these instead of raw px font sizes.
 $font-base: 13px;    // body default
-$font-xs: 10px;      // uppercase labels, badges, timecodes
+$font-xs: 10px;      // badges, timecodes
 $font-sm: 11px;      // default panel text
 $font-md: 12px;      // inputs, buttons, list items
 $font-lg: 14px;      // section and dialog titles
 $font-xl: 18px;      // modal headings
-$font-display: 28px; // welcome screen
+$font-big: 28px;     // big readouts
+$font-hero: 44px;    // welcome wordmark
 
+$font-weight-light: 300;
 $font-weight-normal: 400;
 $font-weight-medium: 500;
 $font-weight-bold: 600;
+$font-weight-heavy: 700;
 
-$letter-spacing-caps: 0.08em;
+$letter-spacing-caps: 0.06em;
 
-// Control sizing
+// ── Control sizing ───────────────────────────────────────────────────────────
 $control-height-sm: 22px;
 $control-height-md: 28px;
 
-// Spacing
+// ── Spacing ──────────────────────────────────────────────────────────────────
 $spacing-xs: 4px;
 $spacing-sm: 8px;
 $spacing-md: 16px;
 $spacing-lg: 24px;
 $spacing-xl: 32px;
 
-// Border radius
-$radius-sm: 2px;
+$pane-gap: 6px; // space between the glass panes
+
+// ── Shape ────────────────────────────────────────────────────────────────────
+$radius-sm: 3px;
 $radius-md: 4px;
-$radius-lg: 6px;
+$radius-lg: 8px;
+$radius-pill: 999px;
 
-// Shadows
-$shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-$shadow-md: 0 2px 8px rgba(0, 0, 0, 0.5);
-$shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.6);
+// ── Shadows ──────────────────────────────────────────────────────────────────
+$shadow-sm: 0 1px 3px rgba(20, 80, 130, 0.18);
+$shadow-md: 0 4px 14px rgba(30, 90, 140, 0.12);
+$shadow-lg: 0 10px 30px rgba(20, 80, 130, 0.22);
+$shadow-window: 0 18px 50px rgba(20, 80, 130, 0.3), 0 0 0 1px rgba(80, 140, 190, 0.5);
+$focus-ring: 0 0 0 3px rgba($sky, 0.3);
+$text-glow: 0 1px 0 rgba($white, 0.85);
 
-// Transitions
+// ── Motion ───────────────────────────────────────────────────────────────────
 $transition-fast: 80ms ease;
 $transition-normal: 150ms ease;
 $transition-slow: 250ms ease;
 
-// Z-index layers
+// ── Z-index layers ───────────────────────────────────────────────────────────
 $z-base: 0;
 $z-elevated: 10;
 $z-overlay: 100;
 $z-modal: 1000;
 $z-tooltip: 10000;
+
+// ── Gloss ────────────────────────────────────────────────────────────────────
+
+// The Aero shine for gel surfaces: a bright top half ending in a hard horizon.
+@function gel($top, $mid, $low, $bottom) {
+  @return linear-gradient(180deg, $top 0%, $mid 49%, $low 50%, $bottom 100%);
+}
+
+$gel-sky: gel($sky-light, $sky, $sky-deep, #59c6f5);
+$gel-grass: gel($grass-light, #7ad13b, $grass, #7fd145);
+$gel-amber: gel(#ffe3a0, #ffc54d, #f5a40f, #ffcb62);
+$gel-coral: gel(#ffb3a3, #f06a50, $coral, #f58c72);
+$gel-button: gel($white, #eef5fb, #dbe9f5, #eaf3fa);
+$gel-button-hover: gel(#f5fbff, #e3f2fc, #c9e5f8, #dcf0fc);
+
+// A soft shine for glass strips (headers, title bars).
+$glass-shine: linear-gradient(180deg, rgba($white, 0.92), rgba(225, 242, 255, 0.62));
+
+// ── Mixins ───────────────────────────────────────────────────────────────────
+
+@mixin caps-label {
+  font-family: $font-primary;
+  font-size: $font-xs;
+  font-weight: $font-weight-bold;
+  text-transform: uppercase;
+  letter-spacing: $letter-spacing-caps;
+  color: $text-secondary;
+}
+
+// A floating pane of frosted glass: bright rim, cool outline, soft shadow.
+@mixin glass-pane {
+  background: $glass;
+  border: 1px solid $glass-edge;
+  border-radius: $radius-lg;
+  box-shadow: 0 0 0 1px $glass-ring, $shadow-md;
+  overflow: hidden;
+}
+
+// Glossy orb, like an Aero status light.
+@mixin orb($color, $size: 9px) {
+  width: $size;
+  height: $size;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 38% 30%,
+    $white 0 16%,
+    color.adjust($color, $lightness: 12%) 42%,
+    $color 70%,
+    color.adjust($color, $lightness: -14%) 100%
+  );
+  box-shadow: 0 0 0 1px rgba(color.adjust($color, $lightness: -20%), 0.45), 0 1px 3px rgba($color, 0.45);
+  flex-shrink: 0;
+}
+
+// Pane title strip.
+@mixin panel-header($orb: $sky) {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 $spacing-sm 0 12px;
+  background: $glass-shine;
+  border-bottom: 1px solid $border-primary;
+  flex-shrink: 0;
+
+  h3,
+  h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: $font-md;
+    font-weight: $font-weight-bold;
+    color: $navy;
+    text-shadow: $text-glow;
+
+    &::before {
+      content: "";
+      @include orb($orb);
+    }
+  }
+}
+
+// Plain gel button (secondary).
+@mixin button-gel {
+  background: $gel-button;
+  border: 1px solid $border-strong;
+  border-radius: $radius-md;
+  color: $ink;
+  box-shadow: inset 0 1px 0 rgba($white, 0.9);
+
+  &:hover:not(:disabled) {
+    background: $gel-button-hover;
+    border-color: #6fa3d1;
+    box-shadow: inset 0 1px 0 rgba($white, 0.9), 0 0 6px rgba($sky, 0.35);
+  }
+
+  &:active:not(:disabled) {
+    background: linear-gradient(180deg, #cfe6f6, #e4f2fb);
+    box-shadow: inset 0 1px 3px rgba(20, 80, 130, 0.3);
+  }
+}
+
+// Green gel pill (primary action).
+@mixin button-grass {
+  background: $gel-grass;
+  border: 1px solid $grass-deep;
+  border-radius: $radius-pill;
+  color: $white;
+  font-weight: $font-weight-bold;
+  text-shadow: 0 1px 1px rgba(20, 70, 0, 0.5);
+  box-shadow: inset 0 1px 0 rgba($white, 0.7), 0 1px 4px rgba(60, 140, 20, 0.4);
+
+  &:hover:not(:disabled) {
+    filter: brightness(1.06) saturate(1.1);
+    box-shadow: inset 0 1px 0 rgba($white, 0.8), 0 0 10px rgba(110, 200, 50, 0.6);
+  }
+
+  &:active:not(:disabled) {
+    filter: brightness(0.94);
+    box-shadow: inset 0 2px 4px rgba(20, 70, 0, 0.4);
+  }
+}
+
+// Recessed light field for inputs.
+@mixin field-inset {
+  background: $bg-surface;
+  border: 1px solid $border-strong;
+  border-radius: $radius-sm;
+  box-shadow: inset 0 1px 2px rgba(20, 80, 130, 0.15);
+}
+
+// Explorer-style row states.
+@mixin row-hover {
+  background: $hover-fill;
+  border-color: $hover-border;
+}
+
+@mixin row-selected {
+  background: $select-fill;
+  border-color: $select-border;
+}
+
+// Dark glass LCD readout (media-player timecode).
+@mixin lcd {
+  background: linear-gradient(180deg, #1b2b38, #0c151d);
+  border: 1px solid rgba(8, 20, 30, 0.9);
+  color: $sky-light;
+  text-shadow: 0 0 5px rgba(80, 200, 255, 0.7);
+  box-shadow: inset 0 1px 0 rgba($white, 0.12), 0 1px 0 rgba($white, 0.8);
+}

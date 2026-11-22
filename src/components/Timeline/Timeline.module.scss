@@ -1,73 +1,79 @@
-@use "../../styles/variables";
+@use "../../styles/variables" as v;
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 .timeline {
   display: flex;
   flex-direction: column;
-  background: variables.$bg-surface;
-  border-top: 1px solid variables.$border-primary;
+  @include v.glass-pane;
   user-select: none;
-  overflow: hidden;
   width: 100%;
   height: 100%;
 }
 
+// A media-player transport bar.
 .timelineHeader {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
-  padding: 0 variables.$spacing-sm;
-  height: 28px;
-  background: variables.$bg-base;
-  border-bottom: 1px solid variables.$border-secondary;
+  gap: v.$spacing-xs;
+  padding: 0 v.$spacing-sm 0 12px;
+  height: 34px;
+  background: v.$glass-shine;
+  border-bottom: 1px solid v.$border-primary;
   flex-shrink: 0;
 }
 
 .timelineTitle {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  font-weight: 600;
-  color: variables.$text-tertiary;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: 1;
+  font-size: v.$font-md;
+  font-weight: v.$font-weight-bold;
+  color: v.$navy;
+  text-shadow: v.$text-glow;
+
+  &::before {
+    content: "";
+    @include v.orb(v.$coral);
+  }
 }
 
 .headerBtn {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px;
-  height: 20px;
-  background: transparent;
-  border: 1px solid variables.$border-secondary;
-  border-radius: variables.$radius-sm;
-  color: variables.$text-secondary;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
+  padding: 0 8px;
+  height: 24px;
+  @include v.button-gel;
+  color: v.$text-secondary;
+  font-size: v.$font-xs;
   cursor: pointer;
-  transition: color variables.$transition-fast, border-color variables.$transition-fast, background variables.$transition-fast;
+  transition: color v.$transition-fast, border-color v.$transition-fast, box-shadow v.$transition-normal;
 
   &:hover {
-    color: variables.$text-primary;
-    border-color: variables.$border-primary;
-    background: variables.$bg-elevated;
+    color: v.$ink;
   }
 
   &.active {
-    color: variables.$accent-primary;
-    border-color: variables.$accent-primary;
-    background: variables.$accent-glow;
+    color: v.$white;
+    border-color: v.$timeline-clip-border;
+    background: v.$gel-sky;
+    filter: drop-shadow(0 0 3px rgba(47, 176, 239, 0.5));
   }
 }
 
+// Dark glass LCD readout.
 .timeDisplay {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
-  min-width: 60px;
+  margin: 0 v.$spacing-xs;
+  padding: 1px 12px;
+  @include v.lcd;
+  border-radius: v.$radius-pill;
+  font-family: v.$font-mono;
+  font-size: v.$font-sm;
+  font-variant-numeric: tabular-nums;
+  min-width: 72px;
   text-align: center;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
 
 .zoomControls {
@@ -77,11 +83,11 @@
 }
 
 .zoomLabel {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
-  min-width: 36px;
+  font-size: v.$font-xs;
+  color: v.$text-tertiary;
+  min-width: 40px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 // ─── Body ─────────────────────────────────────────────────────────────────────
@@ -97,15 +103,15 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid variables.$border-secondary;
+  border-right: 1px solid v.$border-primary;
   overflow: hidden;
+  background: rgba(v.$white, 0.45);
 }
 
 .labelsHeader {
   height: 28px;
   flex-shrink: 0;
-  border-bottom: 1px solid variables.$border-secondary;
-  background: variables.$bg-elevated;
+  border-bottom: 1px solid v.$border-secondary;
 }
 
 .labelsColumn {
@@ -114,7 +120,9 @@
   overflow-x: hidden;
   min-height: 0;
 
-  &::-webkit-scrollbar { display: none; }
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 // ─── Right panel (ruler row + scrollable tracks) ──────────────────────────────
@@ -139,26 +147,15 @@
   overflow: auto;
   position: relative;
   min-height: 0;
-
-  &::-webkit-scrollbar {
-    height: 4px;
-    width: 4px;
-  }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: variables.$border-primary;
-    border-radius: 99px;
-  }
+  background: rgba(v.$white, 0.35);
 }
 
 // ─── Ruler ────────────────────────────────────────────────────────────────────
 .ruler {
   width: 100%;
   height: 100%;
-  background: variables.$bg-elevated;
-  border-bottom: 1px solid variables.$border-secondary;
+  background: rgba(v.$white, 0.55);
+  border-bottom: 1px solid v.$border-secondary;
   cursor: pointer;
   overflow: hidden;
 }
@@ -175,20 +172,22 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: variables.$timeline-playhead;
+  background: v.$timeline-playhead;
   pointer-events: none;
   z-index: 10;
 
+  // Gel knob.
   &::before {
     content: "";
     position: absolute;
-    top: 0;
-    left: -5px;
-    width: 0;
-    height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 7px solid variables.$timeline-playhead;
+    top: 1px;
+    left: -6px;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 1px solid rgba(150, 40, 20, 0.7);
+    background: v.$gel-coral;
+    box-shadow: inset 0 1px 0 rgba(v.$white, 0.5), 0 1px 3px rgba(150, 40, 20, 0.4);
   }
 }
 
@@ -196,11 +195,11 @@
 .trackRow {
   display: flex;
   height: 40px;
-  border-bottom: 1px solid variables.$border-secondary;
+  border-bottom: 1px solid v.$border-secondary;
   position: relative;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.015);
+    background: rgba(v.$white, 0.3);
   }
 }
 
@@ -211,21 +210,20 @@
 .trackLabel {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
-  padding: 0 variables.$spacing-sm;
+  gap: 6px;
+  padding: 0 v.$spacing-sm 0 12px;
   height: 40px;
-  border-bottom: 1px solid variables.$border-secondary;
-  background: variables.$bg-elevated;
+  border-bottom: 1px solid v.$border-secondary;
   cursor: pointer;
-  transition: background variables.$transition-fast;
+  transition: background v.$transition-fast;
 
   &:hover {
-    background: variables.$bg-overlay;
+    background: v.$hover-fill;
   }
 
   &.active {
-    background: variables.$bg-overlay;
-    border-left: 2px solid variables.$accent-primary;
+    background: v.$select-fill;
+    box-shadow: inset 3px 0 0 v.$sky;
   }
 }
 
@@ -234,9 +232,8 @@
 }
 
 .trackLabelText {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-secondary;
+  font-size: v.$font-sm;
+  color: v.$ink;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -248,7 +245,7 @@
   align-items: center;
   gap: 2px;
   opacity: 0;
-  transition: opacity variables.$transition-fast;
+  transition: opacity v.$transition-fast;
 
   .trackLabel:hover & {
     opacity: 1;
@@ -256,23 +253,15 @@
 }
 
 .trackIcon {
-  color: variables.$text-tertiary;
+  color: v.$sky-deep;
   flex-shrink: 0;
 }
 
 .trackLabelInput {
   flex: 1;
-  background: variables.$bg-base;
-  border: 1px solid variables.$accent-primary;
-  color: variables.$text-primary;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
+  font-size: v.$font-xs;
   padding: 1px 4px;
   min-width: 0;
-
-  &:focus {
-    outline: none;
-  }
 }
 
 // ─── Add track button ─────────────────────────────────────────────────────────
@@ -281,19 +270,17 @@
   align-items: center;
   gap: 4px;
   width: 100%;
-  padding: 3px variables.$spacing-sm;
+  padding: 4px 12px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid variables.$border-secondary;
-  color: variables.$text-tertiary;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
+  border-bottom: 1px solid v.$border-secondary;
+  color: v.$sky-deep;
+  font-size: v.$font-xs;
   cursor: pointer;
-  letter-spacing: 0.05em;
 
   &:hover {
-    color: variables.$accent-primary;
-    background: variables.$bg-overlay;
+    text-decoration: underline;
+    background: v.$hover-fill;
   }
 }
 
@@ -304,19 +291,19 @@
   width: 18px;
   height: 18px;
   background: transparent;
-  border: none;
-  color: variables.$text-tertiary;
+  border: 1px solid transparent;
+  border-radius: v.$radius-sm;
+  color: v.$text-tertiary;
   cursor: pointer;
   padding: 0;
-  border-radius: variables.$radius-sm;
 
   &:hover {
-    color: variables.$text-primary;
-    background: variables.$bg-overlay;
+    color: v.$ink;
+    @include v.row-hover;
   }
 
   &.danger:hover {
-    color: variables.$error;
+    color: v.$error;
   }
 }
 
@@ -325,30 +312,29 @@
   position: absolute;
   bottom: 0;
   width: 1px;
-  background: variables.$timeline-snap;
+  background: v.$timeline-snap;
+  box-shadow: 0 0 4px rgba(79, 174, 25, 0.8);
   pointer-events: none;
   z-index: 5;
-  opacity: 0.8;
 
   &::before {
     content: "";
     position: absolute;
     top: 0;
     left: -3px;
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 6px solid variables.$timeline-snap;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: v.$timeline-snap;
   }
 }
 
 // ─── Ghost clip (drop preview) ────────────────────────────────────────────────
 .clipGhost {
   position: absolute;
-  border: 1px dashed rgba(0, 229, 255, 0.3);
-  border-radius: variables.$radius-sm;
-  background: variables.$accent-glow;
+  border: 1px dashed v.$sky-deep;
+  border-radius: v.$radius-md;
+  background: v.$accent-glow;
   pointer-events: none;
   z-index: 6;
 }
@@ -360,54 +346,60 @@
   height: 100%;
 
   &.dragOver {
-    background: variables.$accent-glow;
-    outline: 1px dashed variables.$border-accent;
+    background: v.$accent-glow;
+    outline: 1px dashed v.$sky-deep;
     outline-offset: -2px;
   }
 }
 
-// ─── Media Clips ─────────────────────────────────────────────────────────────
+// ─── Media clips: gel bars ───────────────────────────────────────────────────
+// --clip-tint / --clip-accent are set inline per track.
 .clip {
   position: absolute;
   top: 4px;
   height: calc(100% - 8px);
-  background: variables.$timeline-clip;
-  border: 1px solid variables.$timeline-clip-border;
-  border-left: 3px solid var(--clip-accent, variables.$timeline-clip-border);
-  border-radius: variables.$radius-sm;
+  background:
+    v.gel(rgba(v.$white, 0.55), rgba(v.$white, 0.18), rgba(v.$white, 0), rgba(v.$white, 0.22)),
+    var(--clip-tint, #{v.$timeline-clip});
+  border: 1px solid rgba(16, 38, 59, 0.35);
+  border-radius: v.$radius-md;
+  box-shadow: inset 0 1px 0 rgba(v.$white, 0.5), 0 1px 3px rgba(20, 80, 130, 0.25);
   display: flex;
   align-items: center;
-  padding: 0 6px 0 5px;
+  padding: 0 6px;
   cursor: grab;
   overflow: hidden;
   min-width: 4px;
-  transition: border-color variables.$transition-fast, box-shadow variables.$transition-fast;
+  transition: box-shadow v.$transition-normal, filter v.$transition-fast;
 
   &:hover {
-    border-color: variables.$timeline-clip-hover;
-    border-left-color: var(--clip-accent, variables.$timeline-clip-hover);
+    filter: brightness(1.06);
   }
 
   &.selected {
-    border-color: variables.$accent-primary;
-    border-left-color: variables.$accent-primary;
-    background: variables.$timeline-clip-hover;
-    box-shadow: 0 0 0 1px variables.$accent-glow;
+    border-color: v.$navy;
+    box-shadow: inset 0 1px 0 rgba(v.$white, 0.6), 0 0 0 2px rgba(v.$white, 0.9), 0 0 0 3px v.$sky-deep,
+      0 0 10px rgba(v.$sky, 0.5);
+    z-index: 7;
   }
 
   &.dragging {
     cursor: grabbing;
-    opacity: 0.85;
-    border-color: variables.$accent-primary;
-    border-left-color: variables.$accent-primary;
+    opacity: 0.92;
+    box-shadow: 0 6px 14px rgba(20, 80, 130, 0.35);
     z-index: 8;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: v.$focus-ring;
   }
 }
 
 .clipInner {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -416,14 +408,15 @@
 
 .clipIcon {
   flex-shrink: 0;
-  opacity: 0.7;
+  opacity: 0.9;
   pointer-events: none;
 }
 
 .clipName {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: rgba(255, 255, 255, 0.75);
+  font-size: v.$font-xs;
+  font-weight: v.$font-weight-bold;
+  color: v.$white;
+  text-shadow: 0 1px 1px rgba(0, 30, 60, 0.6);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -433,33 +426,34 @@
 }
 
 .clipDuration {
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: rgba(255, 255, 255, 0.45);
+  font-size: v.$font-xs;
+  color: rgba(v.$white, 0.85);
+  text-shadow: 0 1px 1px rgba(0, 30, 60, 0.5);
   white-space: nowrap;
   pointer-events: none;
   flex-shrink: 0;
   margin-right: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 .removeClipBtn {
   position: absolute;
   right: 4px;
-  background: transparent;
+  background: rgba(v.$white, 0.85);
   border: none;
-  color: variables.$text-tertiary;
+  border-radius: 50%;
+  color: v.$text-secondary;
   cursor: pointer;
   padding: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity variables.$transition-fast, color variables.$transition-fast;
+  transition: opacity v.$transition-fast, color v.$transition-fast;
   z-index: 5;
-  border-radius: variables.$radius-sm;
 
   &:hover {
-    color: variables.$error;
+    color: v.$error;
   }
 
   .clip:hover & {
@@ -476,44 +470,49 @@
   background: transparent;
 
   &:hover {
-    background: rgba(0, 229, 255, 0.15);
+    background: rgba(v.$white, 0.45);
   }
 
   &.left { left: 0; }
   &.right { right: 0; }
 }
 
-// ─── Effect range bar ────────────────────────────────────────────────────────
+// ─── Effect range bar: green gel ─────────────────────────────────────────────
 .effectBar {
   position: absolute;
   top: 8px;
   height: calc(100% - 16px);
-  background: variables.$timeline-effect;
-  border: 1px solid rgba(42, 138, 104, 0.6);
-  border-radius: variables.$radius-sm;
+  background: v.$gel-grass;
+  border: 1px solid v.$grass-deep;
+  border-radius: v.$radius-md;
+  box-shadow: inset 0 1px 0 rgba(v.$white, 0.6), 0 1px 3px rgba(60, 140, 20, 0.3);
   cursor: grab;
   overflow: hidden;
   min-width: 4px;
-  transition: border-color variables.$transition-fast;
+  transition: filter v.$transition-fast, box-shadow v.$transition-normal;
 
   &:active { cursor: grabbing; }
-  &:hover { border-color: variables.$timeline-effect-hover; }
+
+  &:hover {
+    filter: brightness(1.05);
+    box-shadow: inset 0 1px 0 rgba(v.$white, 0.7), 0 0 8px rgba(110, 200, 50, 0.6);
+  }
 }
 
 .effectBarFull {
-  top: 0;
-  height: 100%;
-  border-radius: 0;
+  top: 6px;
+  height: calc(100% - 12px);
 }
 
 .effectBarLabel {
   position: absolute;
-  left: 6px;
+  left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: rgba(0, 229, 255, 0.5);
+  font-size: v.$font-xs;
+  font-weight: v.$font-weight-bold;
+  color: v.$white;
+  text-shadow: 0 1px 1px rgba(20, 70, 0, 0.6);
   pointer-events: none;
   white-space: nowrap;
 }
@@ -522,42 +521,43 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 6px;
+  width: 7px;
   cursor: ew-resize;
   background: transparent;
 
-  &:hover { background: rgba(0, 229, 255, 0.15); }
-  &.left { left: 0; border-left: 2px solid variables.$timeline-effect-hover; }
-  &.right { right: 0; border-right: 2px solid variables.$timeline-effect-hover; }
+  &:hover { background: rgba(v.$white, 0.45); }
+  &.left { left: 0; }
+  &.right { right: 0; }
 }
 
-// ─── Keyframes ────────────────────────────────────────────────────────────────
+// ─── Keyframes: amber gel diamonds ───────────────────────────────────────────
 .keyframeRow {
   height: 24px;
-  border-top: 1px solid variables.$border-secondary;
+  border-top: 1px solid v.$border-secondary;
   position: relative;
 }
 
 .keyframe {
   position: absolute;
   top: 50%;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   transform: translate(-50%, -50%) rotate(45deg);
-  background: variables.$timeline-keyframe;
-  border: 1px solid rgba(204, 119, 0, 0.8);
+  border-radius: 2px;
+  background: v.$gel-amber;
+  border: 1px solid rgba(160, 90, 0, 0.8);
   cursor: pointer;
   z-index: 2;
-  transition: background variables.$transition-fast, border-color variables.$transition-fast;
+  transition: box-shadow v.$transition-fast;
 
   &:hover {
-    background: variables.$timeline-keyframe-hover;
-    border-color: variables.$text-primary;
+    box-shadow: 0 0 0 2px rgba(255, 181, 46, 0.35), 0 0 6px rgba(255, 181, 46, 0.8);
   }
 
   &.selected {
-    background: variables.$accent-primary;
-    border-color: variables.$accent-secondary;
+    background: v.$gel-sky;
+    border-color: v.$timeline-clip-border;
+    box-shadow: 0 0 6px rgba(47, 176, 239, 0.8);
   }
 }
 
@@ -568,44 +568,32 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: variables.$spacing-sm;
-  color: variables.$text-tertiary;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-sm;
+  gap: v.$spacing-sm;
+  color: v.$text-tertiary;
+  font-size: v.$font-sm;
 }
 
 // ─── Tooltip / Popup ─────────────────────────────────────────────────────────
 .keyframePopup {
   position: absolute;
-  background: variables.$bg-overlay;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-md;
-  padding: variables.$spacing-xs variables.$spacing-sm;
+  background: v.$balloon-fill;
+  border: 1px solid v.$balloon-border;
+  border-radius: v.$radius-md;
+  padding: 6px v.$spacing-sm;
   z-index: 100;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
-  color: variables.$text-primary;
+  font-size: v.$font-xs;
+  color: v.$ink;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  box-shadow: variables.$shadow-md;
+  box-shadow: v.$shadow-lg;
 }
 
 .keyframeInput {
-  background: variables.$bg-base;
-  border: 1px solid variables.$border-primary;
-  color: variables.$text-primary;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-xs;
+  font-family: v.$font-mono;
+  font-size: v.$font-xs;
   padding: 2px 4px;
   width: 80px;
-  border-radius: variables.$radius-sm;
-
-  &:focus {
-    outline: none;
-    border-color: variables.$timeline-keyframe;
-    box-shadow: 0 0 0 1px rgba(204, 119, 0, 0.2);
-  }
 }
 
 // ─── Add keyframe button ─────────────────────────────────────────────────────
@@ -619,59 +607,56 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  background: transparent;
-  border: 1px solid variables.$border-secondary;
-  border-radius: variables.$radius-sm;
-  color: variables.$text-tertiary;
+  @include v.button-gel;
+  border-radius: 50%;
+  color: v.$text-secondary;
   cursor: pointer;
   z-index: 3;
 
   &:hover {
-    color: variables.$timeline-keyframe;
-    border-color: variables.$timeline-keyframe;
+    color: v.$warning;
   }
 }
 
-// ─── Clip context menu ────────────────────────────────────────────────────────
+// ─── Clip context menu: a Windows 7 menu ─────────────────────────────────────
 .contextMenu {
   position: fixed;
   z-index: 1000;
-  background: variables.$bg-elevated;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-md;
-  padding: 4px 0;
-  min-width: 160px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  background: v.$bg-elevated;
+  border: 1px solid v.$border-strong;
+  border-radius: v.$radius-sm;
+  padding: 2px;
+  min-width: 170px;
+  box-shadow: 2px 3px 8px rgba(20, 60, 100, 0.3);
   pointer-events: all;
 }
 
 .contextMenuItem {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  padding: 6px variables.$spacing-md;
-  font-size: variables.$font-md;
-  font-family: variables.$font-mono;
-  color: variables.$text-secondary;
+  gap: v.$spacing-sm;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: v.$radius-sm;
+  font-size: v.$font-md;
+  color: v.$ink;
   cursor: pointer;
   background: none;
-  border: none;
   width: 100%;
   text-align: left;
-  transition: background-color variables.$transition-fast, color variables.$transition-fast;
+  transition: background v.$transition-fast, border-color v.$transition-fast;
 
   &:hover {
-    background: variables.$bg-overlay;
-    color: variables.$text-primary;
+    @include v.row-selected;
   }
 
-  &.danger:hover {
-    color: variables.$error;
+  &.danger {
+    color: v.$error;
   }
 }
 
 .contextMenuSeparator {
   height: 1px;
-  background: variables.$border-secondary;
-  margin: 3px 0;
+  background: v.$border-primary;
+  margin: 3px 6px;
 }

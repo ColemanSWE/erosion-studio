@@ -6,71 +6,64 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: v.$spacing-xs;
+  gap: 6px;
   height: v.$control-height-md;
   padding: 0 v.$spacing-md;
   border: 1px solid transparent;
   border-radius: v.$radius-md;
-  font-family: v.$font-mono;
+  font-family: v.$font-primary;
   font-size: v.$font-md;
   font-weight: v.$font-weight-medium;
   white-space: nowrap;
-  transition: background-color v.$transition-fast, border-color v.$transition-fast,
-    color v.$transition-fast, box-shadow v.$transition-fast;
+  transition: background v.$transition-fast, border-color v.$transition-fast,
+    color v.$transition-fast, box-shadow v.$transition-normal, filter v.$transition-fast;
 
   &:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px v.$accent-glow-strong;
+    box-shadow: v.$focus-ring;
   }
 }
 
 .sm {
   height: v.$control-height-sm;
-  padding: 0 v.$spacing-sm;
+  padding: 0 10px;
   font-size: v.$font-sm;
 }
 
 .primary {
-  background-color: v.$accent-primary;
-  color: v.$text-inverse;
-  font-weight: v.$font-weight-bold;
-  letter-spacing: 0.05em;
-
-  &:hover:not(:disabled) {
-    background-color: v.$accent-secondary;
-    box-shadow: 0 0 12px v.$accent-glow-strong;
-  }
+  @include v.button-grass;
+  padding: 0 18px;
 }
 
 .secondary {
-  background-color: v.$bg-elevated;
-  border-color: v.$border-primary;
-  color: v.$text-secondary;
-
-  &:hover:not(:disabled) {
-    border-color: v.$border-accent;
-    color: v.$text-primary;
-  }
+  @include v.button-gel;
 }
 
+// Toolbar-style: invisible until hovered, then an Explorer highlight.
 .ghost {
-  background-color: transparent;
+  background: transparent;
   color: v.$text-secondary;
 
   &:hover:not(:disabled) {
-    background-color: v.$bg-elevated;
-    color: v.$text-primary;
+    @include v.row-hover;
+    color: v.$ink;
+  }
+
+  &:active:not(:disabled) {
+    @include v.row-selected;
   }
 }
 
 .danger {
-  background-color: transparent;
-  border-color: v.$border-primary;
+  background: transparent;
+  border-color: rgba(v.$error, 0.45);
   color: v.$error;
 
   &:hover:not(:disabled) {
+    background: v.$gel-coral;
     border-color: v.$error;
-    background-color: rgba(v.$error, 0.1);
+    color: v.$white;
+    text-shadow: 0 1px 1px rgba(100, 20, 0, 0.4);
   }
 }
 
@@ -84,13 +77,15 @@
   }
 }
 
+// Toggled on: the Explorer selected state.
 .pressed {
-  color: v.$accent-primary;
-  background-color: v.$accent-glow;
+  color: v.$navy;
+  @include v.row-selected;
 
   &:hover:not(:disabled) {
-    color: v.$accent-primary;
-    background-color: v.$accent-glow-strong;
+    color: v.$navy;
+    background: v.$select-fill-hover;
+    border-color: v.$select-border-hover;
   }
 }
 
@@ -114,7 +109,7 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: v.$spacing-xs;
+  gap: 4px;
 }
 
 .fieldLabel {
@@ -122,17 +117,14 @@
   justify-content: space-between;
   align-items: baseline;
   gap: v.$spacing-sm;
-  font-family: v.$font-mono;
-  font-size: v.$font-xs;
-  text-transform: uppercase;
-  letter-spacing: v.$letter-spacing-caps;
-  color: v.$text-tertiary;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
 }
 
 .fieldValue {
-  color: v.$text-secondary;
-  text-transform: none;
-  letter-spacing: normal;
+  font-size: v.$font-sm;
+  font-weight: v.$font-weight-bold;
+  color: v.$sky-deep;
   font-variant-numeric: tabular-nums;
 }
 
@@ -144,27 +136,26 @@
 
 .select {
   height: v.$control-height-md;
-  padding: 0 20px 0 v.$spacing-sm;
-  border: 1px solid v.$border-primary;
-  background-color: v.$bg-elevated;
-  border-radius: v.$radius-md;
-  font-family: v.$font-mono;
+  padding: 0 24px 0 10px;
+  @include v.button-gel;
   font-size: v.$font-sm;
-  color: v.$text-secondary;
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' viewBox='0 0 8 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23888899' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' viewBox='0 0 8 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%234a6378' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+    v.$gel-button;
   background-repeat: no-repeat;
-  background-position: right 6px center;
+  background-position: right 9px center, 0 0;
 
   &:hover:not(:disabled) {
-    border-color: v.$border-accent;
-    color: v.$text-primary;
+    background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' viewBox='0 0 8 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%231497dc' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+      v.$gel-button-hover;
+    background-repeat: no-repeat;
+    background-position: right 9px center, 0 0;
   }
 
   option {
-    background-color: v.$bg-elevated;
-    color: v.$text-primary;
+    background-color: v.$bg-surface;
+    color: v.$ink;
   }
 
   &.sm {
@@ -172,40 +163,53 @@
   }
 }
 
+// Aero slider: recessed pill track, sky gel fill, glass orb thumb.
+// --fill is set inline by <Slider>.
 .slider {
+  --fill: 0%;
   width: 100%;
-  height: 16px;
+  height: 18px;
   padding: 0;
   border: none;
   background: transparent;
+  box-shadow: none;
   appearance: none;
   cursor: pointer;
 
-  &:focus {
+  &:focus,
+  &:hover:not(:disabled) {
     box-shadow: none;
   }
 
   &::-webkit-slider-runnable-track {
-    height: 3px;
-    border-radius: 99px;
-    background: v.$border-primary;
+    height: 6px;
+    border-radius: v.$radius-pill;
+    background:
+      linear-gradient(90deg, v.$sky-deep 0, v.$sky var(--fill), transparent var(--fill)),
+      v.$track-fill;
+    box-shadow: inset 0 1px 2px rgba(20, 80, 130, 0.3), 0 0 0 1px v.$track-ring, 0 1px 0 rgba(v.$white, 0.9);
   }
 
   &::-webkit-slider-thumb {
     appearance: none;
-    width: 12px;
-    height: 12px;
+    width: 15px;
+    height: 15px;
     margin-top: -4.5px;
     border-radius: 50%;
-    background: v.$accent-primary;
-    border: 2px solid v.$bg-surface;
-    transition: transform v.$transition-fast;
+    border: 1px solid v.$knob-border;
+    background: v.$knob-fill;
+    box-shadow: 0 1px 3px rgba(20, 80, 130, 0.35);
+    transition: box-shadow v.$transition-fast, transform v.$transition-fast;
   }
 
   &:hover::-webkit-slider-thumb,
   &:focus-visible::-webkit-slider-thumb {
-    transform: scale(1.2);
-    box-shadow: 0 0 0 3px v.$accent-glow;
+    border-color: v.$sky-deep;
+    box-shadow: 0 1px 3px rgba(20, 80, 130, 0.35), 0 0 0 3px rgba(v.$sky, 0.25), 0 0 8px rgba(v.$sky, 0.6);
+  }
+
+  &:active::-webkit-slider-thumb {
+    transform: scale(1.08);
   }
 }
 
@@ -222,12 +226,11 @@
     width: 13px;
     height: 13px;
     padding: 0;
-    accent-color: v.$accent-primary;
     cursor: pointer;
   }
 
   &:hover {
-    color: v.$text-primary;
+    color: v.$ink;
   }
 }
 
@@ -236,11 +239,11 @@
   align-items: center;
   gap: v.$spacing-sm;
   font-family: v.$font-mono;
-  font-size: v.$font-sm;
+  font-size: v.$font-xs;
   color: v.$text-secondary;
 
   input {
-    width: 28px;
+    width: 30px;
     height: v.$control-height-sm;
     padding: 2px;
     cursor: pointer;
@@ -258,39 +261,42 @@
 
 .segmented {
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  background: v.$bg-base;
-  border: 1px solid v.$border-primary;
+  gap: 0;
+  padding: 0;
+  border: 1px solid v.$border-strong;
   border-radius: v.$radius-md;
+  background: v.$gel-button;
+  overflow: hidden;
 }
 
 .segment {
   flex: 1;
   height: v.$control-height-sm;
-  padding: 0 v.$spacing-sm;
-  border-radius: v.$radius-sm;
-  font-family: v.$font-mono;
+  padding: 0 10px;
   font-size: v.$font-sm;
-  color: v.$text-secondary;
+  color: v.$ink;
   text-align: center;
-  transition: background-color v.$transition-fast, color v.$transition-fast;
+  transition: background v.$transition-fast, color v.$transition-fast;
+
+  & + & {
+    border-left: 1px solid v.$border-strong;
+  }
 
   &:hover:not(.segmentActive) {
-    background: v.$bg-elevated;
-    color: v.$text-primary;
+    background: v.$gel-button-hover;
   }
 
   &:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px v.$accent-glow-strong;
+    box-shadow: inset v.$focus-ring;
   }
 }
 
 .segmentActive {
-  background: v.$accent-primary;
-  color: v.$text-inverse;
+  background: v.$gel-sky;
+  color: v.$white;
   font-weight: v.$font-weight-bold;
+  text-shadow: 0 1px 1px rgba(0, 50, 90, 0.5);
 }
 
 // ── Dialog ───────────────────────────────────────────────────────────────────
@@ -302,20 +308,27 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(8px);
+  background: rgba(30, 80, 120, 0.25);
+  backdrop-filter: blur(6px);
+  animation: fadeIn v.$transition-normal;
 }
 
+// A Windows 7 window: glass frame around a solid content area.
 .dialog {
   display: flex;
   flex-direction: column;
   min-width: 400px;
   max-width: min(560px, calc(100vw - 32px));
   max-height: calc(100vh - 64px);
-  background: v.$bg-surface;
-  border: 1px solid v.$border-primary;
+  padding: 0 6px 6px;
+  background:
+    radial-gradient(70% 60% at 20% 0%, rgba(v.$white, 0.7), transparent 70%),
+    linear-gradient(180deg, rgba(185, 225, 250, 0.85), rgba(150, 205, 240, 0.8));
+  border: 1px solid rgba(60, 110, 160, 0.7);
   border-radius: v.$radius-lg;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px v.$border-secondary;
+  box-shadow: inset 0 0 0 1px rgba(v.$white, 0.6), v.$shadow-window;
+  backdrop-filter: blur(16px);
+  animation: dialogIn v.$transition-slow;
 
   &:focus {
     outline: none;
@@ -326,18 +339,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: v.$spacing-md v.$spacing-lg;
-  border-bottom: 1px solid v.$border-secondary;
+  min-height: 32px;
+  padding: 0 0 0 6px;
 }
 
 .dialogTitle {
   margin: 0;
-  font-family: v.$font-mono;
-  font-size: v.$font-lg;
-  font-weight: v.$font-weight-bold;
-  text-transform: uppercase;
-  letter-spacing: v.$letter-spacing-caps;
-  color: v.$text-primary;
+  font-size: v.$font-md;
+  font-weight: v.$font-weight-normal;
+  color: v.$ink;
+  text-shadow: 0 0 8px rgba(v.$white, 0.95), v.$text-glow;
 }
 
 .dialogBody {
@@ -346,14 +357,40 @@
   gap: v.$spacing-md;
   padding: v.$spacing-lg;
   overflow-y: auto;
+  background: v.$bg-surface;
+  border: 1px solid rgba(60, 110, 160, 0.55);
+  border-bottom: none;
+  border-radius: v.$radius-sm v.$radius-sm 0 0;
 }
 
 .dialogFooter {
   display: flex;
   justify-content: flex-end;
   gap: v.$spacing-sm;
-  padding: v.$spacing-md v.$spacing-lg;
-  border-top: 1px solid v.$border-secondary;
+  padding: 12px v.$spacing-lg;
+  background: v.$bg-elevated;
+  border: 1px solid rgba(60, 110, 160, 0.55);
+  border-top-color: v.$border-secondary;
+  border-radius: 0 0 v.$radius-sm v.$radius-sm;
+}
+
+// When there's no footer, the body closes the frame on its own.
+.dialogBody:last-child {
+  border-bottom: 1px solid rgba(60, 110, 160, 0.55);
+  border-radius: v.$radius-sm;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
 }
 
 // ── Toasts ───────────────────────────────────────────────────────────────────
@@ -370,21 +407,27 @@
   pointer-events: none;
 }
 
+// A notification-area balloon.
 .toast {
   display: flex;
   align-items: flex-start;
-  gap: v.$spacing-sm;
-  padding: v.$spacing-sm v.$spacing-md;
-  background: v.$bg-elevated;
-  border: 1px solid v.$border-primary;
-  border-left-width: 3px;
-  border-radius: v.$radius-md;
-  box-shadow: v.$shadow-lg;
+  gap: 10px;
+  padding: 10px v.$spacing-md 10px 12px;
+  background: v.$balloon-fill;
+  border: 1px solid v.$balloon-border;
+  border-radius: v.$radius-lg;
+  box-shadow: inset 0 1px 0 v.$white, v.$shadow-lg;
   font-size: v.$font-sm;
-  color: v.$text-primary;
+  color: v.$ink;
   pointer-events: auto;
   animation: toastIn v.$transition-slow;
   word-break: break-word;
+
+  &::before {
+    content: "";
+    margin-top: 3px;
+    @include v.orb(v.$sky, 12px);
+  }
 }
 
 .toastBody {
@@ -392,23 +435,26 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  font-weight: v.$font-weight-bold;
+  color: v.$navy;
 }
 
 .toastDetail {
-  font-size: v.$font-xs;
+  font-size: v.$font-sm;
+  font-weight: v.$font-weight-normal;
   color: v.$text-secondary;
 }
 
-.toastSuccess {
-  border-left-color: v.$success;
+.toastSuccess::before {
+  @include v.orb(v.$grass, 12px);
 }
 
-.toastError {
-  border-left-color: v.$error;
+.toastError::before {
+  @include v.orb(v.$error, 12px);
 }
 
-.toastInfo {
-  border-left-color: v.$accent-primary;
+.toastInfo::before {
+  @include v.orb(v.$sky, 12px);
 }
 
 @keyframes toastIn {
@@ -427,14 +473,13 @@
   gap: v.$spacing-sm;
   height: 100%;
   padding: v.$spacing-lg;
-  background: v.$bg-surface;
+  @include v.glass-pane;
   font-size: v.$font-sm;
   color: v.$text-secondary;
   overflow: auto;
 }
 
 .errorTitle {
-  font-family: v.$font-mono;
   font-size: v.$font-md;
   font-weight: v.$font-weight-bold;
   color: v.$error;

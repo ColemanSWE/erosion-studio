@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cx } from "./Button";
 import styles from "./ui.module.scss";
 
@@ -46,12 +46,14 @@ interface SliderProps {
 
 export function Slider({ label, value, min, max, step = 1, onChange, format }: SliderProps) {
   const id = useId();
+  const fill = max > min ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100)) : 0;
   return (
     <Field label={label} value={format ? format(value) : formatNumber(value, step)} htmlFor={id}>
       <input
         id={id}
         type="range"
         className={styles.slider}
+        style={{ "--fill": `${fill}%` } as CSSProperties}
         min={min}
         max={max}
         step={step}

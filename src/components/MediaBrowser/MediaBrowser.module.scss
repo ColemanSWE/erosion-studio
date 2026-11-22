@@ -1,55 +1,33 @@
-@use "../../styles/variables";
+@use "../../styles/variables" as v;
 
 .mediaBrowser {
   height: 100%;
-  border-right: 1px solid variables.$border-primary;
-  background-color: variables.$bg-surface;
+  @include v.glass-pane;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   position: relative;
-  transition: border-color variables.$transition-fast;
+  transition: box-shadow v.$transition-normal;
 
   &.dragOver {
-    border-right-color: variables.$accent-primary;
-    outline: 1px dashed variables.$accent-primary;
-    outline-offset: -3px;
+    box-shadow: 0 0 0 2px v.$sky, 0 0 16px rgba(v.$sky, 0.45);
   }
 }
 
 .header {
-  padding: variables.$spacing-sm variables.$spacing-md;
-  border-bottom: 1px solid variables.$border-primary;
-  display: flex;
-  align-items: center;
+  @include v.panel-header(v.$sky);
   justify-content: space-between;
-  flex-shrink: 0;
-
-  h3 {
-    font-size: variables.$font-xs;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: variables.$text-tertiary;
-    font-family: variables.$font-mono;
-  }
 }
 
 .headerActions {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
-}
-
-.mediaItem:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px variables.$accent-primary;
+  gap: v.$spacing-xs;
 }
 
 .mediaList {
   flex: 1;
   overflow-y: auto;
-  padding: variables.$spacing-xs;
+  padding: 6px;
 }
 
 .empty {
@@ -58,57 +36,74 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: variables.$text-tertiary;
   text-align: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-md;
+  gap: v.$spacing-sm;
+  padding: v.$spacing-md;
+
+  svg {
+    width: 40px;
+    height: 40px;
+    padding: 10px;
+    border-radius: 50%;
+    color: v.$white;
+    background: v.$gel-sky;
+    box-shadow: 0 0 0 1px v.$timeline-clip-border, 0 2px 8px rgba(v.$sky, 0.45);
+  }
 
   p {
-    font-size: variables.$font-md;
+    font-size: v.$font-md;
+    font-weight: v.$font-weight-bold;
+    color: v.$navy;
     line-height: 1.6;
 
     &.hint {
-      font-size: variables.$font-sm;
-      color: variables.$text-tertiary;
+      font-size: v.$font-sm;
+      font-weight: v.$font-weight-normal;
+      color: v.$text-secondary;
     }
   }
 }
 
+// Explorer-style items.
 .mediaItem {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-xs variables.$spacing-sm;
+  gap: 10px;
+  padding: 4px;
   border: 1px solid transparent;
-  background-color: transparent;
-  border-radius: variables.$radius-md;
+  border-radius: v.$radius-md;
   margin-bottom: 2px;
   cursor: pointer;
-  transition: all variables.$transition-fast;
+  transition: background v.$transition-fast, border-color v.$transition-fast;
 
   &:hover {
-    border-color: variables.$border-primary;
-    background-color: variables.$bg-elevated;
+    @include v.row-hover;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: v.$focus-ring;
   }
 
   &.selected {
-    border-color: variables.$accent-primary;
-    background-color: variables.$accent-glow;
+    @include v.row-selected;
   }
 }
 
 .thumbnail {
-  width: 36px;
-  height: 36px;
-  border: 1px solid variables.$border-primary;
-  background-color: variables.$bg-base;
+  width: 46px;
+  height: 46px;
+  border: 1px solid v.$white;
+  border-radius: v.$radius-sm;
+  background-color: v.$well;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: variables.$radius-sm;
   flex-shrink: 0;
-  color: variables.$text-tertiary;
+  color: v.$text-tertiary;
   overflow: hidden;
+  box-shadow: 0 0 0 1px v.$border-primary, v.$shadow-sm;
 
   img {
     width: 100%;
@@ -121,23 +116,22 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
 .name {
-  font-size: variables.$font-sm;
-  font-family: variables.$font-mono;
+  font-size: v.$font-md;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: variables.$text-primary;
+  color: v.$ink;
 }
 
 .duration {
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
-  font-family: variables.$font-mono;
+  font-size: v.$font-xs;
+  color: v.$text-tertiary;
+  font-variant-numeric: tabular-nums;
 }
 
 .removeButton {
@@ -151,23 +145,23 @@
   }
 
   &:hover:not(:disabled) {
-    color: variables.$error;
+    color: v.$error;
   }
 }
 
 .dropOverlay {
   position: absolute;
-  inset: 0;
-  background: variables.$accent-glow;
-  border-radius: variables.$radius-md;
+  inset: 6px;
+  background: radial-gradient(70% 50% at 50% 50%, rgba(v.$white, 0.95), rgba(220, 240, 255, 0.85));
+  border: 2px dashed v.$sky;
+  border-radius: v.$radius-lg;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: variables.$spacing-sm;
-  color: variables.$accent-primary;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-md;
+  gap: v.$spacing-sm;
+  color: v.$navy;
+  font-size: v.$font-lg;
+  font-weight: v.$font-weight-bold;
   pointer-events: none;
   z-index: 10;
-  border: 1px dashed variables.$accent-primary;
 }

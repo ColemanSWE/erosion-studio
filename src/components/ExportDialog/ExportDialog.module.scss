@@ -9,27 +9,50 @@
   padding: v.$spacing-sm 0;
 }
 
+// The Vista progress bar: green gel in a recessed track, with a moving shine.
 .progressTrack {
   width: 100%;
-  height: 4px;
-  background: v.$bg-overlay;
-  border-radius: 99px;
+  height: 16px;
+  padding: 1px;
+  background: v.$track-fill;
+  border: 1px solid v.$track-ring;
+  border-radius: v.$radius-sm;
+  box-shadow: inset 0 1px 2px rgba(20, 80, 130, 0.25);
   overflow: hidden;
 }
 
 .progressBar {
+  position: relative;
   height: 100%;
-  background: v.$accent-primary;
-  border-radius: 99px;
+  border-radius: 2px;
+  background: v.$gel-grass;
+  overflow: hidden;
   transition: width v.$transition-normal;
-  box-shadow: 0 0 8px v.$accent-glow-strong;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 30%;
+    background: linear-gradient(90deg, transparent, rgba(v.$white, 0.65), transparent);
+    animation: sweep 1.8s ease-in-out infinite;
+  }
 }
 
 .progressPercent {
-  font-family: v.$font-mono;
-  font-size: v.$font-display;
-  font-weight: v.$font-weight-bold;
-  letter-spacing: -1px;
-  color: v.$accent-primary;
+  font-family: v.$font-display;
+  font-size: v.$font-big;
+  font-weight: v.$font-weight-light;
+  color: v.$navy;
   font-variant-numeric: tabular-nums;
+}
+
+@keyframes sweep {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
 }

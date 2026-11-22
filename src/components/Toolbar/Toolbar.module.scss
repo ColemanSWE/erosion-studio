@@ -1,15 +1,18 @@
 @use "../../styles/variables" as v;
 
+// A glass command bar, like Windows 7 Explorer's.
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: v.$spacing-sm;
-  height: 40px;
+  height: 44px;
   padding: 0 v.$spacing-sm;
-  border-bottom: 1px solid v.$border-primary;
-  background-color: v.$bg-surface;
+  background: v.gel(rgba(v.$white, 0.8), rgba(v.$white, 0.45), rgba(200, 232, 255, 0.3), rgba(v.$white, 0.55));
+  border-bottom: 1px solid rgba(110, 170, 215, 0.6);
+  box-shadow: inset 0 -1px 0 rgba(v.$white, 0.7), 0 1px 6px rgba(30, 90, 140, 0.1);
   flex-shrink: 0;
+  z-index: 1;
 }
 
 .left,
@@ -17,84 +20,76 @@
 .right {
   display: flex;
   align-items: center;
-  gap: v.$spacing-xs;
+  gap: 2px;
   flex: 1;
 }
 
 .center {
   justify-content: center;
-  gap: 2px;
 }
 
 .right {
   justify-content: flex-end;
+  gap: v.$spacing-xs;
 }
 
 .logo {
-  padding: 0 v.$spacing-xs;
-  font-family: v.$font-mono;
-  font-size: v.$font-lg;
-  font-weight: v.$font-weight-bold;
-  letter-spacing: v.$letter-spacing-caps;
-  text-transform: uppercase;
-  color: v.$text-primary;
+  padding: 0 v.$spacing-sm 0 v.$spacing-xs;
+  font-family: v.$font-display;
+  font-size: v.$font-xl;
+  font-weight: v.$font-weight-light;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: v.$navy;
+  text-shadow: v.$text-glow, 0 0 10px rgba(v.$white, 0.9);
   user-select: none;
 }
 
 .projectIcon {
   color: v.$text-tertiary;
   flex-shrink: 0;
+  margin-left: v.$spacing-xs;
 }
 
 .projectNameWrapper {
   display: flex;
   align-items: center;
-  gap: v.$spacing-xs;
+  gap: v.$spacing-sm;
 }
 
 .projectName {
-  max-width: 180px;
-  padding: 1px 3px;
+  max-width: 220px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
   border-radius: v.$radius-sm;
-  font-family: v.$font-mono;
   font-size: v.$font-md;
   color: v.$text-secondary;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color v.$transition-fast, background-color v.$transition-fast;
+  transition: color v.$transition-fast, background v.$transition-fast, border-color v.$transition-fast;
 
   &:hover {
-    color: v.$text-primary;
-    background-color: v.$bg-elevated;
+    color: v.$ink;
+    @include v.row-hover;
   }
 }
 
 .projectNameInput {
-  width: 180px;
-  padding: 1px v.$spacing-xs;
-  border: 1px solid v.$accent-primary;
-  border-radius: v.$radius-sm;
-  background: v.$bg-base;
-  font-family: v.$font-mono;
+  width: 220px;
+  padding: 3px 8px;
   font-size: v.$font-md;
-  color: v.$text-primary;
-  box-shadow: 0 0 0 2px v.$accent-glow;
 }
 
 .dirtyDot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: v.$accent-primary;
-  opacity: 0.85;
-  flex-shrink: 0;
+  @include v.orb(v.$amber, 9px);
 }
 
 .divider {
   width: 1px;
-  height: 18px;
-  margin: 0 v.$spacing-xs;
-  background: v.$border-primary;
+  height: 22px;
+  margin: 0 v.$spacing-sm;
+  background: linear-gradient(180deg, transparent, rgba(110, 170, 215, 0.6), transparent);
+  box-shadow: 1px 0 0 rgba(v.$white, 0.7);
   flex-shrink: 0;
 }

@@ -373,7 +373,7 @@ export function OverlayTrack({
   );
   const safeMinWidth = isFinite(minWidth) ? minWidth : 0;
   const totalWidth = Math.max(maxEnd * zoom + 120, safeMinWidth, 400);
-  const getTrackColor = (trackIndex: number) => `hsl(${320 - trackIndex * 30}, 60%, 45%)`;
+  const getTrackColor = (trackIndex: number) => `hsl(${300 - trackIndex * 34}, 60%, 50%)`;
 
   return (
     <div
@@ -394,8 +394,8 @@ export function OverlayTrack({
             top: idx * rowHeight,
             width: "100%",
             height: rowHeight,
-            borderBottom: "1px solid rgba(255,255,255,0.05)",
-            background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)",
+            borderBottom: "1px solid var(--border-secondary)",
+            background: idx % 2 === 0 ? "transparent" : "rgba(110,170,215,0.06)",
             pointerEvents: "none",
           }}
         />
@@ -428,9 +428,10 @@ export function OverlayTrack({
               width,
               top,
               height: rowHeight - 4,
-              background: overlay.isEffectZone ? "transparent" : color,
+              "--clip-tint": overlay.isEffectZone ? "transparent" : color,
+              "--clip-accent": color,
               border: overlay.isEffectZone ? `1px dashed ${color}` : undefined,
-            }}
+            } as React.CSSProperties}
             tabIndex={0}
             onMouseDown={(e) => startOverlayDrag(e, overlay.id)}
             onContextMenu={(e) => openContextMenu(e, overlay.id)}
@@ -491,7 +492,7 @@ export function OverlayTrack({
             height: rowHeight,
           }}
         >
-          <span style={{ fontFamily: "monospace", fontSize: 10, color: "#444" }}>
+          <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
             Add overlays from the toolbar or drag media here
           </span>
         </div>

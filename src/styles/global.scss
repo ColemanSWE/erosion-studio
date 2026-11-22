@@ -1,4 +1,25 @@
-@use "variables";
+@use "variables" as v;
+
+// Tokens exposed to inline styles and canvas drawing (e.g. TimelineRuler).
+:root {
+  color-scheme: light;
+  --ink: #{v.$ink};
+  --bg-base: #{v.$bg-base};
+  --bg-elevated: #{v.$bg-elevated};
+  --border-secondary: #{v.$border-secondary};
+  --border-primary: #{v.$border-primary};
+  --border-strong: #{v.$border-strong};
+  --text-primary: #{v.$text-primary};
+  --text-secondary: #{v.$text-secondary};
+  --text-tertiary: #{v.$text-tertiary};
+  --hot: #{v.$coral};
+  --hot-dim: #{rgba(v.$coral, 0.3)};
+  --cool: #{v.$sky};
+  --keyframe: #{v.$timeline-keyframe};
+  --keyframe-dim: #{rgba(v.$timeline-keyframe, 0.45)};
+  --keyframe-text: #{v.$keyframe-text};
+  --error: #{v.$error};
+}
 
 * {
   box-sizing: border-box;
@@ -13,13 +34,19 @@ body {
 }
 
 body {
-  font-family: variables.$font-primary;
-  background-color: variables.$bg-base;
-  color: variables.$text-primary;
-  font-size: variables.$font-base;
+  font-family: v.$font-primary;
+  background: v.$app-backdrop;
+  background-color: v.$bg-base;
+  color: v.$text-primary;
+  font-size: v.$font-base;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(v.$sky, 0.35);
+  color: v.$ink;
 }
 
 #root {
@@ -30,7 +57,12 @@ body {
 
 code,
 pre {
-  font-family: variables.$font-mono;
+  font-family: v.$font-mono;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: v.$focus-ring;
 }
 
 button {
@@ -53,15 +85,18 @@ textarea {
   font-family: inherit;
   font-size: inherit;
   color: inherit;
-  background-color: variables.$bg-elevated;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-md;
-  padding: variables.$spacing-sm;
+  @include v.field-inset;
+  padding: v.$spacing-sm;
+  transition: border-color v.$transition-fast, box-shadow v.$transition-fast;
+
+  &:hover:not(:disabled) {
+    border-color: v.$sky;
+  }
 
   &:focus {
     outline: none;
-    border-color: variables.$accent-primary;
-    box-shadow: 0 0 0 2px variables.$accent-glow;
+    border-color: v.$sky-deep;
+    box-shadow: inset 0 1px 2px rgba(20, 80, 130, 0.15), v.$focus-ring;
   }
 
   &:disabled {
@@ -70,9 +105,16 @@ textarea {
   }
 }
 
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  accent-color: v.$sky-deep;
+  box-shadow: none;
+}
+
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
@@ -80,32 +122,40 @@ textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: variables.$border-primary;
-  border-radius: 99px;
+  background: v.$gel-button;
+  border: 3px solid transparent;
+  border-radius: v.$radius-pill;
+  background-clip: padding-box;
+  box-shadow: inset 0 0 0 1px rgba(110, 170, 215, 0.7);
 
   &:hover {
-    background: variables.$accent-primary;
+    background: v.$gel-sky;
+    background-clip: padding-box;
   }
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 canvas {
   display: block;
 }
 
-// react-resizable-panels handle styling
+// react-resizable-panels: separators are the gaps between glass panes.
 [data-separator] {
   position: relative;
-  background: variables.$border-secondary;
-  transition: background variables.$transition-fast;
+  background: transparent;
   flex-shrink: 0;
 
   &::after {
     content: "";
     position: absolute;
-    inset: 0;
     opacity: 0;
-    background: variables.$accent-primary;
-    transition: opacity variables.$transition-fast;
+    border-radius: v.$radius-pill;
+    background: v.$sky;
+    box-shadow: 0 0 8px rgba(v.$sky, 0.8);
+    transition: opacity v.$transition-fast;
   }
 
   &:hover::after,
@@ -115,23 +165,34 @@ canvas {
 }
 
 [data-separator][aria-orientation="vertical"] {
-  width: 3px;
+  width: v.$pane-gap;
   cursor: col-resize;
 
   &::after {
-    left: -5px;
-    right: -5px;
-    width: auto;
+    top: 30%;
+    bottom: 30%;
+    left: 2px;
+    width: 2px;
   }
 }
 
 [data-separator][aria-orientation="horizontal"] {
-  height: 3px;
+  height: v.$pane-gap;
   cursor: row-resize;
 
   &::after {
-    top: -5px;
-    bottom: -5px;
-    height: auto;
+    left: 40%;
+    right: 40%;
+    top: 2px;
+    height: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
   }
 }

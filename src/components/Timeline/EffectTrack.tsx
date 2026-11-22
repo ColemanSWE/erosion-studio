@@ -225,12 +225,12 @@ export function EffectTrack({
             style={{
               position: "relative",
               height: 24,
-              borderBottom: "1px solid #222",
+              borderBottom: "1px solid var(--border-secondary)",
               display: "flex",
               alignItems: "center",
               paddingLeft: 8,
               gap: 6,
-              background: "#0a0a0a",
+              background: "var(--bg-base)",
             }}
           >
             {numericParams
@@ -242,9 +242,9 @@ export function EffectTrack({
                   style={{
                     fontFamily: "monospace",
                     fontSize: 9,
-                    color: "#ffaa00",
+                    color: "var(--keyframe-text)",
                     background: "transparent",
-                    border: "1px solid #ffaa0044",
+                    border: "1px solid var(--keyframe-dim)",
                     padding: "1px 6px",
                     cursor: "pointer",
                   }}
@@ -413,7 +413,7 @@ function KeyframeMarker({
           style={{ left: 10, top: -50 }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div style={{ fontSize: 9, color: "#999", marginBottom: 2 }}>
+          <div style={{ fontSize: 9, color: "var(--text-tertiary)", marginBottom: 2 }}>
             {label} @ {kf.time.toFixed(2)}s
           </div>
           <input
@@ -429,7 +429,7 @@ function KeyframeMarker({
             onClick={onRemove}
             style={{
               fontSize: 9,
-              color: "#ff4444",
+              color: "var(--error)",
               background: "transparent",
               border: "none",
               cursor: "pointer",

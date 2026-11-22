@@ -125,136 +125,158 @@ export default function WelcomeModal({ onClose }: WelcomeModalProps) {
       <div className={styles.dialog} role="dialog" aria-modal="true" aria-label="Welcome to Erosion Studio">
         <div className={styles.header}>
           <div className={styles.headerLeft}>
-            <span className={styles.logo}>Erosion</span>
-            <span className={styles.tagline}>Studio</span>
+            <span className={styles.windowOrb} aria-hidden />
+            <span className={styles.windowTitle}>Welcome to Erosion Studio</span>
           </div>
           <button type="button" className={styles.closeBtn} onClick={onClose} title="Close" aria-label="Close">
             <X size={12} />
           </button>
         </div>
 
-        <div className={styles.body}>
-          {isSetup && (
-            <div className={styles.setupSection}>
-              <p className={styles.setupTitle}>Choose a projects folder</p>
-              <p className={styles.setupDescription}>
-                Pick a folder where your Erosion projects will be saved by default.
-                You can always save projects anywhere else too.
-              </p>
-              <div className={styles.setupActions}>
-                <button
-                  className={`${styles.btn} ${styles.primary}`}
-                  onClick={handleSelectDirectory}
-                >
-                  <Folder size={12} />
-                  Choose Folder
-                </button>
-              </div>
+        <div className={styles.content}>
+          <div className={styles.hero}>
+            <div className={styles.ribbons} aria-hidden>
+              <span />
+              <span />
             </div>
-          )}
+            <div className={styles.bubbles} aria-hidden>
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+            <div className={styles.heroText}>
+              <h1 className={styles.logo}>
+                Erosion <span className={styles.logoStudio}>Studio</span>
+              </h1>
+              <p className={styles.heroTagline}>Break the image. Keep the good parts.</p>
+            </div>
+          </div>
 
-          {namingNew ? (
-            <div className={styles.newProjectForm}>
-              <FilePlus size={16} className={styles.actionIcon} />
-              <input
-                ref={nameInputRef}
-                className={styles.newProjectInput}
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreateNew();
-                  if (e.key === "Escape") handleCancelNew();
-                }}
-                placeholder="Project name"
-                autoFocus
-              />
-              <button
-                className={`${styles.btn} ${styles.primary}`}
-                onClick={handleCreateNew}
-                title="Create project"
-              >
-                <ArrowRight size={13} />
-                Create
-              </button>
-              <button
-                className={`${styles.btn} ${styles.secondary}`}
-                onClick={handleCancelNew}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <div className={styles.actions}>
-              <button className={styles.actionBtn} onClick={handleNewProjectClick}>
-                <FilePlus size={18} className={styles.actionIcon} />
-                <span className={styles.actionLabel}>New Project</span>
-                <span className={styles.actionDesc}>Start with a blank canvas</span>
-              </button>
-              <button className={styles.actionBtn} onClick={handleOpenFile}>
-                <FolderOpen size={18} className={styles.actionIcon} />
-                <span className={styles.actionLabel}>Open Project</span>
-                <span className={styles.actionDesc}>Open an .eron file from disk</span>
-              </button>
-            </div>
-          )}
-
-          <div className={styles.recentSection}>
-            <span className={styles.sectionLabel}>Recent Projects</span>
-            {recentProjects.length === 0 ? (
-              <p className={styles.emptyRecent}>No recent projects</p>
-            ) : (
-              <div className={styles.recentList}>
-                {recentProjects.map((project) => {
-                  const missing = missingPaths.has(project.path);
-                  return (
-                    <div
-                      key={project.path}
-                      className={`${styles.recentItem} ${missing ? styles.missing : ""}`}
-                      onClick={() => handleOpenRecent(project.path)}
-                      title={missing ? "File not found" : project.path}
-                    >
-                      <FileText size={14} style={{ flexShrink: 0, color: "var(--text-tertiary)" }} />
-                      <div className={styles.recentInfo}>
-                        <div className={styles.recentName}>{project.name}</div>
-                        <div className={styles.recentMeta}>
-                          <span className={styles.recentPath}>
-                            {shortenPath(project.path)}
-                          </span>
-                          <span className={styles.recentDate}>
-                            {formatRelativeDate(project.lastOpened)}
-                          </span>
-                        </div>
-                      </div>
-                      {missing && (
-                        <span className={styles.missingBadge}>missing</span>
-                      )}
-                      <button
-                        className={styles.removeBtn}
-                        onClick={(e) => handleRemoveRecent(e, project.path)}
-                        title="Remove from recents"
-                      >
-                        <X size={10} />
-                      </button>
-                    </div>
-                  );
-                })}
+          <div className={styles.body}>
+            {isSetup && (
+              <div className={styles.setupSection}>
+                <p className={styles.setupTitle}>Choose a projects folder</p>
+                <p className={styles.setupDescription}>
+                  Pick a folder where your Erosion projects will be saved by default.
+                  You can always save projects anywhere else too.
+                </p>
+                <div className={styles.setupActions}>
+                  <button
+                    className={`${styles.btn} ${styles.primary}`}
+                    onClick={handleSelectDirectory}
+                  >
+                    <Folder size={12} />
+                    Choose Folder
+                  </button>
+                </div>
               </div>
             )}
-          </div>
-        </div>
 
-        <div className={styles.footer}>
-          <button className={styles.changeDir} onClick={handleSelectDirectory}>
-            <Folder size={11} />
-            {projectsDirectory
-              ? "Change projects folder"
-              : "Set projects folder"}
-          </button>
-          {projectsDirectory && (
-            <span className={styles.dirLabel} title={projectsDirectory}>
-              {shortenPath(projectsDirectory)}
-            </span>
-          )}
+            {namingNew ? (
+              <div className={styles.newProjectForm}>
+                <FilePlus size={16} className={styles.actionIcon} />
+                <input
+                  ref={nameInputRef}
+                  className={styles.newProjectInput}
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreateNew();
+                    if (e.key === "Escape") handleCancelNew();
+                  }}
+                  placeholder="Project name"
+                  autoFocus
+                />
+                <button
+                  className={`${styles.btn} ${styles.primary}`}
+                  onClick={handleCreateNew}
+                  title="Create project"
+                >
+                  <ArrowRight size={13} />
+                  Create
+                </button>
+                <button
+                  className={`${styles.btn} ${styles.secondary}`}
+                  onClick={handleCancelNew}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className={styles.actions}>
+                <button className={styles.actionBtn} onClick={handleNewProjectClick}>
+                  <FilePlus size={18} className={styles.actionIcon} />
+                  <span className={styles.actionLabel}>New Project</span>
+                  <span className={styles.actionDesc}>Start with a blank canvas</span>
+                </button>
+                <button className={styles.actionBtn} onClick={handleOpenFile}>
+                  <FolderOpen size={18} className={styles.actionIcon} />
+                  <span className={styles.actionLabel}>Open Project</span>
+                  <span className={styles.actionDesc}>Open an .eron file from disk</span>
+                </button>
+              </div>
+            )}
+
+            <div className={styles.recentSection}>
+              <span className={styles.sectionLabel}>Recent Projects</span>
+              {recentProjects.length === 0 ? (
+                <p className={styles.emptyRecent}>No recent projects</p>
+              ) : (
+                <div className={styles.recentList}>
+                  {recentProjects.map((project) => {
+                    const missing = missingPaths.has(project.path);
+                    return (
+                      <div
+                        key={project.path}
+                        className={`${styles.recentItem} ${missing ? styles.missing : ""}`}
+                        onClick={() => handleOpenRecent(project.path)}
+                        title={missing ? "File not found" : project.path}
+                      >
+                        <FileText size={14} className={styles.recentIcon} />
+                        <div className={styles.recentInfo}>
+                          <div className={styles.recentName}>{project.name}</div>
+                          <div className={styles.recentMeta}>
+                            <span className={styles.recentPath}>
+                              {shortenPath(project.path)}
+                            </span>
+                            <span className={styles.recentDate}>
+                              {formatRelativeDate(project.lastOpened)}
+                            </span>
+                          </div>
+                        </div>
+                        {missing && (
+                          <span className={styles.missingBadge}>missing</span>
+                        )}
+                        <button
+                          className={styles.removeBtn}
+                          onClick={(e) => handleRemoveRecent(e, project.path)}
+                          title="Remove from recents"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.footer}>
+            <button className={styles.changeDir} onClick={handleSelectDirectory}>
+              <Folder size={11} />
+              {projectsDirectory
+                ? "Change projects folder"
+                : "Set projects folder"}
+            </button>
+            {projectsDirectory && (
+              <span className={styles.dirLabel} title={projectsDirectory}>
+                {shortenPath(projectsDirectory)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -57,8 +57,13 @@ export function TimelineRuler({
     const startSec = Math.floor(scrollLeft / zoom / minorInterval) * minorInterval;
     const endSec = (scrollLeft + w) / zoom + minorInterval;
 
-    ctx.strokeStyle = "#2a2a36";
-    ctx.fillStyle = "#555566";
+    // Colors come from the design tokens exposed on :root (global.scss).
+    const css = getComputedStyle(document.documentElement);
+    const minorTick = css.getPropertyValue("--border-primary").trim() || "#2e2d2c";
+    const majorTick = css.getPropertyValue("--border-strong").trim() || "#45443f";
+    const labelColor = css.getPropertyValue("--text-secondary").trim() || "#9a9996";
+    ctx.strokeStyle = minorTick;
+    ctx.fillStyle = labelColor;
     ctx.font = `9px "JetBrains Mono", monospace`;
     ctx.textBaseline = "top";
 
@@ -68,15 +73,15 @@ export function TimelineRuler({
 
       const isMajor = Math.abs(t % majorInterval) < 0.001 || Math.abs(t % majorInterval - majorInterval) < 0.001;
       if (isMajor) {
-        ctx.strokeStyle = "#3a3a48";
+        ctx.strokeStyle = majorTick;
         ctx.beginPath();
         ctx.moveTo(x, h);
         ctx.lineTo(x, h * 0.3);
         ctx.stroke();
-        ctx.fillStyle = "#888899";
+        ctx.fillStyle = labelColor;
         ctx.fillText(formatTime(t), x + 2, 2);
       } else {
-        ctx.strokeStyle = "#2a2a36";
+        ctx.strokeStyle = minorTick;
         ctx.beginPath();
         ctx.moveTo(x, h);
         ctx.lineTo(x, h * 0.65);

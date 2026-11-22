@@ -1,82 +1,90 @@
-@use "../../styles/variables";
+@use "../../styles/variables" as v;
 
 .effectsPanel {
   height: 100%;
-  border-left: 1px solid variables.$border-primary;
-  background-color: variables.$bg-surface;
+  @include v.glass-pane;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .header {
-  padding: variables.$spacing-sm variables.$spacing-md;
-  border-bottom: 1px solid variables.$border-primary;
-  flex-shrink: 0;
-
-  h3 {
-    font-size: variables.$font-xs;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: variables.$text-tertiary;
-    font-family: variables.$font-mono;
-  }
+  @include v.panel-header(v.$grass);
 }
 
 .applyingTo {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
-  padding: variables.$spacing-xs variables.$spacing-sm;
-  border-bottom: 1px solid variables.$border-secondary;
-  background-color: variables.$bg-base;
+  gap: 6px;
+  padding: 8px 12px 0;
   flex-shrink: 0;
 }
 
 .applyingToLabel {
-  font-size: variables.$font-xs;
-  font-family: variables.$font-mono;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: variables.$text-tertiary;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
 }
 
 .applyingToTarget {
-  font-size: variables.$font-xs;
-  font-family: variables.$font-mono;
-  font-weight: 600;
-  color: variables.$accent-primary;
+  padding: 0 8px;
+  border-radius: v.$radius-pill;
+  font-size: v.$font-xs;
+  font-weight: v.$font-weight-bold;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: v.$white;
+  text-shadow: 0 1px 1px rgba(0, 50, 90, 0.5);
+  background: v.$gel-sky;
+  border: 1px solid v.$timeline-clip-border;
 }
 
+// A Windows 7 search box: rounded, with the icon on the right side feel.
 .searchContainer {
   display: flex;
   align-items: center;
-  padding: variables.$spacing-xs variables.$spacing-sm;
-  border-bottom: 1px solid variables.$border-primary;
-  background-color: variables.$bg-elevated;
-  gap: variables.$spacing-xs;
+  margin: v.$spacing-sm;
+  padding: 0 10px;
+  height: 28px;
+  @include v.field-inset;
+  gap: v.$spacing-sm;
   flex-shrink: 0;
+  transition: border-color v.$transition-fast, box-shadow v.$transition-fast;
+
+  &:focus-within {
+    border-color: v.$sky-deep;
+    box-shadow: inset 0 1px 2px rgba(20, 80, 130, 0.15), v.$focus-ring;
+
+    .searchIcon {
+      color: v.$sky-deep;
+    }
+  }
 }
 
 .searchIcon {
-  color: variables.$text-tertiary;
+  color: v.$text-tertiary;
   flex-shrink: 0;
 }
 
 .searchInput {
   flex: 1;
+  height: 100%;
+  padding: 0;
   background: transparent;
   border: none;
-  color: variables.$text-primary;
-  font-size: variables.$font-md;
+  box-shadow: none;
+  color: v.$ink;
+  font-size: v.$font-md;
   outline: none;
   font-family: inherit;
 
+  &:hover:not(:disabled),
+  &:focus {
+    border: none;
+    box-shadow: none;
+  }
+
   &::placeholder {
-    color: variables.$text-tertiary;
+    color: v.$text-tertiary;
+    font-style: italic;
   }
 }
 
@@ -87,35 +95,39 @@
 }
 
 .categories {
-  border-bottom: 1px solid variables.$border-primary;
+  padding: 0 6px;
 }
 
 .category {
-  border-bottom: 1px solid variables.$border-secondary;
-
-  &:last-child {
-    border-bottom: none;
-  }
+  margin-bottom: 1px;
 }
 
+// Navigation-pane style group headers.
 .categoryHeader {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
-  padding: variables.$spacing-xs variables.$spacing-sm;
-  background-color: transparent;
-  border: none;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px 0 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: v.$radius-sm;
   text-align: left;
-  font-family: variables.$font-mono;
-  font-size: variables.$font-sm;
-  font-weight: 600;
-  color: variables.$text-secondary;
-  transition: color variables.$transition-fast, background-color variables.$transition-fast;
+  font-size: v.$font-md;
+  color: v.$navy;
+  transition: background v.$transition-fast, border-color v.$transition-fast;
+
+  svg {
+    color: v.$text-tertiary;
+  }
 
   &:hover {
-    background-color: variables.$bg-elevated;
-    color: variables.$text-primary;
+    @include v.row-hover;
+
+    svg {
+      color: v.$sky-deep;
+    }
   }
 
   span:first-of-type {
@@ -124,80 +136,84 @@
   }
 
   .count {
-    color: variables.$text-tertiary;
-    font-size: variables.$font-xs;
+    color: v.$text-tertiary;
+    font-size: v.$font-xs;
   }
 }
 
 .effectList {
-  padding: variables.$spacing-xs;
-  background-color: variables.$bg-base;
+  padding: 1px 0 4px 18px;
 }
 
 .effectButton {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
-  padding: 3px variables.$spacing-sm;
-  background-color: transparent;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  background: transparent;
   border: 1px solid transparent;
-  border-radius: variables.$radius-sm;
+  border-radius: v.$radius-sm;
   text-align: left;
-  font-size: variables.$font-sm;
-  color: variables.$text-secondary;
-  margin-bottom: 1px;
-  transition: all variables.$transition-fast;
+  font-size: v.$font-md;
+  color: v.$ink;
+  transition: background v.$transition-fast, border-color v.$transition-fast;
+
+  svg {
+    color: v.$grass;
+    opacity: 0;
+    transition: opacity v.$transition-fast;
+  }
 
   &:hover:not(:disabled) {
-    background-color: variables.$bg-elevated;
-    border-color: variables.$border-primary;
-    color: variables.$text-primary;
+    @include v.row-hover;
+
+    svg {
+      opacity: 1;
+    }
+  }
+
+  &:active:not(:disabled) {
+    @include v.row-selected;
   }
 
   &:disabled {
-    opacity: 0.3;
+    opacity: 0.35;
     cursor: not-allowed;
   }
 }
 
 .activeEffects {
-  border-top: 1px solid variables.$border-primary;
   display: flex;
   flex-direction: column;
+  margin-top: v.$spacing-xs;
 }
 
 .activeHeader {
-  display: flex;
-  align-items: center;
+  @include v.panel-header(v.$amber);
   justify-content: space-between;
-  padding: variables.$spacing-sm variables.$spacing-md;
-  border-bottom: 1px solid variables.$border-primary;
-  background-color: variables.$bg-elevated;
-  flex-shrink: 0;
-
-  h4 {
-    font-size: variables.$font-xs;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: variables.$text-tertiary;
-    font-family: variables.$font-mono;
-  }
+  border-top: 1px solid v.$border-primary;
+  padding-right: 12px;
 
   .count {
-    color: variables.$accent-primary;
-    font-size: variables.$font-xs;
-    font-family: variables.$font-mono;
-    font-weight: 600;
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: v.$radius-pill;
+    text-align: center;
+    color: v.$white;
+    background: v.$gel-grass;
+    border: 1px solid v.$grass-deep;
+    text-shadow: 0 1px 1px rgba(20, 70, 0, 0.5);
+    font-size: v.$font-xs;
+    font-weight: v.$font-weight-bold;
   }
 }
 
 .actionButtons {
   display: flex;
-  gap: 1px;
-  padding: variables.$spacing-xs;
-  border-bottom: 1px solid variables.$border-secondary;
+  gap: v.$spacing-sm;
+  padding: v.$spacing-sm;
   flex-shrink: 0;
 }
 
@@ -206,42 +222,43 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: variables.$spacing-xs;
-  padding: variables.$spacing-xs;
-  background-color: variables.$bg-elevated;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-sm;
-  font-size: variables.$font-sm;
-  color: variables.$text-secondary;
-  font-family: variables.$font-mono;
-  transition: all variables.$transition-fast;
+  gap: 6px;
+  height: v.$control-height-md;
+  @include v.button-gel;
+  font-size: v.$font-md;
+  transition: background v.$transition-fast, border-color v.$transition-fast, box-shadow v.$transition-normal;
 
-  &:hover {
-    background-color: variables.$bg-overlay;
-    border-color: variables.$accent-primary;
-    color: variables.$accent-primary;
+  svg {
+    color: v.$sky-deep;
   }
 }
 
 .effectStack {
-  padding: variables.$spacing-xs;
+  padding: 0 v.$spacing-sm v.$spacing-sm;
 }
 
+// Effect group: a white card with a glass title strip.
 .regionGroup {
-  margin-bottom: variables.$spacing-xs;
-  border: 1px solid transparent;
-  border-radius: variables.$radius-md;
+  margin-bottom: v.$spacing-sm;
+  border: 1px solid v.$border-primary;
+  border-radius: v.$radius-md;
+  background: v.$bg-surface;
   overflow: hidden;
   cursor: pointer;
-  transition: all variables.$transition-fast;
+  transition: border-color v.$transition-fast, box-shadow v.$transition-normal;
 
   &:hover {
-    border-color: variables.$border-primary;
+    border-color: v.$border-strong;
   }
 
   &.active {
-    border-color: variables.$accent-primary;
-    box-shadow: 0 0 0 1px variables.$accent-glow;
+    border-color: v.$select-border;
+    box-shadow: 0 0 0 1px v.$select-border, 0 0 10px rgba(v.$sky, 0.25);
+
+    .regionHeader {
+      background: v.$select-fill;
+      color: v.$navy;
+    }
   }
 }
 
@@ -249,32 +266,34 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: variables.$spacing-xs variables.$spacing-sm;
-  font-size: variables.$font-xs;
-  font-family: variables.$font-mono;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: variables.$text-tertiary;
-  background-color: variables.$bg-elevated;
+  height: 26px;
+  padding: 0 10px;
+  font-size: v.$font-sm;
+  font-weight: v.$font-weight-bold;
+  color: v.$text-secondary;
+  background: v.$glass-shine;
+  border-bottom: 1px solid v.$border-secondary;
+  text-shadow: v.$text-glow;
+  transition: background v.$transition-fast;
 }
 
 .regionHeaderLeft {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
+  gap: 6px;
 }
 
 .regionHeaderRight {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
+  gap: v.$spacing-xs;
 }
 
 .colorDot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
+  box-shadow: inset 0 2px 2px rgba(v.$white, 0.7), 0 0 0 1px rgba(16, 38, 59, 0.25);
   flex-shrink: 0;
 }
 
@@ -282,14 +301,14 @@
   padding: 2px;
   background: none;
   border: none;
-  color: variables.$text-tertiary;
+  color: v.$text-tertiary;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color variables.$transition-fast;
+  transition: color v.$transition-fast;
 
   &:hover {
-    color: variables.$error;
+    color: v.$error;
   }
 }
 
@@ -298,69 +317,74 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: variables.$spacing-lg variables.$spacing-md;
-  color: variables.$text-tertiary;
+  padding: v.$spacing-lg v.$spacing-md;
+  color: v.$text-tertiary;
   text-align: center;
-  gap: variables.$spacing-xs;
+  gap: v.$spacing-xs;
 
   p {
-    font-size: variables.$font-md;
+    font-size: v.$font-md;
 
     &.hint {
-      font-size: variables.$font-xs;
+      font-size: v.$font-xs;
     }
   }
 }
 
 .effectCard {
-  border: 1px solid variables.$border-secondary;
-  background-color: variables.$bg-surface;
-  border-radius: variables.$radius-sm;
-  margin-bottom: 2px;
+  border-top: 1px solid v.$border-secondary;
+  cursor: default;
+  transition: background v.$transition-fast;
 
-  &:last-child {
-    margin-bottom: 0;
+  &:first-of-type {
+    border-top: none;
+  }
+
+  &:hover {
+    background: v.$hover-fill;
   }
 }
 
 .effectCardHeader {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px variables.$spacing-xs;
+  gap: 6px;
+  height: 30px;
+  padding: 0 v.$spacing-sm 0 2px;
 
   input[type="checkbox"] {
-    width: 12px;
-    height: 12px;
+    width: 13px;
+    height: 13px;
     margin: 0;
-    accent-color: variables.$accent-primary;
   }
 
   span {
     flex: 1;
-    font-size: variables.$font-sm;
-    font-family: variables.$font-mono;
-    color: variables.$text-primary;
+    font-size: v.$font-md;
+    color: v.$ink;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   button {
     padding: 0;
     background: none;
     border: none;
-    color: variables.$text-tertiary;
+    color: v.$text-tertiary;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color variables.$transition-fast;
+    transition: color v.$transition-fast;
 
     &:hover {
-      color: variables.$text-primary;
+      color: v.$sky-deep;
     }
   }
 
   .dragHandle {
     cursor: grab;
-    color: variables.$text-tertiary;
+    opacity: 0.7;
 
     &:active {
       cursor: grabbing;
@@ -372,61 +396,63 @@
   }
 
   .removeButton {
-    color: variables.$text-tertiary;
+    opacity: 0;
 
     &:hover {
-      color: variables.$error;
+      color: v.$error;
     }
+  }
+
+  &:hover .removeButton,
+  .removeButton:focus-visible {
+    opacity: 1;
   }
 }
 
 .overlayPropsSection {
-  border-bottom: 1px solid variables.$border-secondary;
-  margin-bottom: variables.$spacing-xs;
+  margin: 0 v.$spacing-sm v.$spacing-sm;
+  border: 1px solid v.$border-primary;
+  border-radius: v.$radius-md;
+  background: v.$bg-surface;
+  overflow: hidden;
 }
 
 .overlayPropsHeader {
-  padding: variables.$spacing-xs variables.$spacing-sm;
-  background-color: variables.$bg-elevated;
+  padding: 5px 10px;
+  background: v.$glass-shine;
+  border-bottom: 1px solid v.$border-secondary;
 
   h5 {
-    font-size: variables.$font-xs;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: variables.$text-tertiary;
-    font-family: variables.$font-mono;
+    font-size: v.$font-sm;
+    font-weight: v.$font-weight-bold;
+    color: v.$navy;
+    text-shadow: v.$text-glow;
   }
 }
 
 .overlayPropsBody {
-  padding: variables.$spacing-xs variables.$spacing-sm;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: v.$spacing-sm 10px;
 }
 
 .paramRow {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  margin-bottom: variables.$spacing-xs;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
+  gap: v.$spacing-sm;
 }
 
 .paramLabel {
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
-  font-family: variables.$font-mono;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  min-width: 40px;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
+  min-width: 44px;
 }
 
 .textInput {
   flex: 1;
-  font-size: variables.$font-sm;
-  padding: 3px variables.$spacing-xs;
+  font-size: v.$font-sm;
+  padding: 4px 6px;
   height: auto;
 }
 
@@ -434,122 +460,116 @@
   width: 32px;
   height: 24px;
   padding: 0;
-  border: 1px solid variables.$border-primary;
-  background: none;
   cursor: pointer;
-  border-radius: variables.$radius-sm;
 }
 
 .checkboxLabel {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-xs;
-  font-size: variables.$font-sm;
-  color: variables.$text-secondary;
+  gap: 6px;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
   cursor: pointer;
 
   input[type="checkbox"] {
-    accent-color: variables.$accent-primary;
-    width: 12px;
-    height: 12px;
+    width: 13px;
+    height: 13px;
+  }
+
+  &:hover {
+    color: v.$ink;
   }
 }
 
 .fontSelect {
   flex: 1;
-  font-size: variables.$font-sm;
-  padding: 3px variables.$spacing-xs;
+  font-size: v.$font-sm;
+  padding: 4px 6px;
   height: auto;
-  background-color: variables.$bg-elevated;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-sm;
-  color: variables.$text-primary;
   cursor: pointer;
-
-  &:focus {
-    outline: none;
-    border-color: variables.$accent-primary;
-  }
 }
 
 .sizeSlider {
   flex: 1;
-  height: 3px;
+  height: 6px;
   padding: 0;
-  background-color: variables.$border-primary;
   border: none;
-  border-radius: 99px;
+  border-radius: v.$radius-pill;
+  background: v.$track-fill;
+  box-shadow: inset 0 1px 2px rgba(20, 80, 130, 0.3), 0 0 0 1px v.$track-ring;
   appearance: none;
   cursor: pointer;
 
-  &::-webkit-slider-thumb {
-    appearance: none;
-    width: 10px;
-    height: 10px;
-    background-color: variables.$accent-primary;
+  &:hover:not(:disabled),
+  &:focus {
     border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 0 4px variables.$accent-glow;
+    box-shadow: inset 0 1px 2px rgba(20, 80, 130, 0.3), 0 0 0 1px v.$track-ring;
   }
 
-  &::-moz-range-thumb {
-    width: 10px;
-    height: 10px;
-    background-color: variables.$accent-primary;
-    border: none;
+  &::-webkit-slider-thumb {
+    appearance: none;
+    width: 15px;
+    height: 15px;
     border-radius: 50%;
+    border: 1px solid v.$knob-border;
+    background: v.$knob-fill;
+    box-shadow: 0 1px 3px rgba(20, 80, 130, 0.35);
     cursor: pointer;
+  }
+
+  &:hover::-webkit-slider-thumb {
+    border-color: v.$sky-deep;
+    box-shadow: 0 0 0 3px rgba(v.$sky, 0.25), 0 0 8px rgba(v.$sky, 0.6);
   }
 }
 
 .sliderValue {
-  font-size: variables.$font-xs;
-  font-family: variables.$font-mono;
-  color: variables.$accent-primary;
+  font-size: v.$font-sm;
+  font-weight: v.$font-weight-bold;
+  color: v.$sky-deep;
   min-width: 28px;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .zoneHint {
-  font-size: variables.$font-xs;
-  color: variables.$text-tertiary;
-  line-height: 1.4;
-  padding: variables.$spacing-xs variables.$spacing-sm;
-  border-left: 2px solid variables.$accent-primary;
-  margin: variables.$spacing-xs 0 0;
-  opacity: 0.8;
+  font-size: v.$font-sm;
+  color: v.$text-tertiary;
+  line-height: 1.5;
+  padding: v.$spacing-sm 10px;
+  margin: 0;
 }
 
 .count {
-  color: variables.$text-tertiary;
-  font-size: variables.$font-xs;
-  font-family: variables.$font-mono;
+  color: v.$text-tertiary;
+  font-size: v.$font-xs;
+  font-variant-numeric: tabular-nums;
 }
 
 .experimentalBadge {
   margin-left: auto;
-  padding: 0 variables.$spacing-xs;
-  border: 1px solid variables.$border-primary;
-  border-radius: variables.$radius-sm;
-  font-size: variables.$font-xs;
-  letter-spacing: variables.$letter-spacing-caps;
+  padding: 0 7px;
+  border-radius: v.$radius-pill;
+  font-size: v.$font-xs;
+  font-weight: v.$font-weight-bold;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: variables.$text-tertiary;
+  color: v.$ink;
+  background: v.$gel-amber;
+  border: 1px solid rgba(180, 110, 0, 0.6);
 }
 
 .experimentalToggle {
   display: flex;
   align-items: center;
-  gap: variables.$spacing-sm;
-  padding: variables.$spacing-sm variables.$spacing-md;
-  border-top: 1px solid variables.$border-primary;
-  font-size: variables.$font-sm;
-  color: variables.$text-secondary;
+  gap: v.$spacing-sm;
+  padding: v.$spacing-sm 12px;
+  font-size: v.$font-sm;
+  color: v.$text-secondary;
   cursor: pointer;
   flex-shrink: 0;
 
   &:hover {
-    color: variables.$text-primary;
+    color: v.$ink;
   }
 }
