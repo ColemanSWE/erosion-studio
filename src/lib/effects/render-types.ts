@@ -14,6 +14,8 @@ export interface RenderContext {
   canvasWidth: number;
   canvasHeight: number;
   tick: number;
+  /** Timeline time of this frame in seconds; undefined for the live camera. */
+  mediaTime?: number;
   timelineFrames?: ImageData[];
   faceBounds?: FaceBounds[];
   handBounds?: HandBounds[];

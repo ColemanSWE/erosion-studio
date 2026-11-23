@@ -24,3 +24,10 @@
     margin-top: 0;
   }
 }
+
+.description {
+  margin: 0;
+  font-size: v.$font-sm;
+  line-height: 1.4;
+  color: v.$text-secondary;
+}

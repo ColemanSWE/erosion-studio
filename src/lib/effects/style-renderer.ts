@@ -147,7 +147,7 @@ export async function renderStyleEffect(
     if (preStyleEffects.length > 0) {
       const imageData = bufferCtx.getImageData(0, 0, sourceWidth, sourceHeight);
       applyEffects(imageData.data, preStyleEffects, {
-        width: sourceWidth, height: sourceHeight, time: tick,
+        width: sourceWidth, height: sourceHeight, time: tick, mediaTime: context.mediaTime,
         timelineFrames: context.timelineFrames, faceBounds: context.faceBounds,
         handBounds: context.handBounds, poseBounds: context.poseBounds,
       });
@@ -180,7 +180,7 @@ export async function renderStyleEffect(
     if (postStyleEffects.length > 0) {
       const canvasImageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
       applyEffects(canvasImageData.data, postStyleEffects, {
-        width: canvasWidth, height: canvasHeight, time: tick,
+        width: canvasWidth, height: canvasHeight, time: tick, mediaTime: context.mediaTime,
         timelineFrames: context.timelineFrames, faceBounds: context.faceBounds,
         handBounds: context.handBounds, poseBounds: context.poseBounds,
       });
@@ -215,7 +215,7 @@ export async function renderStyleEffect(
 
   const imageData = bufferCtx.getImageData(0, 0, cols, rows);
   applyEffects(imageData.data, preStyleEffects, {
-    width: cols, height: rows, time: tick,
+    width: cols, height: rows, time: tick, mediaTime: context.mediaTime,
     timelineFrames: context.timelineFrames, faceBounds: context.faceBounds,
     handBounds: context.handBounds, poseBounds: context.poseBounds,
   });
@@ -245,7 +245,7 @@ export async function renderStyleEffect(
   if (postStyleEffects.length > 0) {
     const renderImageData = renderCtx.getImageData(0, 0, drawWidthInt, drawHeightInt);
     applyEffects(renderImageData.data, postStyleEffects, {
-      width: drawWidthInt, height: drawHeightInt, time: tick,
+      width: drawWidthInt, height: drawHeightInt, time: tick, mediaTime: context.mediaTime,
       timelineFrames: context.timelineFrames, faceBounds: context.faceBounds,
       handBounds: context.handBounds, poseBounds: context.poseBounds,
     });

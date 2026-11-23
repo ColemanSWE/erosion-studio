@@ -47,7 +47,8 @@ function ParamControl({
 
 /** Controls for one effect, generated from its `paramsConfig`. */
 function EffectParams({ effect, onUpdate }: EffectParamsProps) {
-  const params = getEffectDefinition(effect.type)?.paramsConfig ?? [];
+  const def = getEffectDefinition(effect.type);
+  const params = def?.paramsConfig ?? [];
   if (params.length === 0) return null;
 
   const updateParam = (key: string, value: unknown) => {
@@ -58,6 +59,7 @@ function EffectParams({ effect, onUpdate }: EffectParamsProps) {
 
   return (
     <div className={styles.effectParams}>
+      {def?.description && <p className={styles.description}>{def.description}</p>}
       {params.map((param) => {
         const showGroup = param.group !== undefined && param.group !== lastGroup;
         if (param.group !== undefined) lastGroup = param.group;
@@ -66,7 +68,7 @@ function EffectParams({ effect, onUpdate }: EffectParamsProps) {
             {showGroup && <div className={styles.paramGroup}>{param.group}</div>}
             <ParamControl
               param={param}
-              value={effect.params[param.key] ?? param.default}
+              value={effect.params[param.key] ?? def?.defaultParams[param.key] ?? param.default}
               onChange={(v) => updateParam(param.key, v)}
             />
           </Fragment>

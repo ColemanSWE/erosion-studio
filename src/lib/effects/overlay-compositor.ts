@@ -115,7 +115,7 @@ export function applyRegionEffects(
 
       const regionData = bufferCtx.getImageData(startX, startY, rw, rh);
       applyEffects(regionData.data, regionEffectList, {
-        width: rw, height: rh, time: tick,
+        width: rw, height: rh, time: tick, mediaTime: context.mediaTime,
         timelineFrames: context.timelineFrames,
         faceBounds: context.faceBounds,
         handBounds: context.handBounds,
@@ -134,7 +134,7 @@ export function applyRegionEffects(
   }
 
   const processConfig = {
-    time: tick,
+    time: tick, mediaTime: context.mediaTime,
     timelineFrames: context.timelineFrames,
     faceBounds: context.faceBounds,
     handBounds: context.handBounds,

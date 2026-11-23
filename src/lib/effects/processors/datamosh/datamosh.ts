@@ -1,516 +1,609 @@
-import { registerEffect } from "../../effect-registry";
-import { bilinearSample } from "../shared";
+import { registerEffect, type ProcessConfig } from "../../effect-registry";
 
-// ─── Motion estimation ────────────────────────────────────────────────────────
+/*
+ * Datamosh: an imitation of what happens when a video's keyframes (I-frames)
+ * are deleted. A codec then keeps applying each later frame's motion vectors
+ * and residuals to whatever pixels it last had, so the picture stops
+ * refreshing and the new footage's motion drags the stale pixels around.
+ *
+ * Per frame we:
+ *   1. estimate block motion between the previous and current *input* frames
+ *      (on a quarter-resolution luma copy, to keep it cheap),
+ *   2. move blocks of the previous *output* by those vectors, and
+ *   3. add the residual (current input minus motion-compensated previous
+ *      input), scaled by Motion Detail. This is what a codec does, and it is
+ *      what lets the new footage's moving parts "draw" onto the old colours.
+ *   4. blend a little toward the live frame (Bleed-through), so the real
+ *      video gradually shows through the frozen picture.
+ *
+ * Scene cuts are detected and skipped (no motion, no residual), which gives the
+ * classic transition where shot A's last frame is pushed around by shot B's
+ * motion, with plain back-to-back clips. When clips overlap on the timeline,
+ * the incoming clip (from `timelineFrames`) is used as the source, so the
+ * overlap start acts as the cut.
+ *
+ * State is kept between frames, so this effect is CPU-only and lives in the
+ * single persistent effects worker.
+ */
 
-function blockScore(
-  a: Uint8ClampedArray,
-  b: Uint8ClampedArray,
-  width: number,
-  height: number,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number,
+/** Luma is analysed at 1/LUMA_SCALE resolution. Block sizes are multiples of 8, so blocks map to whole luma pixels. */
+const LUMA_SCALE = 4;
+/** A gap larger than this (seek, effect window start, load shedding) drops a fresh keyframe. */
+const MAX_GAP_S = 0.5;
+/** Frame interval assumed when the source has no media time (webcam). */
+const NOMINAL_FRAME_S = 1 / 30;
+/** Mean motion-compensated luma difference (0–255) above which a frame can count as a cut... */
+const CUT_ABS = 12;
+/** ...when it is also this many times the recent average difference. */
+const CUT_REL = 3;
+/** Per-pixel SAD below which a block is treated as static without searching. */
+const STATIC_SAD = 1.5;
+/** Bleed-through at 100 blends this fraction toward the live frame each frame. */
+const BLEED_MAX_RATE = 0.25;
+
+export type DatamoshTrigger = "effect start" | "every cut";
+
+export interface DatamoshParams {
+  trigger: DatamoshTrigger;
+  /** Motion vector strength, percent. */
+  motion: number;
+  /** How fast the frozen picture fades toward the live video, 0–100. */
+  bleed: number;
+  /** Residual strength: how much of the new footage's movement draws in, 0–100. */
+  detail: number;
+  /** Seconds before a clean frame is restored; 0 = never. */
+  length: number;
+  /** Macroblock size in pixels (multiple of 8). */
+  blockSize: number;
+  /** Motion vector scrambling, 0–100. */
+  chaos: number;
+  /** Keep re-applying the last motion vectors instead of estimating new ones. */
+  repeatMotion: boolean;
+}
+
+export interface DatamoshState {
+  width: number;
+  height: number;
+  /** Last output frame. */
+  mosh: Uint8ClampedArray | null;
+  /** Spare frame buffer; swapped with `mosh` each frame. */
+  spare: Uint8ClampedArray | null;
+  /** Last input frame. */
+  prevSrc: Uint8ClampedArray | null;
+  lw: number;
+  lh: number;
+  curLuma: Uint8Array;
+  prevLuma: Uint8Array;
+  blockSize: number;
+  bw: number;
+  bh: number;
+  /** Per-block motion vectors in luma pixels, pointing from the current block to its source. */
+  mvX: Int16Array;
+  mvY: Int16Array;
+  lastTime: number | null;
+  keyTime: number;
+  /** Frames since the last keyframe; seeds the chaos PRNG so output is reproducible. */
+  frame: number;
+  /** False only in "every cut" mode while waiting for a cut. */
+  moshing: boolean;
+  /** Running average of the frame-to-frame luma difference. */
+  diffAvg: number;
+}
+
+export function createDatamoshState(): DatamoshState {
+  return {
+    width: 0,
+    height: 0,
+    mosh: null,
+    spare: null,
+    prevSrc: null,
+    lw: 0,
+    lh: 0,
+    curLuma: new Uint8Array(0),
+    prevLuma: new Uint8Array(0),
+    blockSize: 0,
+    bw: 0,
+    bh: 0,
+    mvX: new Int16Array(0),
+    mvY: new Int16Array(0),
+    lastTime: null,
+    keyTime: 0,
+    frame: 0,
+    moshing: true,
+    diffAvg: 0,
+  };
+}
+
+export const DEFAULT_DATAMOSH_PARAMS: DatamoshParams = {
+  trigger: "effect start",
+  motion: 100,
+  bleed: 10,
+  detail: 70,
+  length: 0,
+  blockSize: 16,
+  chaos: 0,
+  repeatMotion: false,
+};
+
+function num(value: unknown, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function readDatamoshParams(params: Record<string, unknown>): DatamoshParams {
+  const d = DEFAULT_DATAMOSH_PARAMS;
+  const blockSize = Math.max(8, Math.round(num(params.blockSize, d.blockSize) / 8) * 8);
+  return {
+    trigger: params.trigger === "every cut" ? "every cut" : "effect start",
+    motion: Math.max(0, num(params.motion, d.motion)),
+    bleed: Math.min(100, Math.max(0, num(params.bleed, d.bleed))),
+    detail: Math.min(100, Math.max(0, num(params.detail, d.detail))),
+    length: Math.max(0, num(params.length, d.length)),
+    blockSize,
+    chaos: Math.min(100, Math.max(0, num(params.chaos, d.chaos))),
+    repeatMotion: !!params.repeatMotion,
+  };
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** mulberry32: tiny seeded PRNG, so chaos is identical between preview and export. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Quarter-resolution luma: average of four samples per 4×4 cell. */
+function computeLuma(data: Uint8ClampedArray, width: number, height: number, out: Uint8Array, lw: number, lh: number): void {
+  const xMax = width - 1;
+  const yMax = height - 1;
+  for (let ly = 0; ly < lh; ly++) {
+    const y0 = Math.min(ly * LUMA_SCALE + 1, yMax) * width;
+    const y1 = Math.min(ly * LUMA_SCALE + 3, yMax) * width;
+    for (let lx = 0; lx < lw; lx++) {
+      const x0 = Math.min(lx * LUMA_SCALE + 1, xMax);
+      const x1 = Math.min(lx * LUMA_SCALE + 3, xMax);
+      let i = (y0 + x0) * 4;
+      let sum = data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29;
+      i = (y0 + x1) * 4;
+      sum += data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29;
+      i = (y1 + x0) * 4;
+      sum += data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29;
+      i = (y1 + x1) * 4;
+      sum += data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29;
+      out[ly * lw + lx] = sum >> 10;
+    }
+  }
+}
+
+function meanAbsDiff(a: Uint8Array, b: Uint8Array): number {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+  return a.length > 0 ? sum / a.length : 0;
+}
+
+/** Sum of absolute luma differences between a current block and the reference shifted by (dx, dy), edges clamped. */
+function blockSAD(
+  cur: Uint8Array,
+  ref: Uint8Array,
+  lw: number,
+  lh: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
   dx: number,
   dy: number,
-  step: number
 ): number {
-  let score = 0;
-  let samples = 0;
-  for (let py = startY; py < endY; py += step) {
-    for (let px = startX; px < endX; px += step) {
-      const sx = px + dx;
-      const sy = py + dy;
-      if (sx < 0 || sx >= width || sy < 0 || sy >= height) continue;
-      const ci = (py * width + px) * 4;
-      const si = (sy * width + sx) * 4;
-      score +=
-        Math.abs(a[ci] - b[si]) +
-        Math.abs(a[ci + 1] - b[si + 1]) +
-        Math.abs(a[ci + 2] - b[si + 2]);
-      samples++;
+  let sad = 0;
+  const xMax = lw - 1;
+  const yMax = lh - 1;
+  for (let y = y0; y < y1; y++) {
+    let sy = y + dy;
+    sy = sy < 0 ? 0 : sy > yMax ? yMax : sy;
+    const curRow = y * lw;
+    const refRow = sy * lw;
+    for (let x = x0; x < x1; x++) {
+      let sx = x + dx;
+      sx = sx < 0 ? 0 : sx > xMax ? xMax : sx;
+      sad += Math.abs(cur[curRow + x] - ref[refRow + sx]);
     }
   }
-  return samples > 0 ? score / samples : Infinity;
+  return sad;
 }
 
-// Diamond search: large diamond → small diamond refinement.
-function diamondSearch(
-  current: Uint8ClampedArray,
-  reference: Uint8ClampedArray,
-  width: number,
-  height: number,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number,
-  searchRange: number,
-  step: number,
-  predictDx: number,
-  predictDy: number
-): { dx: number; dy: number } {
-  const LARGE_DIAMOND = [
-    { dx: 0, dy: 0 },
-    { dx: 2, dy: 0 },
-    { dx: -2, dy: 0 },
-    { dx: 0, dy: 2 },
-    { dx: 0, dy: -2 },
-    { dx: 1, dy: 1 },
-    { dx: -1, dy: 1 },
-    { dx: 1, dy: -1 },
-    { dx: -1, dy: -1 },
-  ];
-  const SMALL_DIAMOND = [
-    { dx: 0, dy: 0 },
-    { dx: 1, dy: 0 },
-    { dx: -1, dy: 0 },
-    { dx: 0, dy: 1 },
-    { dx: 0, dy: -1 },
-  ];
+const REFINE_STEPS = [4, 2, 1];
+const REFINE_ITERS = 4;
+const DIAMOND_X = [1, -1, 0, 0];
+const DIAMOND_Y = [0, 0, 1, -1];
 
-  let cx = Math.round(predictDx);
-  let cy = Math.round(predictDy);
+/**
+ * Block matching on the luma planes; writes new vectors into state.mvX / mvY.
+ * Returns the mean per-pixel difference that remains after motion compensation:
+ * low for pans and moving subjects, high for a scene cut.
+ */
+function estimateMotion(state: DatamoshState): number {
+  const { curLuma, prevLuma, lw, lh, bw, bh, mvX, mvY } = state;
+  const lb = state.blockSize / LUMA_SCALE;
+  const range = Math.max(4, Math.min(16, lb * 2));
+  let totalSad = 0;
+  let totalPixels = 0;
 
-  for (let radius = searchRange; radius >= step * 2; radius = Math.floor(radius / 2)) {
-    let bestScore = Infinity;
-    let bestDx = cx;
-    let bestDy = cy;
-    for (const pt of LARGE_DIAMOND) {
-      const tdx = cx + pt.dx * radius;
-      const tdy = cy + pt.dy * radius;
-      if (Math.abs(tdx) > searchRange || Math.abs(tdy) > searchRange) continue;
-      const s = blockScore(current, reference, width, height, startX, startY, endX, endY, tdx, tdy, step);
-      if (s < bestScore) { bestScore = s; bestDx = tdx; bestDy = tdy; }
-    }
-    cx = bestDx;
-    cy = bestDy;
-  }
-
-  {
-    let bestScore = blockScore(current, reference, width, height, startX, startY, endX, endY, cx, cy, 1);
-    let bestDx = cx;
-    let bestDy = cy;
-    for (const pt of SMALL_DIAMOND) {
-      if (pt.dx === 0 && pt.dy === 0) continue;
-      const tdx = cx + pt.dx;
-      const tdy = cy + pt.dy;
-      if (Math.abs(tdx) > searchRange || Math.abs(tdy) > searchRange) continue;
-      const s = blockScore(current, reference, width, height, startX, startY, endX, endY, tdx, tdy, 1);
-      if (s < bestScore) { bestScore = s; bestDx = tdx; bestDy = tdy; }
-    }
-    return { dx: bestDx, dy: bestDy };
-  }
-}
-
-// ─── Engine ───────────────────────────────────────────────────────────────────
-
-class DatamoshEngine {
-  iFrame: Uint8ClampedArray | null = null;
-  moshBuffer: Uint8ClampedArray | null = null;
-  prevFrame: Uint8ClampedArray | null = null;
-  prevSecondary: Uint8ClampedArray | null = null;
-  mvX: Float32Array | null = null;
-  mvY: Float32Array | null = null;
-  width = 0;
-  height = 0;
-  hadSecondary = false;
-
-  reset(data: Uint8ClampedArray, width: number, height: number, totalBlocks: number): void {
-    this.iFrame = new Uint8ClampedArray(data);
-    this.moshBuffer = new Uint8ClampedArray(data);
-    this.prevFrame = new Uint8ClampedArray(data);
-    this.prevSecondary = null;
-    this.mvX = new Float32Array(totalBlocks);
-    this.mvY = new Float32Array(totalBlocks);
-    this.width = width;
-    this.height = height;
-    this.hadSecondary = false;
-  }
-
-  needsInit(width: number, height: number): boolean {
-    return this.width !== width || this.height !== height || !this.moshBuffer;
-  }
-
-  estimateMVs(
-    current: Uint8ClampedArray,
-    reference: Uint8ClampedArray,
-    blockSize: number,
-    searchRange: number,
-    searchStep: number,
-    momentum: number
-  ): void {
-    const { width, height, mvX, mvY } = this;
-    if (!mvX || !mvY) return;
-    const blocksX = Math.ceil(width / blockSize);
-    const blocksY = Math.ceil(height / blockSize);
-    for (let by = 0; by < blocksY; by++) {
-      for (let bx = 0; bx < blocksX; bx++) {
-        const bi = by * blocksX + bx;
-        const startX = bx * blockSize;
-        const startY = by * blockSize;
-        const endX = Math.min(startX + blockSize, width);
-        const endY = Math.min(startY + blockSize, height);
-        const { dx, dy } = diamondSearch(
-          current, reference,
-          width, height,
-          startX, startY, endX, endY,
-          searchRange, searchStep,
-          mvX[bi], mvY[bi]
-        );
-        mvX[bi] = mvX[bi] * momentum + dx * (1 - momentum);
-        mvY[bi] = mvY[bi] * momentum + dy * (1 - momentum);
+  for (let by = 0; by < bh; by++) {
+    const y0 = by * lb;
+    const y1 = Math.min(y0 + lb, lh);
+    for (let bx = 0; bx < bw; bx++) {
+      const bi = by * bw + bx;
+      const x0 = bx * lb;
+      const x1 = Math.min(x0 + lb, lw);
+      if (x0 >= x1 || y0 >= y1) {
+        mvX[bi] = 0;
+        mvY[bi] = 0;
+        continue;
       }
-    }
-  }
+      const pixels = (x1 - x0) * (y1 - y0);
 
-  // Bilinearly interpolate motion vector at pixel (x, y) across block centers.
-  // Block center for block (bx, by) is at pixel (bx*bs + bs/2, by*bs + bs/2).
-  // This eliminates the hard 16x16 grid boundaries that create the mosaic look.
-  sampleMV(x: number, y: number, blockSize: number): { vx: number; vy: number } {
-    const { width, height, mvX, mvY } = this;
-    if (!mvX || !mvY) return { vx: 0, vy: 0 };
+      // Zero vector first: it wins ties, which keeps flat areas from drifting.
+      let best = blockSAD(curLuma, prevLuma, lw, lh, x0, y0, x1, y1, 0, 0);
+      let bdx = 0;
+      let bdy = 0;
+      totalPixels += pixels;
+      if (best / pixels < STATIC_SAD) {
+        totalSad += best;
+        mvX[bi] = 0;
+        mvY[bi] = 0;
+        continue;
+      }
 
-    const blocksX = Math.ceil(width / blockSize);
-    const blocksY = Math.ceil(height / blockSize);
-    const half = blockSize * 0.5;
-
-    // Position in block-center space
-    const fx = (x - half) / blockSize;
-    const fy = (y - half) / blockSize;
-
-    const bx0 = Math.floor(fx);
-    const by0 = Math.floor(fy);
-    const bx1 = bx0 + 1;
-    const by1 = by0 + 1;
-
-    const wx = fx - bx0;
-    const wy = fy - by0;
-
-    const clampBx = (v: number) => Math.max(0, Math.min(blocksX - 1, v));
-    const clampBy = (v: number) => Math.max(0, Math.min(blocksY - 1, v));
-
-    const i00 = clampBy(by0) * blocksX + clampBx(bx0);
-    const i10 = clampBy(by0) * blocksX + clampBx(bx1);
-    const i01 = clampBy(by1) * blocksX + clampBx(bx0);
-    const i11 = clampBy(by1) * blocksX + clampBx(bx1);
-
-    const vx = (1 - wy) * ((1 - wx) * mvX[i00] + wx * mvX[i10])
-             + wy       * ((1 - wx) * mvX[i01] + wx * mvX[i11]);
-    const vy = (1 - wy) * ((1 - wx) * mvY[i00] + wx * mvY[i10])
-             + wy       * ((1 - wx) * mvY[i01] + wx * mvY[i11]);
-
-    return { vx, vy };
-  }
-
-  // Direct warp: sample moshBuffer displaced by interpolated MVs, write result
-  // back. Used by transition mode -- the secondary clip's motion animates the
-  // primary clip's pixels without any pixel blending from the secondary source.
-  warpDirect(
-    blockSize: number,
-    mvScale: number,
-    channelShift: number,
-    decayFactor: number
-  ): void {
-    const { width, height, moshBuffer, iFrame } = this;
-    if (!moshBuffer || !iFrame) return;
-    const temp = new Uint8ClampedArray(moshBuffer);
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const di = (y * width + x) * 4;
-        const { vx, vy } = this.sampleMV(x, y, blockSize);
-        const dx = vx * mvScale;
-        const dy = vy * mvScale;
-
-        const shift = channelShift;
-        const r = bilinearSample(temp, width, height, x + dx + shift, y + dy, 0);
-        const g = bilinearSample(temp, width, height, x + dx,         y + dy, 1);
-        const b = bilinearSample(temp, width, height, x + dx - shift, y + dy, 2);
-
-        if (decayFactor > 0) {
-          const t = 1 - decayFactor;
-          moshBuffer[di]     = Math.round(r * t + iFrame[di]     * decayFactor);
-          moshBuffer[di + 1] = Math.round(g * t + iFrame[di + 1] * decayFactor);
-          moshBuffer[di + 2] = Math.round(b * t + iFrame[di + 2] * decayFactor);
-        } else {
-          moshBuffer[di]     = Math.round(r);
-          moshBuffer[di + 1] = Math.round(g);
-          moshBuffer[di + 2] = Math.round(b);
+      // Predictors: this block's previous vector, and the left/top neighbours' new ones.
+      const tryCandidate = (dx: number, dy: number) => {
+        if ((dx === bdx && dy === bdy) || Math.abs(dx) > range || Math.abs(dy) > range) return;
+        const s = blockSAD(curLuma, prevLuma, lw, lh, x0, y0, x1, y1, dx, dy);
+        if (s < best) {
+          best = s;
+          bdx = dx;
+          bdy = dy;
         }
-        moshBuffer[di + 3] = 255;
+      };
+      tryCandidate(mvX[bi], mvY[bi]);
+      if (bx > 0) tryCandidate(mvX[bi - 1], mvY[bi - 1]);
+      if (by > 0) tryCandidate(mvX[bi - bw], mvY[bi - bw]);
+
+      // Diamond refinement at shrinking step sizes.
+      for (const step of REFINE_STEPS) {
+        for (let iter = 0; iter < REFINE_ITERS; iter++) {
+          const cx = bdx;
+          const cy = bdy;
+          for (let k = 0; k < 4; k++) tryCandidate(cx + DIAMOND_X[k] * step, cy + DIAMOND_Y[k] * step);
+          if (bdx === cx && bdy === cy) break;
+        }
       }
+
+      totalSad += best;
+      mvX[bi] = bdx;
+      mvY[bi] = bdy;
     }
   }
+  return totalPixels > 0 ? totalSad / totalPixels : 0;
+}
 
-  // Warp with optional bleed from an external source buffer (smear/bloom modes).
-  warpMoshBuffer(
-    blockSize: number,
-    mvScale: number,
-    channelShift: number,
-    decayFactor: number,
-    bleedData: Uint8ClampedArray | null,
-    bleedFactor: number
-  ): void {
-    const { width, height, moshBuffer, iFrame } = this;
-    if (!moshBuffer || !iFrame) return;
-    const temp = new Uint8ClampedArray(moshBuffer);
+/** Randomly negate, swap or jitter block vectors. */
+function scrambleMotion(state: DatamoshState, chaos: number): void {
+  const { mvX, mvY } = state;
+  const total = mvX.length;
+  if (total === 0) return;
+  const lb = state.blockSize / LUMA_SCALE;
+  const range = Math.max(4, Math.min(16, lb * 2));
+  const limit = range * 2;
+  const chance = (chaos / 100) * 0.5;
+  const jitter = 1 + (chaos / 100) * range;
+  const rand = mulberry32((state.frame + 1) * 0x9e3779b1);
 
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const di = (y * width + x) * 4;
-        const { vx, vy } = this.sampleMV(x, y, blockSize);
-        const dx = vx * mvScale;
-        const dy = vy * mvScale;
-
-        const shift = channelShift;
-        const r = bilinearSample(temp, width, height, x + dx + shift, y + dy, 0);
-        const g = bilinearSample(temp, width, height, x + dx,         y + dy, 1);
-        const b = bilinearSample(temp, width, height, x + dx - shift, y + dy, 2);
-
-        const keep = 1 - decayFactor - bleedFactor;
-
-        moshBuffer[di]     = Math.round(r * keep + iFrame[di]     * decayFactor + (bleedData ? bleedData[di]     : 0) * bleedFactor);
-        moshBuffer[di + 1] = Math.round(g * keep + iFrame[di + 1] * decayFactor + (bleedData ? bleedData[di + 1] : 0) * bleedFactor);
-        moshBuffer[di + 2] = Math.round(b * keep + iFrame[di + 2] * decayFactor + (bleedData ? bleedData[di + 2] : 0) * bleedFactor);
-        moshBuffer[di + 3] = 255;
-      }
+  const clampMV = (v: number) => (v < -limit ? -limit : v > limit ? limit : v);
+  for (let i = 0; i < total; i++) {
+    if (rand() >= chance) continue;
+    const r = rand();
+    if (r < 0.33) {
+      mvX[i] = -mvX[i];
+      mvY[i] = -mvY[i];
+    } else if (r < 0.66) {
+      const j = Math.floor(rand() * total);
+      const tx = mvX[i];
+      mvX[i] = mvX[j];
+      mvX[j] = tx;
+      const ty = mvY[i];
+      mvY[i] = mvY[j];
+      mvY[j] = ty;
+    } else {
+      mvX[i] = clampMV(Math.round(mvX[i] + (rand() * 2 - 1) * jitter));
+      mvY[i] = clampMV(Math.round(mvY[i] + (rand() * 2 - 1) * jitter));
     }
   }
+}
 
-  glitchMVs(blockSize: number, intensity: number): void {
-    const { width, height, mvX, mvY } = this;
-    if (!mvX || !mvY) return;
-    const blocksX = Math.ceil(width / blockSize);
-    const blocksY = Math.ceil(height / blockSize);
-    const totalBlocks = blocksX * blocksY;
-    const jitterAmt = intensity * 0.3;
+/**
+ * Per block, with src = pixel + motion:
+ *   w   = mosh[src] + detail · (cur − prevSrc[src])     (codec residual)
+ *   out = w + bleed · (cur − w)                         (fade toward the live frame)
+ *
+ * This is the hot loop: integer maths on whole 0xAABBGGRR pixels, and a plain
+ * 32-bit copy when both terms are off. The bleed term uses dithered rounding:
+ * with plain rounding a small per-frame blend stalls once the remaining
+ * difference is a few levels, and the picture never fully comes back.
+ */
+function warp(
+  state: DatamoshState,
+  cur: Uint8ClampedArray,
+  out: Uint8ClampedArray,
+  motionScale: number,
+  detail: number,
+  bleedRate: number,
+): void {
+  const { width, height, mosh, prevSrc, bw, bh, blockSize, mvX, mvY } = state;
+  if (!mosh || !prevSrc) return;
+  const xMax = width - 1;
+  const yMax = height - 1;
+  const vecScale = LUMA_SCALE * motionScale;
+  // 8.8 fixed point.
+  const kr = Math.round(detail * 256);
+  const ka = Math.round(bleedRate * 256);
+  const seed = Math.imul(state.frame + 1, 0x85ebca6b);
+  const mosh32 = new Uint32Array(mosh.buffer, mosh.byteOffset, mosh.length >> 2);
+  const out32 = new Uint32Array(out.buffer, out.byteOffset, out.length >> 2);
+  const cur32 = new Uint32Array(cur.buffer, cur.byteOffset, cur.length >> 2);
+  const prev32 = new Uint32Array(prevSrc.buffer, prevSrc.byteOffset, prevSrc.length >> 2);
 
-    for (let bi = 0; bi < totalBlocks; bi++) {
-      const r = Math.random();
-      if (r < 0.15) {
-        mvX[bi] = -mvX[bi];
-        mvY[bi] = -mvY[bi];
-      } else if (r < 0.25) {
-        const swap = Math.floor(Math.random() * totalBlocks);
-        const tx = mvX[bi]; mvX[bi] = mvX[swap]; mvX[swap] = tx;
-        const ty = mvY[bi]; mvY[bi] = mvY[swap]; mvY[swap] = ty;
-      } else {
-        mvX[bi] += (Math.random() - 0.5) * jitterAmt;
-        mvY[bi] += (Math.random() - 0.5) * jitterAmt;
+  for (let by = 0; by < bh; by++) {
+    const y0 = by * blockSize;
+    const y1 = Math.min(y0 + blockSize, height);
+    for (let bx = 0; bx < bw; bx++) {
+      const bi = by * bw + bx;
+      const dx = Math.round(mvX[bi] * vecScale);
+      const dy = Math.round(mvY[bi] * vecScale);
+      const x0 = bx * blockSize;
+      const x1 = Math.min(x0 + blockSize, width);
+      // Columns whose source lies inside the frame need no per-pixel clamping.
+      const xa = Math.min(x1, Math.max(x0, -dx));
+      const xb = Math.max(xa, Math.min(x1, xMax - dx + 1));
+      for (let y = y0; y < y1; y++) {
+        let sy = y + dy;
+        sy = sy < 0 ? 0 : sy > yMax ? yMax : sy;
+        const outRow = y * width;
+        const srcRow = sy * width;
+
+        if (kr === 0 && ka === 0) {
+          for (let x = x0; x < xa; x++) out32[outRow + x] = mosh32[srcRow];
+          let o = outRow + xa;
+          let si = srcRow + xa + dx;
+          for (let x = xa; x < xb; x++) out32[o++] = mosh32[si++];
+          for (let x = xb; x < x1; x++) out32[outRow + x] = mosh32[srcRow + xMax];
+          continue;
+        }
+
+        for (let x = x0; x < x1; x++) {
+          let sx = x + dx;
+          sx = sx < 0 ? 0 : sx > xMax ? xMax : sx;
+          const o = outRow + x;
+          const si = srcRow + sx;
+          const m = mosh32[si];
+          const c = cur32[o];
+          let r = m & 255;
+          let g = (m >>> 8) & 255;
+          let b = (m >>> 16) & 255;
+          const cr = c & 255;
+          const cg = (c >>> 8) & 255;
+          const cb = (c >>> 16) & 255;
+
+          if (kr !== 0) {
+            const p = prev32[si];
+            if (p !== c) {
+              r += (kr * (cr - (p & 255)) + 128) >> 8;
+              g += (kr * (cg - ((p >>> 8) & 255)) + 128) >> 8;
+              b += (kr * (cb - ((p >>> 16) & 255)) + 128) >> 8;
+              r = r < 0 ? 0 : r > 255 ? 255 : r;
+              g = g < 0 ? 0 : g > 255 ? 255 : g;
+              b = b < 0 ? 0 : b > 255 ? 255 : b;
+            }
+          }
+          if (ka !== 0) {
+            // 0–255 dither, different per pixel and per frame.
+            const d = Math.imul(o ^ seed, 0x9e3779b1) >>> 24;
+            r += (ka * (cr - r) + d) >> 8;
+            g += (ka * (cg - g) + d) >> 8;
+            b += (ka * (cb - b) + d) >> 8;
+          }
+          out32[o] = (c & 0xff000000) | (b << 16) | (g << 8) | r;
+        }
       }
     }
   }
 }
 
-const engine = new DatamoshEngine();
+// ─── State management ───────────────────────────────────────────────────────
 
-// ─── Effect registration ──────────────────────────────────────────────────────
+function allocate(state: DatamoshState, width: number, height: number): void {
+  const size = width * height * 4;
+  state.width = width;
+  state.height = height;
+  state.mosh = new Uint8ClampedArray(size);
+  state.spare = new Uint8ClampedArray(size);
+  state.prevSrc = new Uint8ClampedArray(size);
+  state.lw = Math.max(1, Math.ceil(width / LUMA_SCALE));
+  state.lh = Math.max(1, Math.ceil(height / LUMA_SCALE));
+  state.curLuma = new Uint8Array(state.lw * state.lh);
+  state.prevLuma = new Uint8Array(state.lw * state.lh);
+  state.blockSize = 0; // forces vector reallocation
+}
+
+function ensureBlocks(state: DatamoshState, blockSize: number): void {
+  if (state.blockSize === blockSize) return;
+  state.blockSize = blockSize;
+  state.bw = Math.ceil(state.width / blockSize);
+  state.bh = Math.ceil(state.height / blockSize);
+  state.mvX = new Int16Array(state.bw * state.bh);
+  state.mvY = new Int16Array(state.bw * state.bh);
+}
+
+/**
+ * The frame to mosh from. When clips overlap on the timeline, the engine
+ * passes the other clips' frames; the latest-starting one is the incoming shot.
+ */
+function pickInput(data: Uint8ClampedArray, frames: ProcessConfig["timelineFrames"]): Uint8ClampedArray {
+  const incoming = frames?.[frames.length - 1];
+  return incoming && incoming.data.length === data.length ? incoming.data : data;
+}
+
+/** Drop a keyframe: the current input becomes the picture everything is moshed from. */
+function rekey(state: DatamoshState, data: Uint8ClampedArray, t: number, trigger: DatamoshTrigger): void {
+  state.mosh!.set(data);
+  state.prevSrc!.set(data);
+  computeLuma(data, state.width, state.height, state.prevLuma, state.lw, state.lh);
+  state.mvX.fill(0);
+  state.mvY.fill(0);
+  state.keyTime = t;
+  state.lastTime = t;
+  state.frame = 0;
+  state.moshing = trigger === "effect start";
+  state.diffAvg = 0;
+}
+
+/** Pass the frame through unchanged, but remember it as the picture to hold at the next cut. */
+function passThrough(state: DatamoshState, data: Uint8ClampedArray): void {
+  state.mosh!.set(data);
+  state.prevSrc!.set(data);
+  const tmp = state.prevLuma;
+  state.prevLuma = state.curLuma;
+  state.curLuma = tmp;
+}
+
+/**
+ * Process one frame in place. `config.mediaTime` (seconds) drives keyframing:
+ * an unchanged time re-outputs the last frame, and a jump re-keys.
+ */
+export function datamoshStep(
+  state: DatamoshState,
+  data: Uint8ClampedArray,
+  config: Pick<ProcessConfig, "width" | "height" | "mediaTime" | "timelineFrames">,
+  rawParams: Record<string, unknown>,
+): void {
+  const { width, height } = config;
+  if (width <= 0 || height <= 0 || data.length !== width * height * 4) return;
+  const p = readDatamoshParams(rawParams);
+  const input = pickInput(data, config.timelineFrames);
+  const emit = (frame: Uint8ClampedArray) => {
+    if (frame !== data) data.set(frame);
+  };
+
+  const t = config.mediaTime ?? (state.lastTime ?? 0) + NOMINAL_FRAME_S;
+
+  if (!state.mosh || state.width !== width || state.height !== height) {
+    allocate(state, width, height);
+    ensureBlocks(state, p.blockSize);
+    rekey(state, input, t, p.trigger);
+    emit(input);
+    return;
+  }
+  ensureBlocks(state, p.blockSize);
+
+  const dt = t - (state.lastTime ?? t);
+  if (Math.abs(dt) < 1e-6) {
+    // Same frame again (paused re-render): show the held picture, don't advance.
+    data.set(state.mosh);
+    return;
+  }
+  if (dt < 0 || dt > MAX_GAP_S) {
+    rekey(state, input, t, p.trigger);
+    emit(input);
+    return;
+  }
+  state.lastTime = t;
+
+  // Trigger switched to "effect start" while waiting for a cut.
+  if (p.trigger === "effect start" && !state.moshing) {
+    rekey(state, input, t, p.trigger);
+    emit(input);
+    return;
+  }
+
+  // Length elapsed: restore a clean picture.
+  if (state.moshing && p.length > 0 && t - state.keyTime >= p.length - 1e-6) {
+    if (p.trigger === "effect start") {
+      rekey(state, input, t, p.trigger);
+      emit(input);
+      return;
+    }
+    state.moshing = false;
+  }
+
+  computeLuma(input, width, height, state.curLuma, state.lw, state.lh);
+  // Repeat motion keeps its old vectors, so fall back to the raw frame difference.
+  const diff = p.repeatMotion ? meanAbsDiff(state.curLuma, state.prevLuma) : estimateMotion(state);
+  const isCut = diff > CUT_ABS && diff > CUT_REL * Math.max(state.diffAvg, 2);
+  if (!isCut) state.diffAvg = state.diffAvg * 0.9 + diff * 0.1;
+
+  if (!state.moshing) {
+    if (!isCut) {
+      passThrough(state, input);
+      emit(input);
+      return;
+    }
+    state.moshing = true;
+    state.keyTime = t;
+    state.frame = 0;
+  } else if (isCut && p.trigger === "every cut") {
+    state.keyTime = t; // Each cut extends the mosh.
+  }
+
+  const out = state.spare!;
+  if (isCut) {
+    // The cut frame itself is an I-frame we're dropping: hold the old picture.
+    out.set(state.mosh);
+    state.mvX.fill(0);
+    state.mvY.fill(0);
+  } else {
+    if (p.chaos > 0) scrambleMotion(state, p.chaos);
+    // Repeat motion's vectors no longer describe the footage, so its residual would be noise.
+    const detail = p.repeatMotion ? 0 : p.detail / 100;
+    warp(state, input, out, p.motion / 100, detail, (p.bleed / 100) * BLEED_MAX_RATE);
+  }
+
+  state.prevSrc!.set(input);
+  state.spare = state.mosh;
+  state.mosh = out;
+  const tmp = state.prevLuma;
+  state.prevLuma = state.curLuma;
+  state.curLuma = tmp;
+  state.frame++;
+  data.set(out);
+}
+
+// ─── Effect registration ────────────────────────────────────────────────────
+
+const state = createDatamoshState();
 
 registerEffect({
   type: "datamosh",
   label: "Datamosh",
   category: "glitch",
-  defaultParams: {
-    mode: "smear",
-    intensity: 60,
-    blockSize: 16,
-    searchRange: 16,
-    momentum: 70,
-    decay: 10,
-    bleed: 20,
-    channelShift: 0,
-    freeze: false,
-    quality: "balanced",
-  },
+  description:
+    "Freezes the picture and lets the video's motion drag it around. Starts when the effect starts, after a seek, or at a cut (or where an overlapping clip begins). Press play; it needs motion.",
+  animated: true,
+  defaultParams: { ...DEFAULT_DATAMOSH_PARAMS },
   paramsConfig: [
-    { key: "mode", label: "Mode", type: "select", options: ["smear", "transition", "bloom", "glitch"] },
-    { key: "intensity", label: "Intensity", type: "slider", min: 0, max: 100, step: 1 },
-    { key: "blockSize", label: "Block Size", type: "slider", min: 4, max: 64, step: 4 },
-    { key: "searchRange", label: "Search Range", type: "slider", min: 4, max: 48, step: 2 },
-    { key: "momentum", label: "Momentum", type: "slider", min: 0, max: 100, step: 1 },
-    { key: "decay", label: "I-frame Decay", type: "slider", min: 0, max: 100, step: 1 },
-    { key: "bleed", label: "Source Bleed", type: "slider", min: 0, max: 100, step: 1 },
-    { key: "channelShift", label: "Channel Shift", type: "slider", min: 0, max: 50, step: 1 },
-    { key: "freeze", label: "Freeze I-frame", type: "checkbox" },
-    { key: "quality", label: "Quality", type: "select", options: ["fast", "balanced", "high"] },
+    { key: "trigger", label: "Mosh At", type: "select", options: ["effect start", "every cut"] },
+    { key: "motion", label: "Motion %", type: "slider", min: 0, max: 200, step: 5 },
+    { key: "bleed", label: "Bleed-through", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "detail", label: "Motion Detail", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "length", label: "Length (s, 0 = never refresh)", type: "slider", min: 0, max: 20, step: 0.5 },
+    { key: "blockSize", label: "Block Size", type: "slider", min: 8, max: 64, step: 8 },
+    { key: "chaos", label: "Chaos", type: "slider", min: 0, max: 100, step: 1 },
+    { key: "repeatMotion", label: "Repeat Motion (bloom)", type: "checkbox" },
   ],
-  glsl: {
-    // "transition" and "bloom" modes depend on timelineFrames (secondary video source) — fall back to CPU
-    skipGL: (params) => params.mode === "transition" || params.mode === "bloom",
-    needsPrevFrame: true,
-    uniforms: { intensity: "float", momentum: "float", decay: "float", bleed: "float", channelShift: "float" },
-    uniformMapper: (params) => ({
-      intensity: params.intensity,
-      momentum: (params.momentum as number) / 100,
-      decay: (params.decay as number) / 100 * 0.05,
-      bleed: (params.bleed as number) / 100,
-      channelShift: (params.channelShift as number),
-    }),
-    fragment: `
-uniform float u_intensity;
-uniform float u_momentum;
-uniform float u_decay;
-uniform float u_bleed;
-uniform float u_channelShift;
-uniform sampler2D u_prevFrame;
-
-void main() {
-  if (u_intensity == 0.0) {
-    fragColor = texture(u_source, v_texCoord);
-    return;
-  }
-
-  float mvScale = u_intensity / 50.0;
-  vec2 texel = 1.0 / u_resolution;
-  vec3 luma = vec3(0.299, 0.587, 0.114);
-
-  vec3 cur  = texture(u_source,   v_texCoord).rgb;
-  vec3 prev = texture(u_prevFrame, v_texCoord).rgb;
-
-  float It = dot(cur - prev, luma);
-  float gx = dot(
-    texture(u_source, v_texCoord + vec2(texel.x * 2.0, 0.0)).rgb -
-    texture(u_source, v_texCoord - vec2(texel.x * 2.0, 0.0)).rgb,
-    luma);
-  float gy = dot(
-    texture(u_source, v_texCoord + vec2(0.0, texel.y * 2.0)).rgb -
-    texture(u_source, v_texCoord - vec2(0.0, texel.y * 2.0)).rgb,
-    luma);
-
-  float denom = gx * gx + gy * gy + 0.002;
-  vec2 flow = clamp(
-    (-It / denom) * vec2(gx, gy) * (4.0 * texel.x) * mvScale * 2.0,
-    vec2(-0.06) * mvScale,
-    vec2( 0.06) * mvScale
-  );
-
-  vec2 moshUV = clamp(v_texCoord + flow, vec2(0.0), vec2(1.0));
-  vec3 mosh = texture(u_prevFrame, moshUV).rgb;
-
-  // Channel shift (RGB aberration)
-  if (u_channelShift > 0.0) {
-    float cs = u_channelShift / u_resolution.x;
-    mosh.r = texture(u_prevFrame, clamp(moshUV + vec2(cs, 0.0), vec2(0.0), vec2(1.0))).r;
-    mosh.b = texture(u_prevFrame, clamp(moshUV - vec2(cs, 0.0), vec2(0.0), vec2(1.0))).b;
-  }
-
-  float motionMag = clamp(abs(It) * 5.0 * mvScale, 0.0, 1.0);
-  float moshBlend = motionMag * u_momentum;
-
-  // I-frame decay: gradually blend mosh buffer toward current frame
-  vec3 decayed = mix(mosh, cur, u_decay);
-
-  // Source bleed
-  vec3 result = mix(decayed, cur, u_bleed * 0.02);
-
-  fragColor = vec4(mix(cur, result, moshBlend), 1.0);
-}`,
-  },
-  processor: (data, { width, height, timelineFrames }, params) => {
-    const mode         = (params.mode as string) ?? "smear";
-    const intensity    = (params.intensity as number) ?? 60;
-    const blockSize    = (params.blockSize as number) ?? 16;
-    const searchRange  = (params.searchRange as number) ?? 16;
-    const momentum     = (params.momentum as number) / 100;
-    const decay        = (params.decay as number) / 100;
-    const bleed        = (params.bleed as number) / 100;
-    const channelShift = (params.channelShift as number) ?? 0;
-    const freeze       = !!(params.freeze);
-    const quality      = (params.quality as string) ?? "balanced";
-
-    if (intensity === 0) return;
-
-    const blocksX = Math.ceil(width / blockSize);
-    const blocksY = Math.ceil(height / blockSize);
-    const totalBlocks = blocksX * blocksY;
-
-    if (engine.needsInit(width, height)) {
-      engine.reset(data, width, height, totalBlocks);
-      return;
-    }
-
-    const mvScale    = intensity / 50;
-    const decayFactor = decay * 0.05;
-    const searchStep  = quality === "fast" ? 4 : quality === "high" ? 1 : 2;
-
-    const secondary = timelineFrames && timelineFrames.length > 0 ? timelineFrames[0] : null;
-    const secData = secondary ? secondary.data as Uint8ClampedArray : null;
-    const hasSecondary = secData !== null && secData.length === data.length;
-
-    const justStartedTransition = hasSecondary && !engine.hadSecondary;
-    if (justStartedTransition || freeze) {
-      engine.iFrame!.set(data);
-      if (engine.moshBuffer) engine.moshBuffer.set(data);
-      if (engine.mvX) engine.mvX.fill(0);
-      if (engine.mvY) engine.mvY.fill(0);
-    }
-    engine.hadSecondary = hasSecondary;
-
-    // ── Mode dispatch ────────────────────────────────────────────────────────
-
-    if (mode === "smear") {
-      engine.estimateMVs(
-        data, engine.prevFrame!,
-        blockSize, searchRange, searchStep, momentum
-      );
-      engine.warpMoshBuffer(blockSize, mvScale, channelShift, decayFactor, null, 0);
-
-    } else if (mode === "transition") {
-      if (hasSecondary) {
-        // Drive warping from secondary clip's own motion. The secondary clip's
-        // MVs are applied to the primary clip's pixels -- the secondary "emerges"
-        // through its own movement patterns without direct pixel blending.
-        const ref = engine.prevSecondary ?? engine.prevFrame!;
-        engine.estimateMVs(
-          secData!, ref,
-          blockSize, searchRange, searchStep, momentum
-        );
-        // Direct warp: no three-way blend. Optional bleed adds a faint ghost of
-        // the secondary for artistic control (default bleed=0.2 → 0.02 per frame).
-        engine.warpDirect(blockSize, mvScale, channelShift, decayFactor);
-        if (bleed > 0) {
-          // Light additive ghost from secondary on top of the warped buffer
-          const bleedAmt = bleed * 0.02;
-          const mb = engine.moshBuffer!;
-          for (let i = 0; i < mb.length - 3; i += 4) {
-            mb[i]     = Math.min(255, Math.round(mb[i]     * (1 - bleedAmt) + secData![i]     * bleedAmt));
-            mb[i + 1] = Math.min(255, Math.round(mb[i + 1] * (1 - bleedAmt) + secData![i + 1] * bleedAmt));
-            mb[i + 2] = Math.min(255, Math.round(mb[i + 2] * (1 - bleedAmt) + secData![i + 2] * bleedAmt));
-          }
-        }
-        if (!engine.prevSecondary) {
-          engine.prevSecondary = new Uint8ClampedArray(secData!);
-        } else {
-          engine.prevSecondary.set(secData!);
-        }
-      } else {
-        // No secondary: keep mosh buffer current so it's ready when overlap begins
-        engine.iFrame!.set(data);
-        engine.moshBuffer!.set(data);
-        engine.prevSecondary = null;
-      }
-
-    } else if (mode === "bloom") {
-      engine.estimateMVs(
-        data, engine.prevFrame!,
-        blockSize, searchRange, searchStep, momentum
-      );
-      // Tuned bleed rate: at default bleed=0.2, bleedFactor=0.016 per frame,
-      // which is perceptible over ~60 frames without overwhelming the warp.
-      const bleedFactor = bleed * 0.08;
-      engine.warpMoshBuffer(blockSize, mvScale, channelShift, decayFactor, data, bleedFactor);
-
-    } else if (mode === "glitch") {
-      engine.estimateMVs(
-        data, engine.prevFrame!,
-        blockSize, searchRange, searchStep, momentum
-      );
-      engine.glitchMVs(blockSize, intensity);
-      engine.warpMoshBuffer(blockSize, mvScale, channelShift, decayFactor, null, 0);
-    }
-
-    data.set(engine.moshBuffer!);
-    engine.prevFrame!.set(new Uint8ClampedArray(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)));
-  },
+  processor: (data, config, params) => datamoshStep(state, data, config, params),
 });

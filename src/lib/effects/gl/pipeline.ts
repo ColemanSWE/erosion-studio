@@ -626,9 +626,10 @@ export class GLPipeline {
       return buf;
     };
 
-    // Transition effects read other timeline frames; cloning those per frame
-    // would cost more than running inline.
-    const canOffload = this.cpuRunner && !config.timelineFrames?.length;
+    // Always offload when possible, even with timelineFrames (they are cloned to
+    // the worker): stateful effects such as datamosh keep their cross-frame state
+    // in the worker, so running some frames inline would split that state.
+    const canOffload = !!this.cpuRunner;
     if (canOffload) {
       try {
         const result = await this.cpuRunner!(read(), effects, config);

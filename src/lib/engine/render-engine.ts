@@ -446,6 +446,7 @@ export class RenderEngine {
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         tick: this.tick,
+        mediaTime: primary.kind === "camera" ? undefined : time,
         faceBounds: this.faceBounds,
         timelineFrames,
         isFlipped,

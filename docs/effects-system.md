@@ -70,10 +70,11 @@ Each frame the active effects are split into **global** (no target), **region** 
 
 ## CPU processors
 
-Processors receive `(data: Uint8ClampedArray, config, params)` with `config = { width, height, time, faceBounds, timelineFrames, … }` and mutate `data`. `params` already has defaults merged in.
+Processors receive `(data: Uint8ClampedArray, config, params)` with `config = { width, height, time, mediaTime, faceBounds, timelineFrames, … }` and mutate `data`. `params` already has defaults merged in. `time` is the render tick (it also advances on paused re-renders); `mediaTime` is the frame's timeline time in seconds (undefined for the webcam). Stateful effects should key their state off `mediaTime`, so that an unchanged time (a paused re-render) holds the frame and a jump (seek, loop, export start, effect window start) resets it. Datamosh (`processors/datamosh/datamosh.ts`) is the reference implementation.
 
-- **The worker.** CPU batches run in one persistent worker (`worker-pool.ts`). It's deliberately a single worker: stateful effects keep their cross-frame state in module memory, and every frame must reach the same copy. Transition effects that read `timelineFrames` run on the main thread to avoid cloning extra frames.
+- **The worker.** CPU batches run in one persistent worker (`worker-pool.ts`). It's deliberately a single worker: stateful effects keep their cross-frame state in module memory, and every frame must reach the same copy. That includes frames with `timelineFrames` (the other clips active during an overlap), which are cloned over rather than run inline, so a stateful effect never ends up with two copies of its state.
 - **Scratch buffers.** Per-frame temporaries use `scratchCopy(data, "<effect>/<name>")` and `scratchFloats(length, key)` from `shared.ts`, which reuse a buffer per call site instead of allocating megabytes per frame. Never keep a scratch buffer across frames — allocate state you need to keep.
+- **Datamosh** is CPU-only on purpose: block matching on a quarter-res luma copy, then a block warp of its previous output plus a residual. It runs in the worker at roughly 30 ms per 1080p frame. A GPU port needs compute shaders (see the roadmap).
 - **Frame history.** `storeFrame` / `getFrameFromHistory` (`shared.ts`) keep the CPU-path history; buffers are recycled once the ring is full.
 
 ## Animation inference

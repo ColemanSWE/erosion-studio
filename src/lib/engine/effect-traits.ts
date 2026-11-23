@@ -36,7 +36,7 @@ export function effectsNeedAnimation(effects: Effect[]): boolean {
 export function effectsNeedTimelineFrames(effects: Effect[]): boolean {
   return effects.some((e) => {
     if (!e.active) return false;
-    if (e.type === "datamosh") return true;
+    if (e.type === "datamosh") return true; // overlapping clips: moshes from the incoming one
     if (e.type === "motion-smear" && (e.params as Record<string, unknown>)?.mode === "bloom") return true;
     return false;
   });

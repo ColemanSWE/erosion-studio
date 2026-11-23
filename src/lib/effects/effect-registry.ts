@@ -9,6 +9,8 @@ export interface ProcessConfig {
   width: number;
   height: number;
   time?: number;
+  /** Timeline time of the frame in seconds; undefined for the live camera. Lets stateful effects detect seeks and gaps. */
+  mediaTime?: number;
   timelineFrames?: ImageData[];
   faceBounds?: FaceBounds[];
   handBounds?: HandBounds[];
@@ -34,6 +36,8 @@ export interface EffectDefinition {
     | "face"
     | "standard";
   defaultParams: Record<string, unknown>;
+  /** One-line hint shown above the effect's controls. */
+  description?: string;
   paramsConfig: EffectParamConfig[];
   processor: EffectProcessor;
   /** Optional GPU path. When present, the GL pipeline uses this shader instead of the CPU processor. */

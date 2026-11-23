@@ -179,7 +179,7 @@ export async function renderWithEffects(
     const scale = drawWidth / sourceWidth;
 
     const processConfig = {
-      width: sourceWidth, height: sourceHeight, time: tick,
+      width: sourceWidth, height: sourceHeight, time: tick, mediaTime: context.mediaTime,
       timelineFrames: context.timelineFrames,
       faceBounds: context.faceBounds, handBounds: context.handBounds, poseBounds: context.poseBounds,
     };
@@ -274,18 +274,14 @@ export async function renderWithEffects(
 
     if (globalEffects.length > 0) {
       const imageData = bufferCtx.getImageData(0, 0, sourceWidth, sourceHeight);
-      const useWorker = !context.timelineFrames?.length;
+      // Always the worker (timelineFrames are cloned over), so stateful effects
+      // keep one copy of their cross-frame state.
       try {
-        if (useWorker) {
-          const buf = new Uint8ClampedArray(imageData.data);
-          const processed = await processEffectsInWorker(buf, globalEffects, processConfig);
-          bufferCtx.putImageData(
-            new ImageData(new Uint8ClampedArray(processed), sourceWidth, sourceHeight), 0, 0,
-          );
-        } else {
-          applyEffects(imageData.data, globalEffects, processConfig);
-          bufferCtx.putImageData(imageData, 0, 0);
-        }
+        const buf = new Uint8ClampedArray(imageData.data);
+        const processed = await processEffectsInWorker(buf, globalEffects, processConfig);
+        bufferCtx.putImageData(
+          new ImageData(new Uint8ClampedArray(processed), sourceWidth, sourceHeight), 0, 0,
+        );
       } catch {
         applyEffects(imageData.data, globalEffects, processConfig);
         bufferCtx.putImageData(imageData, 0, 0);
